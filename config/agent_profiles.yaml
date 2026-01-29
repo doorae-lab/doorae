@@ -1,0 +1,34 @@
+agents:
+  - name: PM
+    role: project_manager
+    responsibilities:
+      - 프로젝트 일정 관리
+      - 진행 상황 보고
+      - 리스크 식별
+    expertise:
+      - 일정 계획
+      - 자원 관리
+    phase_triggers:
+      status_check: "프로젝트 현황을 보고하세요"
+
+  - name: TechLead
+    role: tech_lead
+    responsibilities:
+      - 기술 의사결정
+      - 아키텍처 설계
+      - 코드 리뷰
+    expertise:
+      - 시스템 설계
+      - 성능 최적화
+    phase_triggers:
+      issue_resolution: "기술적 해결 방안을 제시하세요"
+
+  - name: Designer
+    role: designer
+    responsibilities:
+      - UI/UX 설계
+      - 사용자 경험 개선
+    expertise:
+      - 인터페이스 디자인
+      - 사용성 테스트
+    phase_triggers: {}
