@@ -38,6 +38,15 @@ def meeting_state():
     }
 
 
+@pytest.fixture
+def mock_agent():
+    """Mock agent"""
+    agent = MagicMock()
+    agent.name = "PM"
+    agent.generate_response = AsyncMock(return_value="프로젝트 진행 중입니다")
+    return agent
+
+
 @pytest.mark.asyncio
 async def test_supervisor_node(mock_supervisor, meeting_state, monkeypatch):
     """Supervisor 노드 실행 테스트"""
@@ -50,3 +59,25 @@ async def test_supervisor_node(mock_supervisor, meeting_state, monkeypatch):
 
     assert result["next_speaker"] == "PM"
     assert "@PM" in result["current_task"]
+
+
+
+@pytest.mark.asyncio
+async def test_agent_node_factory(mock_agent, meeting_state, monkeypatch):
+    """Agent 노드 팩토리 테스트"""
+    from thetable.graph.nodes import create_agent_node
+
+    monkeypatch.setattr(
+        "thetable.graph.nodes.get_agent",
+        lambda state, name: mock_agent
+    )
+
+    pm_node = create_agent_node("PM")
+    meeting_state["current_task"] = "@PM 현황을 보고하세요"
+
+    result = await pm_node(meeting_state)
+
+    assert "messages" in result
+    assert len(result["messages"]) == 1
+    assert result["messages"][0].name == "PM"
+    assert result["messages"][0].content == "프로젝트 진행 중입니다"
