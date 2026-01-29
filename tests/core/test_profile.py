@@ -25,3 +25,46 @@ def test_load_agent_profiles_from_yaml():
     assert "PM" in profiles
     assert "TechLead" in profiles
     assert profiles["PM"].role == "project_manager"
+
+
+def test_hierarchical_agent_profile():
+    """계층적 Agent Profile 테스트"""
+    # TechLead는 하위 에이전트를 가짐
+    profiles = load_agent_profiles("config/agent_profiles.yaml")
+    tech_lead = profiles["TechLead"]
+    
+    assert tech_lead.is_supervisor()
+    assert len(tech_lead.agents) == 3  # Backend, Frontend, DevOps
+    
+    child_names = tech_lead.get_child_names()
+    assert "Backend" in child_names
+    assert "Frontend" in child_names
+    assert "DevOps" in child_names
+    
+    # PM은 leaf 노드
+    pm = profiles["PM"]
+    assert not pm.is_supervisor()
+    assert pm.get_child_names() == []
+
+
+def test_nested_agent_profile():
+    """중첩된 Agent Profile 재귀 테스트"""
+    nested_profile = AgentProfile(
+        name="TeamLead",
+        role="team_lead",
+        responsibilities=["팀 관리"],
+        expertise=["리더십"],
+        agents=[
+            AgentProfile(
+                name="SubAgent",
+                role="sub_agent",
+                responsibilities=["작업 수행"],
+                expertise=["Python"]
+            )
+        ]
+    )
+    
+    assert nested_profile.is_supervisor()
+    assert len(nested_profile.agents) == 1
+    assert nested_profile.agents[0].name == "SubAgent"
+    assert not nested_profile.agents[0].is_supervisor()
