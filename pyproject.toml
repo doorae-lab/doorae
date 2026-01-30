@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-thetable = "thetable.interfaces.cli:main"
+thetable = "thetable.interfaces.cli:app"
 
 [project.optional-dependencies]
 dev = [

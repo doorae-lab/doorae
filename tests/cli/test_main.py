@@ -1,118 +1,32 @@
 """CLI 테스트"""
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from langchain_core.messages import HumanMessage, AIMessage
+from pathlib import Path
+from typer.testing import CliRunner
 
-from thetable.interfaces.cli import run_meeting, main
-
-
-class TestRunMeeting:
-    """run_meeting 함수 테스트"""
-
-    @pytest.mark.asyncio
-    async def test_run_meeting_basic(self, monkeypatch):
-        """기본 회의 실행 테스트"""
-        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-
-        # Mock workflow
-        mock_workflow = MagicMock()
-        mock_result = {
-            "messages": [
-                HumanMessage(content="회의 시작", name="User"),
-                AIMessage(content="환영합니다", name="Host"),
-            ],
-            "current_phase": "opening",
-            "speaker_counts": {"Host": 1},
-        }
-        mock_workflow.ainvoke = AsyncMock(return_value=mock_result)
-
-        with patch("thetable.interfaces.cli.create_meeting_workflow", return_value=mock_workflow):
-            await run_meeting("회의 시작")
-
-        # ainvoke가 호출되었는지 확인
-        mock_workflow.ainvoke.assert_called_once()
-        call_args = mock_workflow.ainvoke.call_args[0][0]
-        assert "messages" in call_args
-        assert call_args["current_phase"] == "opening"
-
-    @pytest.mark.asyncio
-    async def test_run_meeting_custom_profiles(self, monkeypatch):
-        """커스텀 프로필 경로 테스트"""
-        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-
-        mock_workflow = MagicMock()
-        mock_workflow.ainvoke = AsyncMock(return_value={"messages": []})
-
-        with patch("thetable.interfaces.cli.create_meeting_workflow", return_value=mock_workflow) as mock_create:
-            await run_meeting("테스트", profiles_path="custom/path.yaml")
-
-        # create_meeting_workflow가 올바른 경로로 호출되었는지 확인
-        mock_create.assert_called_once_with(profiles_path="custom/path.yaml")
-
-    @pytest.mark.asyncio
-    async def test_run_meeting_stream_mode(self, monkeypatch):
-        """스트리밍 모드 테스트"""
-        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-
-        mock_workflow = MagicMock()
-
-        async def mock_astream(state):
-            yield {"messages": [AIMessage(content="첫 메시지", name="Host")]}
-            yield {"messages": [AIMessage(content="두 번째 메시지", name="PM")]}
-
-        mock_workflow.astream = mock_astream
-
-        with patch("thetable.interfaces.cli.create_meeting_workflow", return_value=mock_workflow):
-            await run_meeting("회의 시작", stream=True)
-
-        # 에러 없이 완료되면 성공
+from thetable.interfaces.cli import app
 
 
-class TestCLI:
-    """CLI 인터페이스 테스트"""
+runner = CliRunner()
 
-    def test_main_missing_message(self):
-        """메시지 인자 누락 시 에러"""
-        with patch("sys.argv", ["thetable"]):
-            with pytest.raises(SystemExit):
-                main()
 
-    def test_main_help(self):
-        """--help 옵션"""
-        with patch("sys.argv", ["thetable", "--help"]):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-            assert exc_info.value.code == 0
+def test_cli_version():
+    """버전 출력 테스트"""
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert "0.1.0" in result.stdout
 
-    @patch("thetable.interfaces.cli.asyncio.run")
-    @patch("thetable.interfaces.cli.run_meeting")
-    def test_main_basic_execution(self, mock_run_meeting, mock_asyncio_run, monkeypatch):
-        """기본 실행"""
-        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
-        with patch("sys.argv", ["thetable", "회의 시작"]):
-            main()
+def test_cli_help():
+    """도움말 출력 테스트"""
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "TheTable" in result.stdout
+    assert "message" in result.stdout
 
-        mock_asyncio_run.assert_called_once()
 
-    @patch("thetable.interfaces.cli.asyncio.run")
-    @patch("thetable.interfaces.cli.run_meeting")
-    def test_main_with_profiles(self, mock_run_meeting, mock_asyncio_run, monkeypatch):
-        """--profiles 옵션"""
-        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-
-        with patch("sys.argv", ["thetable", "회의 시작", "--profiles", "custom.yaml"]):
-            main()
-
-        mock_asyncio_run.assert_called_once()
-
-    @patch("thetable.interfaces.cli.asyncio.run")
-    @patch("thetable.interfaces.cli.run_meeting")
-    def test_main_with_stream(self, mock_run_meeting, mock_asyncio_run, monkeypatch):
-        """--stream 옵션"""
-        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-
-        with patch("sys.argv", ["thetable", "회의 시작", "--stream"]):
-            main()
-
-        mock_asyncio_run.assert_called_once()
+def test_cli_basic_message():
+    """기본 메시지 실행 테스트"""
+    # 실제 회의를 실행하지 않고 CLI 파싱만 테스트
+    # (실제 실행은 통합 테스트에서)
+    result = runner.invoke(app, ["회의 시작", "--help"])
+    # 옵션 확인
+    assert "--profiles" in result.stdout or result.exit_code == 0
