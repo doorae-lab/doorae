@@ -16,31 +16,38 @@ from thetable.graph.state import MeetingState
 from thetable.core.profile import load_agent_profiles
 
 
-HOST_PROMPT = """You are the meeting Host responsible for phase management.
+HOST_PROMPT_TEMPLATE = """You are the meeting Host responsible for phase management.
+
+## Available Handoff Tools (IMPORTANT!)
+{agent_tools}
+
+## CRITICAL RULES
+1. To give speaking turn to an agent, you MUST call the corresponding transfer tool
+2. If you only output text without calling a tool, the meeting will END immediately
+3. Always call a transfer tool after explaining your decision
 
 ## Current State
-- Phase: {current_phase}
-- Speaker counts: {speaker_counts}
-- Phase history: {phase_history}
+- Phase: {{current_phase}}
+- Speaker counts: {{speaker_counts}}
+- Phase history: {{phase_history}}
 
 ## Phase Rules
 1. **opening**: Greet participants and introduce the meeting agenda.
-   - Transition condition: After greeting, move to status_check
-   
+   - After greeting → call transfer_to_PM to start status_check
+
 2. **status_check**: PM must report project status.
-   - Required speakers: PM
-   - Transition condition: After PM speaks, move to issue_resolution
-   
+   - Required: PM
+   - After PM speaks → call transfer_to_TechLead for issue_resolution
+
 3. **issue_resolution**: TechLead addresses technical issues.
-   - TechLead can delegate to Backend/Frontend/DevOps experts as needed
-   - Transition condition: After issues resolved, move to closing
-   
+   - TechLead can delegate to Backend/Frontend/DevOps as needed
+   - After issues resolved → move to closing
+
 4. **closing**: Summarize key decisions and action items.
-   - Transition condition: After summary, END meeting
+   - After summary, you may END the meeting (no tool call needed)
 
 ## Instructions
 - Check speaker_counts to ensure required speakers have participated
-- Update current_phase when transition conditions are met
 - Direct agents based on their expertise and current phase needs
 - Respond in Korean
 
@@ -48,8 +55,28 @@ HOST_PROMPT = """You are the meeting Host responsible for phase management.
 [PHASE: next_phase_name]
 
 **Example:**
-"PM님의 상태 보고를 들었습니다. 이제 기술적 이슈를 논의하겠습니다. [PHASE: issue_resolution]"
+"회의를 시작하겠습니다. PM님, 프로젝트 현황을 보고해 주세요. [PHASE: status_check]"
+(Then call transfer_to_PM tool)
 """
+
+
+def build_host_prompt(agent_names: list[str]) -> str:
+    """에이전트 목록에서 동적으로 HOST_PROMPT 생성
+
+    Args:
+        agent_names: Host를 제외한 에이전트 이름 목록
+
+    Returns:
+        핸드오프 도구 목록이 포함된 HOST_PROMPT
+    """
+    # 에이전트별 도구 설명 생성
+    tool_descriptions = []
+    for name in agent_names:
+        tool_descriptions.append(f"- transfer_to_{name}: {name}에게 발언권 전달")
+
+    agent_tools = "\n".join(tool_descriptions)
+
+    return HOST_PROMPT_TEMPLATE.format(agent_tools=agent_tools)
 
 
 def create_meeting_workflow(
@@ -57,15 +84,15 @@ def create_meeting_workflow(
     model: ChatOpenAI = None
 ) -> object:
     """langgraph-supervisor 기반 회의 워크플로우 생성
-    
+
     Args:
         profiles_path: agent_profiles.yaml 경로
         model: LLM 모델 (None이면 기본 모델 생성)
-        
+
     Returns:
         CompiledGraph: 실행 가능한 회의 그래프
     """
-    
+
     if model is None:
         settings = get_settings()
         kwargs = {
@@ -76,66 +103,35 @@ def create_meeting_workflow(
         if settings.openai_base_url:
             kwargs["base_url"] = settings.openai_base_url
         model = ChatOpenAI(**kwargs)
-    
+
     # 1. 프로필 로드
     profiles = load_agent_profiles(profiles_path)
-    
-    # 2. 각 에이전트 그래프 빌드 (계층적)
+
+    # 2. Host 제외한 에이전트 이름 수집
+    agent_names = [name for name in profiles.keys() if name != "Host"]
+
+    # 3. 동적 HOST_PROMPT 생성
+    host_prompt = build_host_prompt(agent_names)
+
+    # 4. 각 에이전트 그래프 빌드 (계층적)
     agent_graphs = []
     for name, profile in profiles.items():
         if name != "Host":  # Host는 supervisor로 사용
             agent_graph = build_agent_graph(profile, model)
             agent_graphs.append(agent_graph)
-    
-    # 3. 최상위 supervisor 생성 - Host가 Phase도 관리
+
+    # 5. 최상위 supervisor 생성 - Host가 Phase도 관리 (동적 프롬프트 사용)
     meeting_supervisor = create_supervisor(
         agents=agent_graphs,
         model=model,
         supervisor_name="Host",
-        prompt=HOST_PROMPT,
+        prompt=host_prompt,  # 동적 생성된 프롬프트
         state_schema=MeetingState  # 확장된 상태 사용
     )
-    
-    # 4. 컴파일 (Phase 래퍼 불필요!)
+
+    # 6. 컴파일
     workflow = meeting_supervisor.compile()
-    
-    # 5. Phase 전환 후처리 추가 (선택적)
-    workflow = add_phase_transition_handler(workflow)
-    
-    return workflow
 
-
-def add_phase_transition_handler(workflow):
-    """Host 응답에서 Phase 전환 감지 및 상태 업데이트
-    
-    Note: langgraph-supervisor의 메시지 처리 후 호출되는 후처리 핸들러
-    """
-    
-    def process_host_response(state: MeetingState) -> dict:
-        """Host 응답 분석하여 Phase 업데이트"""
-        if not state.get("messages"):
-            return {}
-        
-        last_message = state["messages"][-1]
-        
-        # [PHASE: phase_name] 형식 파싱
-        if "[PHASE:" in last_message.content:
-            match = re.search(r'\[PHASE:\s*(\w+)\]', last_message.content)
-            if match:
-                new_phase = match.group(1)
-                current_phase = state.get("current_phase", "opening")
-                
-                return {
-                    "current_phase": new_phase,
-                    "phase_history": state.get("phase_history", []) + [current_phase]
-                }
-        
-        return {}
-    
-    # 워크플로우에 후처리 핸들러 등록
-    # Note: langgraph-supervisor v0.0.1+에서 지원 예정
-    # 현재는 Host 프롬프트에서 Phase 전환 처리
-    
     return workflow
 
 
