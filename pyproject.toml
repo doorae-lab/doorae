@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-thetable = "thetable.__main__:main"
+thetable = "thetable.interfaces.cli:main"
 
 [project.optional-dependencies]
 dev = [

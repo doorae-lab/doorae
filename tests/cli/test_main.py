@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import HumanMessage, AIMessage
 
-from thetable.__main__ import run_meeting, main
+from thetable.interfaces.cli import run_meeting, main
 
 
 class TestRunMeeting:
@@ -26,7 +26,7 @@ class TestRunMeeting:
         }
         mock_workflow.ainvoke = AsyncMock(return_value=mock_result)
 
-        with patch("thetable.__main__.create_meeting_workflow", return_value=mock_workflow):
+        with patch("thetable.interfaces.cli.create_meeting_workflow", return_value=mock_workflow):
             await run_meeting("회의 시작")
 
         # ainvoke가 호출되었는지 확인
@@ -43,7 +43,7 @@ class TestRunMeeting:
         mock_workflow = MagicMock()
         mock_workflow.ainvoke = AsyncMock(return_value={"messages": []})
 
-        with patch("thetable.__main__.create_meeting_workflow", return_value=mock_workflow) as mock_create:
+        with patch("thetable.interfaces.cli.create_meeting_workflow", return_value=mock_workflow) as mock_create:
             await run_meeting("테스트", profiles_path="custom/path.yaml")
 
         # create_meeting_workflow가 올바른 경로로 호출되었는지 확인
@@ -62,7 +62,7 @@ class TestRunMeeting:
 
         mock_workflow.astream = mock_astream
 
-        with patch("thetable.__main__.create_meeting_workflow", return_value=mock_workflow):
+        with patch("thetable.interfaces.cli.create_meeting_workflow", return_value=mock_workflow):
             await run_meeting("회의 시작", stream=True)
 
         # 에러 없이 완료되면 성공
@@ -84,8 +84,8 @@ class TestCLI:
                 main()
             assert exc_info.value.code == 0
 
-    @patch("thetable.__main__.asyncio.run")
-    @patch("thetable.__main__.run_meeting")
+    @patch("thetable.interfaces.cli.asyncio.run")
+    @patch("thetable.interfaces.cli.run_meeting")
     def test_main_basic_execution(self, mock_run_meeting, mock_asyncio_run, monkeypatch):
         """기본 실행"""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -95,8 +95,8 @@ class TestCLI:
 
         mock_asyncio_run.assert_called_once()
 
-    @patch("thetable.__main__.asyncio.run")
-    @patch("thetable.__main__.run_meeting")
+    @patch("thetable.interfaces.cli.asyncio.run")
+    @patch("thetable.interfaces.cli.run_meeting")
     def test_main_with_profiles(self, mock_run_meeting, mock_asyncio_run, monkeypatch):
         """--profiles 옵션"""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -106,8 +106,8 @@ class TestCLI:
 
         mock_asyncio_run.assert_called_once()
 
-    @patch("thetable.__main__.asyncio.run")
-    @patch("thetable.__main__.run_meeting")
+    @patch("thetable.interfaces.cli.asyncio.run")
+    @patch("thetable.interfaces.cli.run_meeting")
     def test_main_with_stream(self, mock_run_meeting, mock_asyncio_run, monkeypatch):
         """--stream 옵션"""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
