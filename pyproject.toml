@@ -18,6 +18,9 @@ dependencies = [
     "python-dotenv>=1.0.0",
 ]
 
+[project.scripts]
+thetable = "thetable.__main__:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
