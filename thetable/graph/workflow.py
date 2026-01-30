@@ -71,6 +71,7 @@ def create_meeting_workflow(
         kwargs = {
             "model": settings.llm_model,
             "temperature": settings.llm_temperature,
+            "api_key": settings.openai_api_key,
         }
         if settings.openai_base_url:
             kwargs["base_url"] = settings.openai_base_url
