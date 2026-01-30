@@ -34,12 +34,11 @@ def test_hierarchical_agent_profile():
     tech_lead = profiles["TechLead"]
     
     assert tech_lead.is_supervisor()
-    assert len(tech_lead.agents) == 3  # Backend, Frontend, DevOps
-    
+    assert len(tech_lead.agents) == 2  # Backend, Frontend
+
     child_names = tech_lead.get_child_names()
     assert "Backend" in child_names
     assert "Frontend" in child_names
-    assert "DevOps" in child_names
     
     # PM은 leaf 노드
     pm = profiles["PM"]
@@ -68,3 +67,29 @@ def test_nested_agent_profile():
     assert len(nested_profile.agents) == 1
     assert nested_profile.agents[0].name == "SubAgent"
     assert not nested_profile.agents[0].is_supervisor()
+
+
+def test_host_profile_exists():
+    """Host Agent Profile 존재 테스트"""
+    profiles = load_agent_profiles("config/agent_profiles.yaml")
+
+    assert "Host" in profiles
+    assert profiles["Host"].role == "host"
+
+    # Host는 leaf 노드여야 함 (하위 에이전트 없음)
+    assert not profiles["Host"].is_supervisor()
+    assert profiles["Host"].get_child_names() == []
+
+
+def test_host_profile_responsibilities():
+    """Host Agent의 책임 및 전문성 테스트"""
+    profiles = load_agent_profiles("config/agent_profiles.yaml")
+    host = profiles["Host"]
+
+    # 회의 진행 관련 책임 확인
+    assert "회의 진행 및 조율" in host.responsibilities
+    assert "다음 발언자 선택" in host.responsibilities
+
+    # 퍼실리테이션 전문성 확인
+    assert "회의 퍼실리테이션" in host.expertise
+    assert "시간 관리" in host.expertise
