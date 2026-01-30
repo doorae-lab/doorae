@@ -27,9 +27,11 @@ console = Console()
 
 @app.command()
 def main(
-    message: Optional[str] = typer.Argument(
-        None,
-        help="회의 시작 메시지 (Host가 먼저 말할 내용)",
+    message: str = typer.Option(
+        "회의를 시작합니다",
+        "--message",
+        "-m",
+        help="회의 시작 메시지",
     ),
     profiles: Optional[Path] = typer.Option(
         None,
@@ -76,31 +78,24 @@ def main(
 
     Examples:
 
-        # 기본 회의 실행
+        # 기본 메시지로 회의 시작
 
-        thetable "오늘 회의를 시작하겠습니다"
+        thetable
 
-        # 커스텀 프로필 사용
+        # 커스텀 메시지로 회의 시작
 
-        thetable "회의 시작" --profiles config/custom_profiles.yaml
+        thetable --message "오늘 스프린트 회의를 시작합니다"
+        thetable -m "긴급 회의"
 
-        # 스트리밍 모드
+        # 다른 옵션과 함께 사용
 
-        thetable "회의 시작" --stream
-
-        # 커스텀 설정 파일
-
-        thetable "회의 시작" --config .env.dev
+        thetable --message "회의 시작" --stream -v
+        thetable --profiles config/custom.yaml
     """
     # 버전 출력
     if version:
         console.print(f"TheTable version: {__version__}")
         raise typer.Exit(code=0)
-
-    # message가 없으면 에러
-    if message is None:
-        console.print("[red]Error: message argument is required[/red]")
-        raise typer.Exit(code=1)
 
     # 로깅 설정
     setup_logging(verbose=verbose, quiet=quiet)
