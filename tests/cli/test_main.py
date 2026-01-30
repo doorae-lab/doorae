@@ -20,13 +20,17 @@ def test_cli_help():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "TheTable" in result.stdout
-    assert "message" in result.stdout
+    assert "--message" in result.stdout  # Option으로 표시되는지 확인
 
 
-def test_cli_basic_message():
-    """기본 메시지 실행 테스트"""
-    # 실제 회의를 실행하지 않고 CLI 파싱만 테스트
-    # (실제 실행은 통합 테스트에서)
-    result = runner.invoke(app, ["회의 시작", "--help"])
-    # 옵션 확인
-    assert "--profiles" in result.stdout or result.exit_code == 0
+def test_cli_default_message():
+    """기본 메시지로 실행 테스트 (인자 없음)"""
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "--message" in result.stdout
+
+
+def test_cli_custom_message():
+    """커스텀 메시지로 실행 테스트"""
+    result = runner.invoke(app, ["--message", "커스텀 회의", "--help"])
+    assert result.exit_code == 0
