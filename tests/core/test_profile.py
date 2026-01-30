@@ -34,12 +34,11 @@ def test_hierarchical_agent_profile():
     tech_lead = profiles["TechLead"]
     
     assert tech_lead.is_supervisor()
-    assert len(tech_lead.agents) == 3  # Backend, Frontend, DevOps
-    
+    assert len(tech_lead.agents) == 2  # Backend, Frontend
+
     child_names = tech_lead.get_child_names()
     assert "Backend" in child_names
     assert "Frontend" in child_names
-    assert "DevOps" in child_names
     
     # PM은 leaf 노드
     pm = profiles["PM"]

@@ -1,4 +1,15 @@
 agents:
+  - name: Host
+    role: host
+    responsibilities:
+      - 회의 진행 및 조율
+      - 다음 발언자 선택
+      - Phase 전환 관리
+    expertise:
+      - 회의 퍼실리테이션
+      - 시간 관리
+    phase_triggers: {}
+
   - name: PM
     role: project_manager
     responsibilities:
@@ -47,17 +58,17 @@ agents:
           - CSS
         phase_triggers: {}
 
-      - name: DevOps
-        role: devops_engineer
-        responsibilities:
-          - CI/CD 파이프라인 구축
-          - 인프라 관리
-          - 모니터링 시스템
-        expertise:
-          - Kubernetes
-          - Docker
-          - Terraform
-        phase_triggers: {}
+  - name: DevOps
+    role: devops_engineer
+    responsibilities:
+      - CI/CD 파이프라인 구축
+      - 인프라 관리
+      - 모니터링 시스템
+    expertise:
+      - Kubernetes
+      - Docker
+      - Terraform
+    phase_triggers: {}
 
   - name: Designer
     role: designer
