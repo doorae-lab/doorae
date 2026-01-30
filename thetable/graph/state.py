@@ -14,6 +14,9 @@ class AgentInfo(BaseModel):
 class MeetingState(MessagesState):
     """회의 상태 (MessagesState 상속 - langgraph-supervisor 호환)"""
 
+    # Supervisor 제어
+    remaining_steps: int = 10  # langgraph-supervisor 필수 필드: 남은 실행 단계 수
+
     # Phase 관리
     current_phase: str = "opening"  # "opening", "status_check", "issue_resolution", "closing"
     phase_history: List[str] = []  # Phase 전환 이력
