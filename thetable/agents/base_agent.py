@@ -4,6 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 
+from thetable.config import get_settings
 from thetable.core.profile import AgentProfile
 
 
@@ -22,10 +23,14 @@ class BaseAgent:
 
     def _init_default_llm(self) -> ChatOpenAI:
         """기본 LLM 초기화"""
-        return ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0.7
-        )
+        settings = get_settings()
+        kwargs = {
+            "model": settings.llm_model,
+            "temperature": settings.llm_temperature,
+        }
+        if settings.openai_base_url:
+            kwargs["base_url"] = settings.openai_base_url
+        return ChatOpenAI(**kwargs)
 
     def _build_system_prompt(self) -> str:
         """시스템 프롬프트 생성"""

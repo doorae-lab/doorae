@@ -2,6 +2,7 @@
 from typing import Dict, Any
 from langchain_core.messages import AIMessage
 
+from thetable.config import get_settings
 from thetable.graph.state import MeetingState
 from thetable.agents.supervisor import SupervisorAgent
 from thetable.agents.base_agent import BaseAgent
@@ -19,7 +20,8 @@ def get_supervisor(state: MeetingState) -> SupervisorAgent:
 
     if _supervisor_cache is None:
         if _agent_profiles_cache is None:
-            _agent_profiles_cache = load_agent_profiles("config/agent_profiles.yaml")
+            settings = get_settings()
+            _agent_profiles_cache = load_agent_profiles(settings.agent_profiles_path)
 
         host_profile = _agent_profiles_cache.get("Host")
         if host_profile is None:
@@ -48,7 +50,8 @@ def get_agent(state: MeetingState, agent_name: str) -> BaseAgent:
 
     if agent_name not in _agents_cache:
         if _agent_profiles_cache is None:
-            _agent_profiles_cache = load_agent_profiles("config/agent_profiles.yaml")
+            settings = get_settings()
+            _agent_profiles_cache = load_agent_profiles(settings.agent_profiles_path)
 
         profile = _agent_profiles_cache.get(agent_name)
         if profile is None:
@@ -95,7 +98,8 @@ async def supervisor_node(state: MeetingState) -> Dict[str, Any]:
 
     global _agent_profiles_cache
     if _agent_profiles_cache is None:
-        _agent_profiles_cache = load_agent_profiles("config/agent_profiles.yaml")
+        settings = get_settings()
+        _agent_profiles_cache = load_agent_profiles(settings.agent_profiles_path)
 
     context = {
         "current_phase": state["current_phase"],

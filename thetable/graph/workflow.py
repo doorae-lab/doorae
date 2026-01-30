@@ -10,6 +10,7 @@ from typing import Dict
 from langchain_openai import ChatOpenAI
 from langgraph_supervisor import create_supervisor
 
+from thetable.config import get_settings
 from thetable.graph.agent_factory import build_agent_graph
 from thetable.graph.state import MeetingState
 from thetable.core.profile import load_agent_profiles
@@ -66,7 +67,14 @@ def create_meeting_workflow(
     """
     
     if model is None:
-        model = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+        settings = get_settings()
+        kwargs = {
+            "model": settings.llm_model,
+            "temperature": settings.llm_temperature,
+        }
+        if settings.openai_base_url:
+            kwargs["base_url"] = settings.openai_base_url
+        model = ChatOpenAI(**kwargs)
     
     # 1. 프로필 로드
     profiles = load_agent_profiles(profiles_path)
