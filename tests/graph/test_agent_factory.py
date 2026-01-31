@@ -84,38 +84,3 @@ def test_supervisor_agent_creation():
     assert callable(supervisor)
     assert hasattr(supervisor, 'name')
     assert supervisor.name == "TechLead"
-
-
-def test_supervisor_wrapper_creation():
-    """Supervisor를 wrapper 노드로 생성하는지 테스트"""
-    from thetable.graph.agent_factory import build_agent_graph
-    from thetable.core.profile import AgentProfile
-    from langchain_openai import ChatOpenAI
-
-    model = ChatOpenAI(model="gpt-4o-mini", api_key="test-key")
-
-    # TechLead supervisor 프로필
-    profile = AgentProfile(
-        name="TechLead",
-        role="tech_lead",
-        responsibilities=["기술 의사결정"],
-        expertise=["Python"],
-        agents=[
-            AgentProfile(
-                name="Backend",
-                role="backend_engineer",
-                responsibilities=["API 개발"],
-                expertise=["Python"],
-                agents=None
-            )
-        ]
-    )
-
-    result = build_agent_graph(profile, model)
-
-    # Callable 함수여야 함
-    assert callable(result)
-
-    # name 속성이 있어야 함
-    assert hasattr(result, 'name')
-    assert result.name == "TechLead"
