@@ -53,8 +53,15 @@ def test_leaf_agent_creation(mock_model):
     assert not profile.is_supervisor()
 
 
-def test_supervisor_agent_creation(mock_model):
-    """슈퍼바이저 에이전트 생성 테스트"""
+def test_supervisor_agent_creation():
+    """Supervisor Agent 생성 테스트 (계층적)"""
+    from thetable.graph.agent_factory import build_agent_graph
+    from thetable.core.profile import AgentProfile
+    from langchain_openai import ChatOpenAI
+
+    model = ChatOpenAI(model="gpt-4o-mini", api_key="test-key")
+
+    # TechLead with Backend child
     profile = AgentProfile(
         name="TechLead",
         role="tech_lead",
@@ -64,15 +71,19 @@ def test_supervisor_agent_creation(mock_model):
             AgentProfile(
                 name="Backend",
                 role="backend_engineer",
-                responsibilities=["API 설계"],
-                expertise=["Python"]
+                responsibilities=["API 개발"],
+                expertise=["Python"],
+                agents=None
             )
         ]
     )
 
-    assert profile.is_supervisor()
-    assert len(profile.get_child_names()) == 1
-    assert "Backend" in profile.get_child_names()
+    supervisor = build_agent_graph(profile, model)
+
+    # Supervisor는 이제 wrapper 함수로 반환됨
+    assert callable(supervisor)
+    assert hasattr(supervisor, 'name')
+    assert supervisor.name == "TechLead"
 
 
 def test_supervisor_wrapper_creation():
