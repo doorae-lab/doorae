@@ -14,6 +14,7 @@ from thetable.config import get_settings
 from thetable.graph.agent_factory import build_agent_graph
 from thetable.graph.state import MeetingState
 from thetable.core.profile import load_agent_profiles
+from thetable.graph.prompts import build_handoff_tools_section
 
 
 HOST_PROMPT_TEMPLATE = """You are the meeting Host responsible for phase management.
@@ -69,12 +70,10 @@ def build_host_prompt(agent_names: list[str]) -> str:
     Returns:
         핸드오프 도구 목록이 포함된 HOST_PROMPT
     """
-    # 에이전트별 도구 설명 생성
-    tool_descriptions = []
-    for name in agent_names:
-        tool_descriptions.append(f"- transfer_to_{name}: {name}에게 발언권 전달")
-
-    agent_tools = "\n".join(tool_descriptions)
+    # 공통 유틸리티 사용
+    agent_tools = build_handoff_tools_section(agent_names)
+    # Host용 도구 설명 커스터마이징 (발언권 전달)
+    agent_tools = agent_tools.replace("작업 위임", "발언권 전달")
 
     return HOST_PROMPT_TEMPLATE.format(agent_tools=agent_tools)
 

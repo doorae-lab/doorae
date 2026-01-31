@@ -6,8 +6,7 @@ from langchain_openai import ChatOpenAI
 from thetable.core.profile import AgentProfile
 from thetable.graph.agent_factory import (
     build_agent_graph,
-    _build_agent_prompt,
-    _build_supervisor_prompt
+    _build_agent_prompt
 )
 
 
@@ -35,28 +34,8 @@ def test_build_agent_prompt():
     assert "Python" in prompt
 
 
-def test_build_supervisor_prompt():
-    """슈퍼바이저 프롬프트 생성 테스트"""
-    profile = AgentProfile(
-        name="TechLead",
-        role="tech_lead",
-        responsibilities=["기술 의사결정"],
-        expertise=["시스템 설계"],
-        agents=[
-            AgentProfile(
-                name="Backend",
-                role="backend_engineer",
-                responsibilities=["API 설계"],
-                expertise=["Python"]
-            )
-        ]
-    )
-    
-    prompt = _build_supervisor_prompt(profile)
-    
-    assert "TechLead" in prompt
-    assert "Backend" in prompt
-    assert "기술 의사결정" in prompt
+# _build_supervisor_prompt는 prompts.py의 build_supervisor_prompt로 이동됨
+# 해당 테스트는 test_prompts.py에서 수행
 
 
 def test_leaf_agent_creation(mock_model):

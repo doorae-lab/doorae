@@ -8,6 +8,7 @@ from langgraph_supervisor import create_supervisor
 from langgraph.prebuilt import create_react_agent
 
 from thetable.core.profile import AgentProfile
+from thetable.graph.prompts import build_supervisor_prompt
 
 
 def build_agent_graph(
@@ -45,11 +46,11 @@ def build_agent_graph(
         agents=child_agents,
         model=model,
         supervisor_name=profile.name,
-        prompt=_build_supervisor_prompt(profile)
+        prompt=build_supervisor_prompt(profile, profile.get_child_names())
     )
     
-    # 팀을 하나의 노드로 컴파일
-    return supervisor.compile(name=f"{profile.name.lower()}_team")
+    # 팀을 하나의 노드로 컴파일 (이름 일관성을 위해 _team 접미사 제거)
+    return supervisor.compile(name=profile.name)
 
 
 def _build_agent_prompt(profile: AgentProfile) -> str:
@@ -65,13 +66,4 @@ Expertise:
 Respond concisely and professionally in Korean."""
 
 
-def _build_supervisor_prompt(profile: AgentProfile) -> str:
-    """프로필에서 supervisor 프롬프트 생성"""
-    child_names = profile.get_child_names()
-    return f"""You are {profile.name}, a {profile.role} managing: {', '.join(child_names)}.
 
-Your responsibilities:
-{chr(10).join(f'- {r}' for r in profile.responsibilities)}
-
-Delegate tasks to the appropriate team member based on their expertise.
-Respond in Korean."""
