@@ -2,12 +2,14 @@ agents:
   - name: Host
     role: host
     responsibilities:
-      - 회의 진행 및 조율
-      - 다음 발언자 선택
-      - Phase 전환 관리
+      - 회의 시작 인사 및 안건 소개
+      - Phase 전환 안내 및 조율
+      - 토론 중재 및 의견 요청
+      - 회의 요약 및 마무리
     expertise:
       - 회의 퍼실리테이션
       - 시간 관리
+      - 갈등 조정
     phase_triggers: {}
 
   - name: PM
