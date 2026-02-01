@@ -6,7 +6,9 @@
 - 하이브리드 멘션 추출 (규칙 기반 + LLM 보조)
 - Host 명시적 안건 완료 선언
 """
+import asyncio
 import re
+from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 
@@ -35,6 +37,68 @@ def extract_mentions_rule_based(content: str, valid_speakers: list[str]) -> list
                     mentions.append(speaker)
 
     return list(set(mentions))
+
+
+def create_human_node(profile):
+    """사용자 입력 노드 생성
+    
+    Args:
+        profile: AgentProfile 객체 (is_human=True)
+    
+    Returns:
+        사용자 입력을 받는 노드 함수
+    """
+    async def human_node(state: MeetingState) -> dict:
+        """사용자 입력 대기 및 메시지 추가"""
+        messages = state.get("messages", [])
+        agendas = state.get("agendas", [])
+        current_idx = state.get("current_agenda_idx", 0)
+        
+        # 현재 안건 정보 표시
+        print(f"\n{'='*60}", flush=True)
+        print(f"[{profile.name}님 차례입니다]", flush=True)
+        
+        if current_idx < len(agendas):
+            current_agenda = agendas[current_idx]
+            print(f"\n📋 현재 안건: {current_agenda.get('title', 'N/A')}", flush=True)
+            print(f"   설명: {current_agenda.get('description', 'N/A')}", flush=True)
+        
+        # 최근 발언 표시 (최대 3개)
+        if messages:
+            print(f"\n💬 최근 발언:", flush=True)
+            recent_messages = messages[-3:]
+            for msg in recent_messages:
+                speaker = getattr(msg, 'name', 'Unknown')
+                content = getattr(msg, 'content', '')
+                # 길면 첫 100자만 표시
+                display_content = content[:100] + "..." if len(content) > 100 else content
+                print(f"   [{speaker}] {display_content}", flush=True)
+        
+        print(f"\n{'='*60}", flush=True)
+        print(f"💡 의견을 입력하세요 (빈 입력 시 스킵):", flush=True)
+        
+        # 비동기 입력 대기
+        user_input = await asyncio.to_thread(input, "> ")
+        
+        # 빈 입력 시 스킵
+        if not user_input.strip():
+            print(f"[{profile.name}님이 스킵했습니다]\n", flush=True)
+            # 빈 메시지 추가 (스킵 표시용)
+            skip_message = HumanMessage(
+                content="(발언 없음)",
+                name=profile.name
+            )
+            return {"messages": [skip_message]}
+        
+        # 사용자 입력을 메시지로 추가
+        user_message = HumanMessage(
+            content=user_input,
+            name=profile.name
+        )
+        
+        return {"messages": [user_message]}
+    
+    return human_node
 
 
 async def extract_mentions_llm(content: str, model, valid_speakers: list[str]) -> list[str]:
@@ -94,7 +158,7 @@ def get_remaining_speakers(required_speakers: list[str], already_spoken: set) ->
     return [s for s in required_speakers if s not in already_spoken]
 
 
-async def process_response(state: MeetingState, model) -> dict:
+async def process_response(state: MeetingState, model, valid_speakers: list[str]) -> dict:
     """에이전트 응답 처리"""
     messages = state.get("messages", [])
     pending = state.get("pending_speakers", [])
@@ -117,7 +181,7 @@ async def process_response(state: MeetingState, model) -> dict:
     new_counts[speaker_name] = new_counts.get(speaker_name, 0) + 1
 
     # 3. 멘션 추출 (LLM 기반)
-    valid_speakers = ["Host", "PM", "Designer", "TechLead", "DevOps"]
+    # valid_speakers는 파라미터로 전달됨
     # 규칙 기반은 주석 처리 - LLM만 사용
     # mentions = extract_mentions_rule_based(content, valid_speakers)
     # if not mentions and speaker_name != "Host":
@@ -269,14 +333,19 @@ def create_meeting_workflow(
 
     # 4. process_response 노드 추가
     async def process_with_model(state: MeetingState):
-        return await process_response(state, model)
+        return await process_response(state, model, list(profiles.keys()))
     
     workflow.add_node("process_response", process_with_model)
 
-    # 5. 각 에이전트 노드 추가
+    # 5. 각 에이전트 노드 추가 (is_human 분기)
     for name, profile in profiles.items():
-        agent_node = build_agent_node(profile, model, list(profiles.keys()))
-        workflow.add_node(name.lower(), agent_node)
+        if profile.is_human:
+            # 사용자 참여자는 입력 노드 생성
+            node = create_human_node(profile)
+        else:
+            # AI 에이전트는 기존 로직 사용
+            node = build_agent_node(profile, model, list(profiles.keys()), profiles)
+        workflow.add_node(name.lower(), node)
 
     # 6. 진입점: refill_speakers
     workflow.set_entry_point("refill_speakers")

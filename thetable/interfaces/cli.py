@@ -169,36 +169,52 @@ async def run_meeting(
     workflow = create_meeting_workflow(profiles_path=str(profiles_path))
     logger.debug(f"Workflow created: {workflow}")
 
+    # Human 프로필 이름 추출
+    from thetable.core.profile import load_agent_profiles
+    profiles = load_agent_profiles(str(profiles_path))
+    human_names = [name for name, p in profiles.items() if p.is_human]
+    logger.debug(f"Human participants: {human_names}")
+
     # 초기 상태 - 안건 기반
     import time
+    
+    # 기본 안건 정의
+    base_agendas = [
+        {
+            "title": "회의 시작 및 현황 공유",
+            "description": "회의를 시작하고 주간 현황을 공유합니다",
+            "status": "pending",
+            "required_speakers": ["Host", "PM"]
+        },
+        {
+            "title": "주요 이슈 논의",
+            "description": "당면한 문제들을 논의하고 해결 방안을 모색합니다",
+            "status": "pending",
+            "required_speakers": ["TechLead", "Designer", "DevOps"]
+        },
+        {
+            "title": "향후 일정 및 계획",
+            "description": "다음 단계 일정과 계획을 수립합니다",
+            "status": "pending",
+            "required_speakers": ["PM", "TechLead"]
+        },
+        {
+            "title": "회의 마무리",
+            "description": "논의 내용을 정리하고 액션 아이템을 확정합니다",
+            "status": "pending",
+            "required_speakers": ["Host"]
+        },
+    ]
+    
+    # Human 참여자를 모든 안건에 추가
+    for agenda in base_agendas:
+        for human_name in human_names:
+            if human_name not in agenda["required_speakers"]:
+                agenda["required_speakers"].append(human_name)
+    
     initial_state = {
         "messages": [HumanMessage(content=initial_message)],
-        "agendas": [
-            {
-                "title": "회의 시작 및 현황 공유",
-                "description": "회의를 시작하고 주간 현황을 공유합니다",
-                "status": "pending",
-                "required_speakers": ["Host", "PM"]
-            },
-            {
-                "title": "주요 이슈 논의",
-                "description": "당면한 문제들을 논의하고 해결 방안을 모색합니다",
-                "status": "pending",
-                "required_speakers": ["TechLead", "Designer", "DevOps"]
-            },
-            {
-                "title": "향후 일정 및 계획",
-                "description": "다음 단계 일정과 계획을 수립합니다",
-                "status": "pending",
-                "required_speakers": ["PM", "TechLead"]
-            },
-            {
-                "title": "회의 마무리",
-                "description": "논의 내용을 정리하고 액션 아이템을 확정합니다",
-                "status": "pending",
-                "required_speakers": ["Host"]
-            },
-        ],
+        "agendas": base_agendas,
         "current_agenda_idx": 0,
         "pending_speakers": [],
         "speaker_counts": {},

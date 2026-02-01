@@ -136,7 +136,8 @@ async def test_process_response_basic():
         "start_time": 0.0,
     }
 
-    result = await process_response(state, model)
+    valid_speakers = ["Host", "PM", "Designer", "TechLead", "DevOps"]
+    result = await process_response(state, model, valid_speakers)
 
     # Host가 pending에서 제거됨
     assert "Host" not in result["pending_speakers"]
@@ -167,7 +168,8 @@ async def test_process_response_agenda_completion():
         "start_time": 0.0,
     }
 
-    result = await process_response(state, model)
+    valid_speakers = ["Host", "PM", "Designer", "TechLead", "DevOps"]
+    result = await process_response(state, model, valid_speakers)
 
     # 안건 완료 및 인덱스 증가
     assert result["agendas"][0]["status"] == "completed"
@@ -267,6 +269,110 @@ async def test_infinite_loop_prevention():
     # 강제로 Host 선택 및 카운터 리셋
     assert result["pending_speakers"] == ["Host"]
     assert result["consecutive_host_delegations"] == 0
+
+
+def test_create_human_node():
+    """create_human_node 함수 테스트"""
+    from thetable.graph.workflow import create_human_node
+    from thetable.core.profile import AgentProfile
+
+    # Human 프로필 생성
+    human_profile = AgentProfile(
+        name="TestUser",
+        role="test_role",
+        responsibilities=["Test"],
+        expertise=["Testing"],
+        is_human=True
+    )
+
+    # Human 노드 생성
+    node = create_human_node(human_profile)
+
+    # 노드가 함수인지 확인
+    assert callable(node)
+
+
+@pytest.mark.asyncio
+async def test_human_node_skip_empty_input(monkeypatch):
+    """Human 노드 빈 입력 시 스킵 테스트"""
+    from thetable.graph.workflow import create_human_node
+    from thetable.core.profile import AgentProfile
+    import asyncio
+
+    # 빈 입력 시뮬레이션
+    async def mock_input(*args, **kwargs):
+        return ""
+
+    monkeypatch.setattr(asyncio, "to_thread", lambda fn, *args: mock_input())
+
+    human_profile = AgentProfile(
+        name="TestUser",
+        role="test_role",
+        responsibilities=["Test"],
+        expertise=["Testing"],
+        is_human=True
+    )
+
+    node = create_human_node(human_profile)
+
+    state: MeetingState = {
+        "messages": [],
+        "agendas": [],
+        "current_agenda_idx": 0,
+        "pending_speakers": [],
+        "speaker_counts": {},
+        "consecutive_host_delegations": 0,
+        "start_time": 0.0,
+    }
+
+    result = await node(state)
+
+    # 빈 입력 시 스킵 메시지 추가
+    assert len(result["messages"]) == 1
+    assert result["messages"][0].content == "(발언 없음)"
+    assert result["messages"][0].name == "TestUser"
+
+
+@pytest.mark.asyncio
+async def test_human_node_with_user_input(monkeypatch):
+    """Human 노드 사용자 입력 테스트"""
+    from thetable.graph.workflow import create_human_node
+    from thetable.core.profile import AgentProfile
+    import asyncio
+
+    # 사용자 입력 시뮬레이션
+    test_input = "테스트 의견입니다"
+    async def mock_input(*args, **kwargs):
+        return test_input
+
+    monkeypatch.setattr(asyncio, "to_thread", lambda fn, *args: mock_input())
+
+    human_profile = AgentProfile(
+        name="TestUser",
+        role="test_role",
+        responsibilities=["Test"],
+        expertise=["Testing"],
+        is_human=True
+    )
+
+    node = create_human_node(human_profile)
+
+    state: MeetingState = {
+        "messages": [],
+        "agendas": [],
+        "current_agenda_idx": 0,
+        "pending_speakers": [],
+        "speaker_counts": {},
+        "consecutive_host_delegations": 0,
+        "start_time": 0.0,
+    }
+
+    result = await node(state)
+
+    # 사용자 입력이 메시지로 추가됨
+    assert len(result["messages"]) == 1
+    assert result["messages"][0].content == test_input
+    assert result["messages"][0].name == "TestUser"
 
 
 def test_create_meeting_workflow_integration():
