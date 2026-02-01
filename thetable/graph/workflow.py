@@ -13,6 +13,7 @@ from thetable.graph.agent_factory import build_agent_graph
 from thetable.graph.state import MeetingState
 from thetable.core.profile import load_agent_profiles
 from thetable.graph.prompts import build_coordinator_prompt
+from thetable.graph.handoff_hook import create_handoff_hook
 
 
 def create_meeting_workflow(
@@ -50,18 +51,23 @@ def create_meeting_workflow(
     coordinator_prompt = build_coordinator_prompt(agent_names)
 
     # 4. 모든 에이전트 그래프 빌드 (Host 포함, 특별 처리 없음)
+    # 모든 에이전트에게 참여자 목록을 전달하여 서로를 언급할 수 있도록 함
     agent_graphs = []
     for name, profile in profiles.items():
-        agent_graph = build_agent_graph(profile, model)
+        agent_graph = build_agent_graph(profile, model, agent_names)
         agent_graphs.append(agent_graph)
 
     # 5. Coordinator(Silent Supervisor) 생성
+    # post_model_hook으로 판단 계층 주입
+    handoff_hook = create_handoff_hook(agent_names)
+
     meeting_supervisor = create_supervisor(
         agents=agent_graphs,
         model=model,
         supervisor_name="Coordinator",
         prompt=coordinator_prompt,
         state_schema=MeetingState,
+        post_model_hook=handoff_hook,  # 텍스트 출력 시 도구 호출 주입
         add_handoff_back_messages=False  # Flat 구조: transfer_back 메시지 비활성화
     )
 
