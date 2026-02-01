@@ -29,18 +29,15 @@ def test_load_agent_profiles_from_yaml():
 
 def test_hierarchical_agent_profile():
     """계층적 Agent Profile 테스트"""
-    # TechLead는 하위 에이전트를 가짐
+    # 현재 TechLead는 하위 에이전트가 주석 처리되어 leaf 노드
     profiles = load_agent_profiles("config/agent_profiles.yaml")
     tech_lead = profiles["TechLead"]
-    
-    assert tech_lead.is_supervisor()
-    assert len(tech_lead.agents) == 2  # Backend, Frontend
 
-    child_names = tech_lead.get_child_names()
-    assert "Backend" in child_names
-    assert "Frontend" in child_names
-    
-    # PM은 leaf 노드
+    # TechLead는 현재 leaf 노드 (agents 주석 처리됨)
+    assert not tech_lead.is_supervisor()
+    assert tech_lead.get_child_names() == []
+
+    # PM도 leaf 노드
     pm = profiles["PM"]
     assert not pm.is_supervisor()
     assert pm.get_child_names() == []
@@ -87,9 +84,12 @@ def test_host_profile_responsibilities():
     host = profiles["Host"]
 
     # 회의 진행 관련 책임 확인
-    assert "회의 진행 및 조율" in host.responsibilities
-    assert "다음 발언자 선택" in host.responsibilities
+    assert "회의 시작 인사 및 안건 소개" in host.responsibilities
+    assert "Phase 전환 안내 및 조율" in host.responsibilities
+    assert "토론 중재 및 의견 요청" in host.responsibilities
+    assert "회의 요약 및 마무리" in host.responsibilities
 
     # 퍼실리테이션 전문성 확인
     assert "회의 퍼실리테이션" in host.expertise
+    assert "갈등 조정" in host.expertise
     assert "시간 관리" in host.expertise

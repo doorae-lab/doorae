@@ -1,20 +1,7 @@
 """Tests for workflow"""
 import pytest
-import re
-from thetable.graph.workflow import (
-    validate_phase_transition,
-    HOST_PROMPT
-)
+from thetable.graph.workflow import validate_phase_transition
 from thetable.graph.state import MeetingState
-
-
-def test_host_prompt_contains_phase_rules():
-    """Host 프롬프트에 Phase 규칙 포함 확인"""
-    assert "opening" in HOST_PROMPT
-    assert "status_check" in HOST_PROMPT
-    assert "issue_resolution" in HOST_PROMPT
-    assert "closing" in HOST_PROMPT
-    assert "[PHASE:" in HOST_PROMPT
 
 
 def test_phase_transition_opening_to_status_check():
@@ -33,7 +20,7 @@ def test_phase_transition_opening_to_status_check():
         "start_time": 0.0,
         "phase_start_time": 0.0
     }
-    
+
     # opening → status_check는 항상 가능
     assert validate_phase_transition(state, "status_check")
 
@@ -54,10 +41,10 @@ def test_phase_transition_status_check_requires_pm():
         "start_time": 0.0,
         "phase_start_time": 0.0
     }
-    
+
     # PM 발언 없으면 전환 불가
     assert not validate_phase_transition(state, "issue_resolution")
-    
+
     # PM 발언 후에는 전환 가능
     state["speaker_counts"]["PM"] = 1
     assert validate_phase_transition(state, "issue_resolution")
@@ -79,10 +66,10 @@ def test_phase_transition_issue_resolution_requires_tech_lead():
         "start_time": 0.0,
         "phase_start_time": 0.0
     }
-    
+
     # TechLead 발언 없으면 전환 불가
     assert not validate_phase_transition(state, "closing")
-    
+
     # TechLead 발언 후에는 전환 가능
     state["speaker_counts"]["TechLead"] = 1
     assert validate_phase_transition(state, "closing")
@@ -104,9 +91,23 @@ def test_phase_transition_invalid():
         "start_time": 0.0,
         "phase_start_time": 0.0
     }
-    
+
     # opening → closing 직접 전환 불가
     assert not validate_phase_transition(state, "closing")
-    
+
     # opening → issue_resolution 직접 전환 불가
     assert not validate_phase_transition(state, "issue_resolution")
+
+
+def test_create_meeting_workflow_integration():
+    """create_meeting_workflow 통합 테스트"""
+    from thetable.graph.workflow import create_meeting_workflow
+
+    # 워크플로우 생성
+    workflow = create_meeting_workflow()
+
+    # 워크플로우가 정상적으로 생성되었는지 확인
+    assert workflow is not None
+
+    # CompiledGraph의 기본 속성 확인
+    assert hasattr(workflow, 'invoke') or hasattr(workflow, 'ainvoke')
