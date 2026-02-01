@@ -19,6 +19,7 @@ dependencies = [
     "typer>=0.21.1",
     "loguru>=0.7.3",
     "rich>=14.3.1",
+    "langsmith>=0.6.6",
 ]
 
 [project.scripts]
@@ -36,4 +37,5 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "langsmith>=0.1.0",
 ]
