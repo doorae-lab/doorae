@@ -3,13 +3,15 @@ agents:
     role: host
     responsibilities:
       - 회의 시작 인사 및 안건 소개
-      - Phase 전환 안내 및 조율
+      - 안건 진행 상황 관리
       - 토론 중재 및 의견 요청
+      - 안건 완료 시 다음 안건으로 전환 안내
       - 회의 요약 및 마무리
     expertise:
       - 회의 퍼실리테이션
       - 시간 관리
       - 갈등 조정
+      - 안건 진행 관리
     phase_triggers: {}
 
   - name: PM

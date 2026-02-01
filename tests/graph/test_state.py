@@ -21,11 +21,11 @@ def test_meeting_state_structure():
     hints = get_type_hints(MeetingState)
 
     assert 'messages' in hints
-    assert 'current_phase' in hints
-    assert 'agents' in hints
-    assert 'next_speaker' in hints
+    assert 'agendas' in hints
+    assert 'current_agenda_idx' in hints
+    assert 'pending_speakers' in hints
     assert 'speaker_counts' in hints
-    assert 'phase_history' in hints
+    assert 'consecutive_host_delegations' in hints
 
 
 def test_meeting_state_inherits_messages_state():
@@ -39,8 +39,23 @@ def test_meeting_state_inherits_messages_state():
     assert 'messages' in hints
     
     # MeetingState의 추가 필드 확인
-    assert 'current_phase' in hints
-    assert 'phase_history' in hints
+    assert 'agendas' in hints
+    assert 'pending_speakers' in hints
+
+
+def test_meeting_state_inherits_messages_state():
+    """MeetingState가 MessagesState를 상속하는지 테스트"""
+    from typing import get_type_hints
+    
+    # MeetingState가 MessagesState의 필드를 포함하는지 확인
+    hints = get_type_hints(MeetingState)
+    
+    # MessagesState의 필수 필드인 'messages' 확인
+    assert 'messages' in hints
+    
+    # MeetingState의 추가 필드 확인
+    assert 'agendas' in hints
+    assert 'pending_speakers' in hints
 
 
 def test_meeting_state_defaults():
@@ -48,19 +63,15 @@ def test_meeting_state_defaults():
     # MeetingState 인스턴스 생성 (TypedDict로 사용)
     state: MeetingState = {
         "messages": [],
-        "current_phase": "opening",
-        "phase_history": [],
-        "agents": [],
-        "next_speaker": None,
-        "current_task": None,
+        "agendas": [],
+        "current_agenda_idx": 0,
+        "pending_speakers": [],
         "speaker_counts": {},
-        "pending_mentions": [],
-        "phase_required_speakers": {},
-        "phase_goals": {},
+        "consecutive_host_delegations": 0,
         "start_time": 0.0,
-        "phase_start_time": 0.0
     }
     
-    assert state["current_phase"] == "opening"
+    assert state["current_agenda_idx"] == 0
     assert len(state["messages"]) == 0
     assert len(state["speaker_counts"]) == 0
+    assert len(state["pending_speakers"]) == 0

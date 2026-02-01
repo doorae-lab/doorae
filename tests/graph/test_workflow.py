@@ -1,102 +1,272 @@
-"""Tests for workflow"""
+"""Tests for agenda-based workflow"""
 import pytest
-from thetable.graph.workflow import validate_phase_transition
+from langchain_core.messages import AIMessage, HumanMessage
+from thetable.graph.workflow import (
+    extract_mentions_rule_based,
+    detect_agenda_completion,
+    get_remaining_speakers,
+    condition_router,
+)
 from thetable.graph.state import MeetingState
 
 
-def test_phase_transition_opening_to_status_check():
-    """opening → status_check 전환 테스트"""
+def test_extract_mentions_rule_based():
+    """정규식 멘션 추출 테스트"""
+    valid_speakers = ["Host", "PM", "Designer", "TechLead", "DevOps"]
+
+    # @멘션 테스트
+    content1 = "@PM님 의견 부탁드립니다"
+    assert "PM" in extract_mentions_rule_based(content1, valid_speakers)
+
+    # 님 호칭 테스트
+    content2 = "Designer님, TechLead님 확인 부탁드립니다"
+    mentions2 = extract_mentions_rule_based(content2, valid_speakers)
+    assert "Designer" in mentions2
+    assert "TechLead" in mentions2
+
+    # 의견/검토/확인 패턴 테스트
+    content3 = "PM 의견도 필요합니다"
+    assert "PM" in extract_mentions_rule_based(content3, valid_speakers)
+
+    # 멘션 없음
+    content4 = "저는 이렇게 생각합니다"
+    assert extract_mentions_rule_based(content4, valid_speakers) == []
+
+
+def test_detect_agenda_completion():
+    """안건 완료 키워드 감지 테스트"""
+    assert detect_agenda_completion("다음 안건으로 넘어가겠습니다") is True
+    assert detect_agenda_completion("이제 마무리하겠습니다") is True
+    assert detect_agenda_completion("정리하면 이렇습니다") is True
+    assert detect_agenda_completion("이 안건은 여기까지입니다") is True
+    assert detect_agenda_completion("계속 논의하겠습니다") is False
+    assert detect_agenda_completion("의견 감사합니다") is False
+
+
+def test_get_remaining_speakers():
+    """미발언자 추출 테스트"""
+    required = ["Host", "PM", "Designer"]
+    already_spoken = {"Host"}
+
+    remaining = get_remaining_speakers(required, already_spoken)
+    assert "Host" not in remaining
+    assert "PM" in remaining
+    assert "Designer" in remaining
+
+    # 모두 발언한 경우
+    all_spoken = {"Host", "PM", "Designer"}
+    remaining2 = get_remaining_speakers(required, all_spoken)
+    assert remaining2 == []
+
+
+def test_condition_router_with_pending():
+    """큐 있을 때 라우팅 테스트"""
+    from langgraph.graph import END
+
     state: MeetingState = {
         "messages": [],
-        "current_phase": "opening",
-        "phase_history": [],
-        "agents": [],
-        "next_speaker": None,
-        "current_task": None,
+        "agendas": [{"title": "Test", "status": "pending", "required_speakers": []}],
+        "current_agenda_idx": 0,
+        "pending_speakers": ["PM", "Designer"],
         "speaker_counts": {},
-        "pending_mentions": [],
-        "phase_required_speakers": {},
-        "phase_goals": {},
+        "consecutive_host_delegations": 0,
         "start_time": 0.0,
-        "phase_start_time": 0.0
     }
 
-    # opening → status_check는 항상 가능
-    assert validate_phase_transition(state, "status_check")
+    result = condition_router(state)
+    assert result == "pm"  # 첫 번째 pending speaker
 
 
-def test_phase_transition_status_check_requires_pm():
-    """status_check → issue_resolution은 PM 발언 필요"""
+def test_condition_router_empty_queue():
+    """큐 비었을 때 refill로 라우팅 테스트"""
     state: MeetingState = {
         "messages": [],
-        "current_phase": "status_check",
-        "phase_history": ["opening"],
-        "agents": [],
-        "next_speaker": None,
-        "current_task": None,
-        "speaker_counts": {},  # PM 발언 없음
-        "pending_mentions": [],
-        "phase_required_speakers": {},
-        "phase_goals": {},
+        "agendas": [{"title": "Test", "status": "pending", "required_speakers": []}],
+        "current_agenda_idx": 0,
+        "pending_speakers": [],
+        "speaker_counts": {},
+        "consecutive_host_delegations": 0,
         "start_time": 0.0,
-        "phase_start_time": 0.0
     }
 
-    # PM 발언 없으면 전환 불가
-    assert not validate_phase_transition(state, "issue_resolution")
-
-    # PM 발언 후에는 전환 가능
-    state["speaker_counts"]["PM"] = 1
-    assert validate_phase_transition(state, "issue_resolution")
+    result = condition_router(state)
+    assert result == "refill_speakers"
 
 
-def test_phase_transition_issue_resolution_requires_tech_lead():
-    """issue_resolution → closing은 TechLead 발언 필요"""
+def test_condition_router_all_agendas_completed():
+    """모든 안건 완료 시 END 반환 테스트"""
+    from langgraph.graph import END
+
     state: MeetingState = {
         "messages": [],
-        "current_phase": "issue_resolution",
-        "phase_history": ["opening", "status_check"],
-        "agents": [],
-        "next_speaker": None,
-        "current_task": None,
+        "agendas": [
+            {"title": "Agenda 1", "status": "completed", "required_speakers": []},
+            {"title": "Agenda 2", "status": "completed", "required_speakers": []},
+        ],
+        "current_agenda_idx": 2,  # >= len(agendas)
+        "pending_speakers": [],
+        "speaker_counts": {},
+        "consecutive_host_delegations": 0,
+        "start_time": 0.0,
+    }
+
+    result = condition_router(state)
+    assert result == END
+
+
+@pytest.mark.asyncio
+async def test_process_response_basic():
+    """process_response 기본 동작 테스트"""
+    from thetable.graph.workflow import process_response
+    from langchain_openai import ChatOpenAI
+
+    model = ChatOpenAI(model="gpt-4o-mini")
+
+    state: MeetingState = {
+        "messages": [
+            AIMessage(content="안녕하세요", name="Host"),
+        ],
+        "agendas": [
+            {"title": "Test", "status": "in_progress", "required_speakers": ["Host", "PM"]}
+        ],
+        "current_agenda_idx": 0,
+        "pending_speakers": ["Host"],
+        "speaker_counts": {},
+        "consecutive_host_delegations": 0,
+        "start_time": 0.0,
+    }
+
+    result = await process_response(state, model)
+
+    # Host가 pending에서 제거됨
+    assert "Host" not in result["pending_speakers"]
+    # speaker_counts 업데이트됨
+    assert result["speaker_counts"]["Host"] == 1
+
+
+@pytest.mark.asyncio
+async def test_process_response_agenda_completion():
+    """안건 완료 처리 테스트"""
+    from thetable.graph.workflow import process_response
+    from langchain_openai import ChatOpenAI
+
+    model = ChatOpenAI(model="gpt-4o-mini")
+
+    state: MeetingState = {
+        "messages": [
+            AIMessage(content="좋습니다. 다음 안건으로 넘어가겠습니다", name="Host"),
+        ],
+        "agendas": [
+            {"title": "Agenda 1", "status": "in_progress", "required_speakers": ["Host"]},
+            {"title": "Agenda 2", "status": "pending", "required_speakers": ["PM"]},
+        ],
+        "current_agenda_idx": 0,
+        "pending_speakers": ["Host"],
+        "speaker_counts": {},
+        "consecutive_host_delegations": 0,
+        "start_time": 0.0,
+    }
+
+    result = await process_response(state, model)
+
+    # 안건 완료 및 인덱스 증가
+    assert result["agendas"][0]["status"] == "completed"
+    assert result["current_agenda_idx"] == 1
+    # pending 초기화
+    assert result["pending_speakers"] == []
+
+
+@pytest.mark.asyncio
+async def test_refill_speakers_with_remaining():
+    """미발언자 있을 때 refill 테스트"""
+    from thetable.graph.workflow import refill_speakers
+    from langchain_openai import ChatOpenAI
+
+    model = ChatOpenAI(model="gpt-4o-mini")
+
+    state: MeetingState = {
+        "messages": [],
+        "agendas": [
+            {
+                "title": "Test",
+                "status": "in_progress",
+                "required_speakers": ["Host", "PM", "Designer"],
+            }
+        ],
+        "current_agenda_idx": 0,
+        "pending_speakers": [],
+        "speaker_counts": {"Host": 1},  # Host만 발언함
+        "consecutive_host_delegations": 0,
+        "start_time": 0.0,
+    }
+
+    result = await refill_speakers(state, model)
+
+    # PM, Designer 중 최대 2명 반환
+    assert len(result["pending_speakers"]) <= 2
+    assert all(s in ["PM", "Designer"] for s in result["pending_speakers"])
+
+
+@pytest.mark.asyncio
+async def test_refill_speakers_host_delegation():
+    """모두 발언 후 Host 위임 테스트"""
+    from thetable.graph.workflow import refill_speakers
+    from langchain_openai import ChatOpenAI
+
+    model = ChatOpenAI(model="gpt-4o-mini")
+
+    state: MeetingState = {
+        "messages": [],
+        "agendas": [
+            {
+                "title": "Test",
+                "status": "in_progress",
+                "required_speakers": ["PM", "Designer"],
+            }
+        ],
+        "current_agenda_idx": 0,
+        "pending_speakers": [],
+        "speaker_counts": {"PM": 1, "Designer": 1},  # 모두 발언함
+        "consecutive_host_delegations": 0,
+        "start_time": 0.0,
+    }
+
+    result = await refill_speakers(state, model)
+
+    # Host에게 위임
+    assert result["pending_speakers"] == ["Host"]
+    assert result["consecutive_host_delegations"] == 1
+
+
+@pytest.mark.asyncio
+async def test_infinite_loop_prevention():
+    """무한루프 방지 테스트 (3회 제한)"""
+    from thetable.graph.workflow import refill_speakers
+    from langchain_openai import ChatOpenAI
+
+    model = ChatOpenAI(model="gpt-4o-mini")
+
+    state: MeetingState = {
+        "messages": [],
+        "agendas": [
+            {
+                "title": "Test",
+                "status": "in_progress",
+                "required_speakers": ["PM"],
+            }
+        ],
+        "current_agenda_idx": 0,
+        "pending_speakers": [],
         "speaker_counts": {"PM": 1},
-        "pending_mentions": [],
-        "phase_required_speakers": {},
-        "phase_goals": {},
+        "consecutive_host_delegations": 3,  # 이미 3회
         "start_time": 0.0,
-        "phase_start_time": 0.0
     }
 
-    # TechLead 발언 없으면 전환 불가
-    assert not validate_phase_transition(state, "closing")
+    result = await refill_speakers(state, model)
 
-    # TechLead 발언 후에는 전환 가능
-    state["speaker_counts"]["TechLead"] = 1
-    assert validate_phase_transition(state, "closing")
-
-
-def test_phase_transition_invalid():
-    """잘못된 Phase 전환 테스트"""
-    state: MeetingState = {
-        "messages": [],
-        "current_phase": "opening",
-        "phase_history": [],
-        "agents": [],
-        "next_speaker": None,
-        "current_task": None,
-        "speaker_counts": {},
-        "pending_mentions": [],
-        "phase_required_speakers": {},
-        "phase_goals": {},
-        "start_time": 0.0,
-        "phase_start_time": 0.0
-    }
-
-    # opening → closing 직접 전환 불가
-    assert not validate_phase_transition(state, "closing")
-
-    # opening → issue_resolution 직접 전환 불가
-    assert not validate_phase_transition(state, "issue_resolution")
+    # 강제로 Host 선택 및 카운터 리셋
+    assert result["pending_speakers"] == ["Host"]
+    assert result["consecutive_host_delegations"] == 0
 
 
 def test_create_meeting_workflow_integration():
@@ -108,6 +278,4 @@ def test_create_meeting_workflow_integration():
 
     # 워크플로우가 정상적으로 생성되었는지 확인
     assert workflow is not None
-
-    # CompiledGraph의 기본 속성 확인
-    assert hasattr(workflow, 'invoke') or hasattr(workflow, 'ainvoke')
+    assert hasattr(workflow, "invoke") or hasattr(workflow, "ainvoke")

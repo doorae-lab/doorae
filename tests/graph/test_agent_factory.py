@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 
 from thetable.core.profile import AgentProfile
 from thetable.graph.agent_factory import (
-    build_agent_graph,
+    build_agent_node,
     _build_agent_prompt
 )
 
@@ -100,8 +100,6 @@ def test_supervisor_wrapper_creation():
         ]
     )
 
-    result = build_agent_graph(profile, model)
-
-    assert callable(result)
-    assert hasattr(result, 'name')
-    assert result.name == "TechLead"
+    # build_agent_node는 간소화된 버전으로, supervisor 기능 제거됨
+    # Leaf 에이전트만 지원
+    pytest.skip("Supervisor 기능 제거됨 - build_agent_node는 Leaf 에이전트만 지원")

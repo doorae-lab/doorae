@@ -1,84 +1,96 @@
-"""Hierarchical 에이전트 팩토리
+"""에이전트 팩토리
 
-YAML 프로필에서 재귀적으로 에이전트 그래프 빌드
+단순 LLM 호출 기반 에이전트 노드 생성
 """
 from typing import Any
 from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import create_react_agent
-from langgraph_supervisor import create_supervisor
+from langchain_core.messages import SystemMessage, AIMessage
 
 from thetable.core.profile import AgentProfile
-from thetable.graph.prompts import build_supervisor_prompt
 
 
-def build_agent_graph(
+
+
+
+
+
+
+def build_agent_node(
     profile: AgentProfile,
     model: ChatOpenAI,
     all_agent_names: list[str] = None
 ) -> Any:
-    """프로필에서 재귀적으로 에이전트 그래프 빌드
+    """에이전트 노드 빌드 (단순 LLM 호출)
 
     Args:
         profile: 에이전트 프로필
         model: LLM 모델
-        all_agent_names: 전체 참여자 목록 (다른 에이전트를 언급할 수 있도록)
+        all_agent_names: 전체 참여자 목록
 
     Returns:
-        Leaf: create_react_agent (Pregel 객체)
-        Supervisor: Callable wrapper function wrapping compiled supervisor graph
+        단순 LLM 호출 래퍼 함수
     """
-    # Leaf 노드인 경우 (기존 로직)
-    if not profile.is_supervisor():
-        return create_react_agent(
-            model=model,
-            tools=[],
-            prompt=_build_agent_prompt(profile, all_agent_names),
-            name=profile.name,
-            version='v2'
-        )
+    agent_prompt = _build_agent_prompt(profile, all_agent_names)
 
-    # Supervisor 노드인 경우 (새로운 로직)
-    # 1. 하위 에이전트 재귀 빌드
-    child_agents = [
-        build_agent_graph(child_profile, model, all_agent_names)
-        for child_profile in profile.agents
-    ]
+    async def agent_node(state):
+        """단순 LLM 호출로 응답 생성"""
+        from langchain_core.messages import HumanMessage
+        
+        messages = state.get("messages", [])
+        
+        # 대화 기록을 명확한 포맷으로 변환
+        # (name 속성을 content에 포함시켜 모델이 문맥을 이해하도록)
+        formatted_messages = []
+        for msg in messages:
+            content = getattr(msg, 'content', '') or ''
+            if not content.strip():
+                continue
+            
+            name = getattr(msg, 'name', None)
+            msg_type = type(msg).__name__
+            
+            if msg_type == 'HumanMessage':
+                # 사용자 메시지는 그대로
+                formatted_messages.append(HumanMessage(content=f"[회의 시작 요청]\n{content}"))
+            elif msg_type == 'AIMessage' and name:
+                # AI 메시지는 발언자 이름을 포함
+                formatted_messages.append(HumanMessage(content=f"[{name}의 발언]\n{content}"))
+        
+        # 현재 발언 요청 추가
+        formatted_messages.append(HumanMessage(
+            content=f"이제 {profile.name}({profile.role})로서 위 대화에 이어 발언해 주세요. 한국어로 간결하게 응답하세요."
+        ))
+        
+        # 시스템 메시지 + 포맷된 대화 기록
+        system_msg = SystemMessage(content=agent_prompt)
+        response = await model.ainvoke([system_msg] + formatted_messages)
+        
+        # name 속성 설정
+        response.name = profile.name
+        
+        # 빈 응답 처리
+        content = getattr(response, 'content', '') or ''
+        if not content.strip():
+            response = AIMessage(
+                content=f"({profile.name}: 현재 추가 의견이 없습니다.)",
+                name=profile.name
+            )
+        
+        return {"messages": [response]}
 
-    # 2. 내부 supervisor 컴파일
-    internal_supervisor = create_supervisor(
-        agents=child_agents,
-        model=model,
-        supervisor_name=f"{profile.name}_internal",
-        prompt=build_supervisor_prompt(profile, profile.get_child_names()),
-        add_handoff_back_messages=True
-    ).compile()
-
-    # 3. Wrapper class 생성 (invoke/ainvoke/__call__ 지원)
-    class SupervisorWrapper:
-        """Supervisor를 callable 노드로 감싸는 wrapper"""
-        def __init__(self, supervisor, name):
-            self._supervisor = supervisor
-            self.name = name
-
-        def __call__(self, state: dict, config: dict = None) -> dict:
-            """Make instance callable (LangGraph v2 passes config)"""
-            return self.invoke(state, config)
-
-        def invoke(self, state: dict, config: dict = None) -> dict:
-            if config:
-                return self._supervisor.invoke(state, config)
-            return self._supervisor.invoke(state)
-
-        async def ainvoke(self, state: dict, config: dict = None) -> dict:
-            if config:
-                return await self._supervisor.ainvoke(state, config)
-            return await self._supervisor.ainvoke(state)
-
-    return SupervisorWrapper(internal_supervisor, profile.name)
+    return agent_node
 
 
-def _build_agent_prompt(profile: AgentProfile, participants: list[str] = None) -> str:
-    """프로필에서 에이전트 프롬프트 생성"""
+def _build_agent_prompt(
+    profile: AgentProfile,
+    participants: list[str] = None
+) -> str:
+    """프로필에서 에이전트 프롬프트 생성 (핸드오프 지침 제거)
+    
+    Args:
+        profile: 에이전트 프로필
+        participants: 참여자 목록
+    """
     
     participants_section = ""
     if participants:
@@ -86,25 +98,22 @@ def _build_agent_prompt(profile: AgentProfile, participants: list[str] = None) -
         if others:
             participants_section = f"""
 
-## Meeting Participants
-Other participants: {', '.join(others)}
+## 회의 참여자
+다른 참여자: {', '.join(others)}
 
-When you need input from others, mention them naturally:
-- "TechLead님, 이 부분 기술 검토 부탁드립니다"
-- "DevOps님 인프라 관점에서 의견 주세요"
-- "Designer님 UX 측면은 어떨까요?"
+다른 참여자의 의견이 필요하면 자연스럽게 언급하세요.
+예: "Designer님의 의견도 듣고 싶습니다"
 """
 
-    return f"""You are {profile.name}, a {profile.role}.
+    return f"""당신은 {profile.name}, {profile.role}입니다.
 
-## Responsibilities
+## 책임
 {chr(10).join(f'- {r}' for r in profile.responsibilities)}
 
-## Expertise
+## 전문 분야
 {chr(10).join(f'- {e}' for e in profile.expertise)}
 {participants_section}
-Respond concisely and professionally in Korean.
-When appropriate, mention other participants to request their input."""
+간결하고 전문적으로 한국어로 응답하세요."""
 
 
 

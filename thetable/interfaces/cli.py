@@ -169,10 +169,41 @@ async def run_meeting(
     workflow = create_meeting_workflow(profiles_path=str(profiles_path))
     logger.debug(f"Workflow created: {workflow}")
 
-    # 초기 상태
+    # 초기 상태 - 안건 기반
+    import time
     initial_state = {
         "messages": [HumanMessage(content=initial_message)],
-        "current_phase": "opening",
+        "agendas": [
+            {
+                "title": "회의 시작 및 현황 공유",
+                "description": "회의를 시작하고 주간 현황을 공유합니다",
+                "status": "pending",
+                "required_speakers": ["Host", "PM"]
+            },
+            {
+                "title": "주요 이슈 논의",
+                "description": "당면한 문제들을 논의하고 해결 방안을 모색합니다",
+                "status": "pending",
+                "required_speakers": ["TechLead", "Designer", "DevOps"]
+            },
+            {
+                "title": "향후 일정 및 계획",
+                "description": "다음 단계 일정과 계획을 수립합니다",
+                "status": "pending",
+                "required_speakers": ["PM", "TechLead"]
+            },
+            {
+                "title": "회의 마무리",
+                "description": "논의 내용을 정리하고 액션 아이템을 확정합니다",
+                "status": "pending",
+                "required_speakers": ["Host"]
+            },
+        ],
+        "current_agenda_idx": 0,
+        "pending_speakers": [],
+        "speaker_counts": {},
+        "consecutive_host_delegations": 0,
+        "start_time": time.time(),
     }
     logger.debug(f"Initial state: {initial_state}")
 
@@ -180,12 +211,32 @@ async def run_meeting(
     logger.debug(f"Running workflow (stream={stream})...")
     if stream:
         # 스트리밍 모드
+        current_agenda_title = None
         async for event in workflow.astream(initial_state):
-            if "messages" in event:
-                for msg in event["messages"]:
-                    speaker = getattr(msg, "name", "System")
+            for node_name, node_output in event.items():
+                if "messages" in node_output and node_output["messages"]:
+                    # 현재 안건 정보 표시
+                    current_idx = node_output.get("current_agenda_idx", 0)
+                    agendas = node_output.get("agendas", [])
+                    
+                    if current_idx < len(agendas):
+                        agenda_title = agendas[current_idx]["title"]
+                        if agenda_title != current_agenda_title:
+                            current_agenda_title = agenda_title
+                            console.print(f"\n[bold magenta]📋 안건 {current_idx + 1}: {agenda_title}[/bold magenta]")
+                            console.rule(style="magenta")
+                    
+                    # 메시지 출력
+                    last_msg = node_output["messages"][-1]
+                    speaker = getattr(last_msg, "name", "System")
                     console.print(f"\n[bold cyan][{speaker}][/bold cyan]")
-                    console.print(msg.content)
+                    console.print(last_msg.content)
+                    
+                    # pending_speakers 표시
+                    pending = node_output.get("pending_speakers", [])
+                    if pending:
+                        console.print(f"[dim]다음 발언 예정: {', '.join(pending)}[/dim]")
+                    
                     console.rule(style="dim")
     else:
         # 일반 모드
@@ -213,14 +264,18 @@ async def run_meeting(
             console.rule(style="dim")
 
         # 메타 정보 테이블
-        if "current_phase" in result or "speaker_counts" in result:
+        if "agendas" in result or "speaker_counts" in result:
             table = Table(title="회의 요약", show_header=True)
             table.add_column("항목", style="cyan")
             table.add_column("값", style="yellow")
 
-            if "current_phase" in result:
-                table.add_row("최종 Phase", result["current_phase"])
+            # 안건 상태
+            if "agendas" in result:
+                agendas = result["agendas"]
+                completed = sum(1 for a in agendas if a["status"] == "completed")
+                table.add_row("완료된 안건", f"{completed}/{len(agendas)}")
 
+            # 발언 횟수
             if "speaker_counts" in result:
                 counts = result["speaker_counts"]
                 for speaker, count in counts.items():

@@ -13,16 +13,15 @@ def build_handoff_tools_section(child_names: list[str]) -> str:
         핸드오프 도구 설명 문자열
 
     Note:
-        langgraph-supervisor는 도구 이름을 생성할 때 에이전트 이름을 소문자로 변환합니다.
-        따라서 'TechLead' → 'transfer_to_techlead'로 변환됩니다.
+        도구 이름은 에이전트 이름을 소문자로 변환하여 생성됩니다.
+        예: 'TechLead' → 'transfer_to_techlead'
     """
     if not child_names:
         return ""
 
     tool_descriptions = []
     for name in child_names:
-        # langgraph-supervisor의 _normalize_agent_name()이 소문자로 변환하므로
-        # 프롬프트에서도 소문자로 안내
+        # 에이전트 이름을 소문자로 변환
         normalized_name = name.lower()
         tool_descriptions.append(f"- transfer_to_{normalized_name}: {name}에게 작업 위임")
 
@@ -68,32 +67,57 @@ Delegate tasks to the appropriate team member based on their expertise.
 Respond in Korean."""
 
 
-COORDINATOR_PROMPT_TEMPLATE = """You are a meeting coordinator.
+COORDINATOR_PROMPT_TEMPLATE = """You are a meeting coordinator. Your ONLY job is to decide who speaks next.
 
 ## Available Transfer Tools
 {agent_tools}
 
-## Agent Expertise (use this to decide who should speak next)
-- Host: 회의 진행, 안건 소개, 요약
-- PM: 프로젝트 일정, 진행 상황, 리스크
-- TechLead: 기술 의사결정, 아키텍처, 코드 리뷰
-- DevOps: CI/CD, 인프라, 모니터링
-- Designer: UI/UX, 사용자 경험
+## DECISION PROCESS (Follow these steps IN ORDER)
 
-## Routing Guidelines
-1. Read the conversation context carefully
-2. If someone is mentioned (e.g., "TechLead님"), transfer to them
-3. Otherwise, decide based on:
-   - What topic is being discussed?
-   - Who has relevant expertise?
-   - Who hasn't spoken yet on this topic?
+### Step 1: Check conversation history
+Look at ALL messages, especially the MOST RECENT non-Coordinator message.
 
-## Rules
-- Call ONE transfer tool per turn
-- Base your decision on conversation context and agent expertise
-- Do NOT follow a fixed sequence - use your judgment
+### Step 2: Detect mentions (HIGHEST PRIORITY)
+If the last speaker mentioned ANYONE by name, transfer to that person immediately:
+- "PM님" or "pm님" → transfer_to_pm
+- "TechLead님" or "techlead님" → transfer_to_techlead
+- "Host님" or "host님" → transfer_to_host
+- "DevOps님" or "devops님" → transfer_to_devops
+- "Designer님" or "designer님" → transfer_to_designer
 
-Respond in Korean if you need to say something, then call the appropriate transfer tool.
+### Step 3: Natural flow (if no mention)
+- First turn: Always → transfer_to_host
+- After Host intro: → transfer_to_pm (for project overview)
+- After PM: → transfer_to_techlead (for technical review)
+- After TechLead: → transfer_to_devops (for infrastructure)
+- After DevOps: → transfer_to_designer (for UX/design)
+- After Designer: → transfer_to_host (for summary)
+- After Host summary: END (no tool call)
+
+### Step 4: End condition
+ONLY end the meeting if ALL of these are true:
+- Host has said "회의를 마치겠습니다" or "종료" or provided a clear summary
+- PM has spoken at least once
+- TechLead has spoken at least once  
+- At least 10 messages have been exchanged
+
+Until then, keep following the natural flow (Step 3).
+
+## Who has expertise in what?
+- Host: 회의 진행, 요약
+- PM: 일정, 리스크
+- TechLead: 기술, 아키텍처  
+- DevOps: 인프라, 배포
+- Designer: UI/UX
+
+## CRITICAL RULES
+1. ALWAYS check for "님" mentions FIRST
+2. Do NOT loop back to same person twice in a row
+3. Follow natural conversation flow
+4. When meeting is done, do NOT call any tool
+
+## Response format
+Just call the transfer tool - minimal or no text needed.
 """
 
 
