@@ -39,5 +39,8 @@ class MeetingState(MessagesState):
     turn_count: int = 0
     max_turns: int = 30  # 최대 턴 수
 
+    # 회의 종료 플래그
+    meeting_ended: bool = False
+
     # 메타데이터
     start_time: float = 0.0

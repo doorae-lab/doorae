@@ -66,6 +66,29 @@ def detect_agenda_completion(content: str) -> bool:
     return any(kw in content for kw in completion_keywords)
 
 
+def detect_meeting_end_keyword(content: str) -> bool:
+    """Host 발언에서 회의 종료 키워드 감지"""
+    end_keywords = [
+        "회의를 마치겠습니다", "회의를 종료", "이상으로 마치겠습니다",
+        "오늘 회의는 여기까지", "수고하셨습니다", "회의 종료"
+    ]
+    return any(kw in content for kw in end_keywords)
+
+
+async def detect_meeting_end_llm(content: str, model) -> bool:
+    """LLM으로 회의 종료 의도 분석 (키워드 미감지 시 fallback)"""
+    prompt = f"""다음 Host의 발언이 회의를 종료하려는 의도인지 판단하세요.
+
+발언: "{content}"
+
+회의 종료 의도가 명확하면 "예", 아니면 "아니오"로만 답하세요:"""
+
+    response = await model.ainvoke(prompt)
+    result = response.content.strip()
+    
+    return result == "예"
+
+
 def get_remaining_speakers(required_speakers: list[str], already_spoken: set) -> list[str]:
     """안건의 required_speakers 중 아직 발언하지 않은 참여자 반환"""
     return [s for s in required_speakers if s not in already_spoken]
@@ -111,12 +134,22 @@ async def process_response(state: MeetingState, model) -> dict:
     # 5. Host 발언이면 안건 완료 체크
     new_idx = current_idx
     new_agendas = agendas.copy()
+    meeting_ended = False
 
     if speaker_name == "Host" and detect_agenda_completion(content):
         if current_idx < len(new_agendas):
             new_agendas[current_idx]["status"] = "completed"
             new_idx = current_idx + 1
             new_pending = []  # 안건 변경 시 pending 초기화
+
+    # 6. 마지막 안건에서 Host 회의 종료 발언 감지
+    if speaker_name == "Host" and current_idx == len(agendas) - 1:
+        # 키워드 우선 감지
+        if detect_meeting_end_keyword(content):
+            meeting_ended = True
+        # 키워드 미감지 시 LLM 분석
+        elif await detect_meeting_end_llm(content, model):
+            meeting_ended = True
 
     # 턴 카운트 증가
     turn_count = state.get("turn_count", 0) + 1
@@ -128,6 +161,7 @@ async def process_response(state: MeetingState, model) -> dict:
         "agendas": new_agendas,
         "consecutive_host_delegations": 0,  # 정상 진행 시 리셋
         "turn_count": turn_count,
+        "meeting_ended": meeting_ended,
     }
 
 
@@ -175,6 +209,11 @@ def condition_router(state: MeetingState) -> str:
     current_idx = state.get("current_agenda_idx", 0)
     turn_count = state.get("turn_count", 0)
     max_turns = state.get("max_turns", 30)
+    meeting_ended = state.get("meeting_ended", False)
+
+    # 회의 종료 플래그 최우선 체크
+    if meeting_ended:
+        return END
 
     # 최대 턴 수 초과 체크 (무한루프 방지)
     if turn_count >= max_turns:
