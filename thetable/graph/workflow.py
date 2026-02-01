@@ -11,6 +11,8 @@ import re
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
+from rich.console import Console
+from rich.prompt import Prompt
 
 from thetable.config import get_settings
 from thetable.graph.agent_factory import build_agent_node
@@ -75,10 +77,14 @@ def create_human_node(profile):
                 print(f"   [{speaker}] {display_content}", flush=True)
         
         print(f"\n{'='*60}", flush=True)
-        print(f"💡 의견을 입력하세요 (빈 입력 시 스킵):", flush=True)
         
-        # 비동기 입력 대기
-        user_input = await asyncio.to_thread(input, "> ")
+        # rich.Prompt를 사용하여 한글 백스페이스 문제 해결
+        # asyncio.to_thread로 감싸서 비동기 처리
+        user_input = await asyncio.to_thread(
+            Prompt.ask,
+            "💡 의견을 입력하세요 (빈 입력 시 스킵)",
+            default=""
+        )
         
         # 빈 입력 시 스킵
         if not user_input.strip():
