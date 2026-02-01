@@ -51,12 +51,24 @@ def build_agent_graph(
         add_handoff_back_messages=True
     ).compile()
 
-    # 3. Wrapper 함수 생성
-    def supervisor_wrapper(state: dict) -> dict:
-        return internal_supervisor.invoke(state)
+    # 3. Wrapper class 생성 (invoke/ainvoke/__call__ 지원)
+    class SupervisorWrapper:
+        """Supervisor를 callable 노드로 감싸는 wrapper"""
+        def __init__(self, supervisor, name):
+            self._supervisor = supervisor
+            self.name = name
 
-    supervisor_wrapper.name = profile.name
-    return supervisor_wrapper
+        def __call__(self, state: dict) -> dict:
+            """Make instance callable"""
+            return self.invoke(state)
+
+        def invoke(self, state: dict) -> dict:
+            return self._supervisor.invoke(state)
+
+        async def ainvoke(self, state: dict) -> dict:
+            return await self._supervisor.ainvoke(state)
+
+    return SupervisorWrapper(internal_supervisor, profile.name)
 
 
 def _build_agent_prompt(profile: AgentProfile) -> str:
