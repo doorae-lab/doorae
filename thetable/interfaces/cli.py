@@ -146,15 +146,19 @@ async def run_meeting(
     logger.debug(f"Profiles path: {profiles_path}")
 
     # Workflow 생성
+    logger.debug("Creating workflow...")
     workflow = create_meeting_workflow(profiles_path=str(profiles_path))
+    logger.debug(f"Workflow created: {workflow}")
 
     # 초기 상태
     initial_state = {
         "messages": [HumanMessage(content=initial_message)],
         "current_phase": "opening",
     }
+    logger.debug(f"Initial state: {initial_state}")
 
     # 실행
+    logger.debug(f"Running workflow (stream={stream})...")
     if stream:
         # 스트리밍 모드
         async for event in workflow.astream(initial_state):
@@ -166,7 +170,9 @@ async def run_meeting(
                     console.rule(style="dim")
     else:
         # 일반 모드
+        logger.debug("Invoking workflow...")
         result = await workflow.ainvoke(initial_state)
+        logger.debug(f"Workflow completed. Result keys: {result.keys()}")
 
         # 결과 출력
         console.print("\n[bold]📝 회의 기록[/bold]")

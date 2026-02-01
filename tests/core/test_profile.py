@@ -29,18 +29,15 @@ def test_load_agent_profiles_from_yaml():
 
 def test_hierarchical_agent_profile():
     """계층적 Agent Profile 테스트"""
-    # TechLead는 하위 에이전트를 가짐
+    # 현재 TechLead는 하위 에이전트가 주석 처리되어 leaf 노드
     profiles = load_agent_profiles("config/agent_profiles.yaml")
     tech_lead = profiles["TechLead"]
-    
-    assert tech_lead.is_supervisor()
-    assert len(tech_lead.agents) == 2  # Backend, Frontend
 
-    child_names = tech_lead.get_child_names()
-    assert "Backend" in child_names
-    assert "Frontend" in child_names
-    
-    # PM은 leaf 노드
+    # TechLead는 현재 leaf 노드 (agents 주석 처리됨)
+    assert not tech_lead.is_supervisor()
+    assert tech_lead.get_child_names() == []
+
+    # PM도 leaf 노드
     pm = profiles["PM"]
     assert not pm.is_supervisor()
     assert pm.get_child_names() == []
