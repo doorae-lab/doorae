@@ -12,6 +12,7 @@ class AgentProfile(BaseModel):
     expertise: List[str]
     phase_triggers: Dict[str, str] = {}
     agents: Optional[List["AgentProfile"]] = None  # 재귀적 하위 에이전트
+    is_human: bool = False  # 사용자 참여자 여부
 
     def matches_phase(self, phase: str) -> bool:
         """특정 phase에서 자동 발언해야 하는지 확인"""

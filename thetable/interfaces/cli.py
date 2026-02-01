@@ -169,36 +169,52 @@ async def run_meeting(
     workflow = create_meeting_workflow(profiles_path=str(profiles_path))
     logger.debug(f"Workflow created: {workflow}")
 
+    # Human 프로필 이름 추출
+    from thetable.core.profile import load_agent_profiles
+    profiles = load_agent_profiles(str(profiles_path))
+    human_names = [name for name, p in profiles.items() if p.is_human]
+    logger.debug(f"Human participants: {human_names}")
+
     # 초기 상태 - 안건 기반
     import time
+    
+    # 기본 안건 정의
+    base_agendas = [
+        {
+            "title": "회의 시작 및 현황 공유",
+            "description": "회의를 시작하고 주간 현황을 공유합니다",
+            "status": "pending",
+            "required_speakers": ["Host", "PM"]
+        },
+        {
+            "title": "주요 이슈 논의",
+            "description": "당면한 문제들을 논의하고 해결 방안을 모색합니다",
+            "status": "pending",
+            "required_speakers": ["TechLead", "Designer", "DevOps"]
+        },
+        {
+            "title": "향후 일정 및 계획",
+            "description": "다음 단계 일정과 계획을 수립합니다",
+            "status": "pending",
+            "required_speakers": ["PM", "TechLead"]
+        },
+        {
+            "title": "회의 마무리",
+            "description": "논의 내용을 정리하고 액션 아이템을 확정합니다",
+            "status": "pending",
+            "required_speakers": ["Host"]
+        },
+    ]
+    
+    # Human 참여자를 모든 안건에 추가
+    for agenda in base_agendas:
+        for human_name in human_names:
+            if human_name not in agenda["required_speakers"]:
+                agenda["required_speakers"].append(human_name)
+    
     initial_state = {
         "messages": [HumanMessage(content=initial_message)],
-        "agendas": [
-            {
-                "title": "회의 시작 및 현황 공유",
-                "description": "회의를 시작하고 주간 현황을 공유합니다",
-                "status": "pending",
-                "required_speakers": ["Host", "PM"]
-            },
-            {
-                "title": "주요 이슈 논의",
-                "description": "당면한 문제들을 논의하고 해결 방안을 모색합니다",
-                "status": "pending",
-                "required_speakers": ["TechLead", "Designer", "DevOps"]
-            },
-            {
-                "title": "향후 일정 및 계획",
-                "description": "다음 단계 일정과 계획을 수립합니다",
-                "status": "pending",
-                "required_speakers": ["PM", "TechLead"]
-            },
-            {
-                "title": "회의 마무리",
-                "description": "논의 내용을 정리하고 액션 아이템을 확정합니다",
-                "status": "pending",
-                "required_speakers": ["Host"]
-            },
-        ],
+        "agendas": base_agendas,
         "current_agenda_idx": 0,
         "pending_speakers": [],
         "speaker_counts": {},
@@ -210,34 +226,84 @@ async def run_meeting(
     # 실행
     logger.debug(f"Running workflow (stream={stream})...")
     if stream:
-        # 스트리밍 모드
+        # 스트리밍 모드 - astream_events()로 토큰 단위 출력
+        current_speaker = None
         current_agenda_title = None
-        async for event in workflow.astream(initial_state):
-            for node_name, node_output in event.items():
-                if "messages" in node_output and node_output["messages"]:
-                    # 현재 안건 정보 표시
-                    current_idx = node_output.get("current_agenda_idx", 0)
-                    agendas = node_output.get("agendas", [])
+        
+        async for event in workflow.astream_events(initial_state, version="v2"):
+            kind = event["event"]
+            
+            # on_chain_start: 노드 시작 시 안건 정보 표시
+            if kind == "on_chain_start":
+                metadata = event.get("metadata", {})
+                tags = event.get("tags", [])
+                
+                # StateGraph 노드 시작 감지
+                if "langgraph_node" in tags:
+                    node_name = tags[tags.index("langgraph_node") + 1] if tags.index("langgraph_node") + 1 < len(tags) else None
                     
-                    if current_idx < len(agendas):
-                        agenda_title = agendas[current_idx]["title"]
-                        if agenda_title != current_agenda_title:
-                            current_agenda_title = agenda_title
-                            console.print(f"\n[bold magenta]📋 안건 {current_idx + 1}: {agenda_title}[/bold magenta]")
-                            console.rule(style="magenta")
-                    
-                    # 메시지 출력
-                    last_msg = node_output["messages"][-1]
-                    speaker = getattr(last_msg, "name", "System")
+                    # 안건 정보 표시 (process_response 노드에서)
+                    if node_name == "process_response":
+                        data = event.get("data", {})
+                        input_data = data.get("input", {})
+                        current_idx = input_data.get("current_agenda_idx", 0)
+                        agendas = input_data.get("agendas", [])
+                        
+                        if current_idx < len(agendas):
+                            agenda_title = agendas[current_idx]["title"]
+                            if agenda_title != current_agenda_title:
+                                current_agenda_title = agenda_title
+                                console.print(f"\n[bold magenta]📋 안건 {current_idx + 1}: {agenda_title}[/bold magenta]")
+                                console.rule(style="magenta")
+            
+            # on_chat_model_start: LLM 호출 시작 (발언자 이름 출력)
+            elif kind == "on_chat_model_start":
+                # run_name에서 발언자 추출
+                speaker = event.get("name")
+                
+                # run_name이 없으면 tags에서 speaker: 접두사 찾기
+                if not speaker or speaker == "ChatOpenAI":
+                    tags = event.get("tags", [])
+                    for tag in tags:
+                        if tag.startswith("speaker:"):
+                            speaker = tag.replace("speaker:", "")
+                            break
+                
+                # 발언자가 변경되었으면 표시
+                if speaker and speaker not in ("ChatOpenAI", "RunnableSequence") and speaker != current_speaker:
+                    if current_speaker:
+                        console.print()  # 이전 발언 줄바꿈
                     console.print(f"\n[bold cyan][{speaker}][/bold cyan]")
-                    console.print(last_msg.content)
+                    current_speaker = speaker
+            
+            # on_chat_model_stream: 토큰 단위 출력
+            elif kind == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                content = getattr(chunk, "content", "")
+                if content:
+                    console.print(content, end="")
+            
+            # on_chat_model_end: LLM 응답 완료 (줄바꿈 및 구분선)
+            elif kind == "on_chat_model_end":
+                console.print()  # 줄바꿈
+                console.rule(style="dim")
+            
+            # on_chain_end: 노드 종료 시 pending_speakers 표시
+            elif kind == "on_chain_end":
+                metadata = event.get("metadata", {})
+                tags = event.get("tags", [])
+                
+                # process_response 노드 종료 시 pending_speakers 표시
+                if "langgraph_node" in tags:
+                    node_name = tags[tags.index("langgraph_node") + 1] if tags.index("langgraph_node") + 1 < len(tags) else None
                     
-                    # pending_speakers 표시
-                    pending = node_output.get("pending_speakers", [])
-                    if pending:
-                        console.print(f"[dim]다음 발언 예정: {', '.join(pending)}[/dim]")
-                    
-                    console.rule(style="dim")
+                    if node_name == "process_response":
+                        data = event.get("data", {})
+                        output_data = data.get("output", {})
+                        pending = output_data.get("pending_speakers", [])
+                        
+                        if pending:
+                            console.print(f"[dim]다음 발언 예정: {', '.join(pending)}[/dim]")
     else:
         # 일반 모드
         logger.debug("Invoking workflow...")
