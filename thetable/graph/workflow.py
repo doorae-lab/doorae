@@ -319,6 +319,8 @@ def create_meeting_workflow(
         }
         if settings.openai_base_url:
             kwargs["base_url"] = settings.openai_base_url
+        # 스트리밍 활성화
+        kwargs["streaming"] = True
         model = ChatOpenAI(**kwargs)
 
     # 1. 프로필 로드
