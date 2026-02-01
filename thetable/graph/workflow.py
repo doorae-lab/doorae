@@ -61,7 +61,8 @@ def create_meeting_workflow(
         model=model,
         supervisor_name="Coordinator",
         prompt=coordinator_prompt,
-        state_schema=MeetingState
+        state_schema=MeetingState,
+        add_handoff_back_messages=False  # Flat 구조: transfer_back 메시지 비활성화
     )
 
     # 6. 컴파일

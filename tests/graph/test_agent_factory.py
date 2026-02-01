@@ -46,27 +46,20 @@ def test_leaf_agent_creation(mock_model):
         responsibilities=["API 설계"],
         expertise=["Python"]
     )
-    
+
     # Note: build_agent_graph는 create_react_agent를 호출하므로
     # 실제 테스트는 통합 테스트에서 수행
     # 여기서는 is_supervisor() 로직만 테스트
     assert not profile.is_supervisor()
 
 
-def test_supervisor_agent_creation():
-    """Supervisor Agent 생성 테스트 (계층적)"""
-    from thetable.graph.agent_factory import build_agent_graph
-    from thetable.core.profile import AgentProfile
-    from langchain_openai import ChatOpenAI
-
-    model = ChatOpenAI(model="gpt-4o-mini", api_key="test-key")
-
-    # TechLead with Backend child
+def test_supervisor_wrapper_has_name_attribute():
+    """Supervisor wrapper에 name 속성이 있는지 테스트"""
     profile = AgentProfile(
         name="TechLead",
         role="tech_lead",
         responsibilities=["기술 의사결정"],
-        expertise=["시스템 설계"],
+        expertise=["Python"],
         agents=[
             AgentProfile(
                 name="Backend",
@@ -78,9 +71,37 @@ def test_supervisor_agent_creation():
         ]
     )
 
-    supervisor = build_agent_graph(profile, model)
+    assert profile.is_supervisor()
+    assert profile.get_child_names() == ["Backend"]
 
-    # Supervisor는 이제 wrapper 함수로 반환됨
-    assert callable(supervisor)
-    assert hasattr(supervisor, 'name')
-    assert supervisor.name == "TechLead"
+
+@pytest.mark.integration
+def test_supervisor_wrapper_creation():
+    """Supervisor를 wrapper 노드로 생성하는지 테스트"""
+    import os
+    if not os.getenv("OPENAI_API_KEY"):
+        pytest.skip("OPENAI_API_KEY 필요")
+
+    model = ChatOpenAI(model="gpt-4o-mini")
+
+    profile = AgentProfile(
+        name="TechLead",
+        role="tech_lead",
+        responsibilities=["기술 의사결정"],
+        expertise=["Python"],
+        agents=[
+            AgentProfile(
+                name="Backend",
+                role="backend_engineer",
+                responsibilities=["API 개발"],
+                expertise=["Python"],
+                agents=None
+            )
+        ]
+    )
+
+    result = build_agent_graph(profile, model)
+
+    assert callable(result)
+    assert hasattr(result, 'name')
+    assert result.name == "TechLead"
