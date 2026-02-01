@@ -1,26 +1,189 @@
-"""Meeting workflow using langgraph-supervisor
+"""안건 기반 회의 워크플로우
 
-단순화된 구조:
-- Coordinator가 Silent Supervisor 역할 (라우팅만)
-- Host는 다른 에이전트와 동일하게 YAML에서 정의
-- 모든 에이전트를 동일하게 처리 (특별 분기 없음)
+아키텍처:
+- pending_speakers 큐 기반 라우팅 (LLM 호출 최소화)
+- 안건(Agenda) 중심의 구조화된 회의 진행
+- 하이브리드 멘션 추출 (규칙 기반 + LLM 보조)
+- Host 명시적 안건 완료 선언
 """
+import re
 from langchain_openai import ChatOpenAI
-from langgraph_supervisor import create_supervisor
+from langgraph.graph import StateGraph, END
 
 from thetable.config import get_settings
-from thetable.graph.agent_factory import build_agent_graph
+from thetable.graph.agent_factory import build_agent_node
 from thetable.graph.state import MeetingState
 from thetable.core.profile import load_agent_profiles
-from thetable.graph.prompts import build_coordinator_prompt
-from thetable.graph.handoff_hook import create_handoff_hook
+
+
+def extract_mentions_rule_based(content: str, valid_speakers: list[str]) -> list[str]:
+    """규칙 기반 멘션 추출"""
+    mentions = []
+    patterns = [
+        r'@(\w+)',              # @PM, @Designer
+        r'(\w+)님',             # PM님, Designer님
+        r'(\w+)\s*(의견|검토|확인)',  # PM 의견, TechLead 검토
+    ]
+
+    for pattern in patterns:
+        matches = re.findall(pattern, content, re.IGNORECASE)
+        for match in matches:
+            name = match[0] if isinstance(match, tuple) else match
+            # valid_speakers에서 매칭
+            for speaker in valid_speakers:
+                if speaker.lower() == name.lower():
+                    mentions.append(speaker)
+
+    return list(set(mentions))
+
+
+async def extract_mentions_llm(content: str, model, valid_speakers: list[str]) -> list[str]:
+    """LLM 기반 의도 추출 (규칙 실패 시)"""
+    prompt = f"""다음 발언에서 언급하거나 의견을 요청하는 참여자를 추출하세요.
+
+발언: "{content}"
+
+선택 가능한 참여자: {', '.join(valid_speakers)}
+
+언급된 참여자 이름만 쉼표로 구분하여 출력 (없으면 "없음"):"""
+
+    response = await model.ainvoke(prompt)
+    result = response.content.strip()
+
+    if result == "없음":
+        return []
+
+    return [s.strip() for s in result.split(',') if s.strip() in valid_speakers]
+
+
+def detect_agenda_completion(content: str) -> bool:
+    """Host 발언에서 안건 완료 키워드 감지"""
+    completion_keywords = [
+        "다음 안건", "다음으로", "넘어가",
+        "마무리", "정리하면", "결론",
+        "이 안건은 여기까지"
+    ]
+    return any(kw in content for kw in completion_keywords)
+
+
+def get_remaining_speakers(required_speakers: list[str], already_spoken: set) -> list[str]:
+    """안건의 required_speakers 중 아직 발언하지 않은 참여자 반환"""
+    return [s for s in required_speakers if s not in already_spoken]
+
+
+async def process_response(state: MeetingState, model) -> dict:
+    """에이전트 응답 처리"""
+    messages = state.get("messages", [])
+    pending = state.get("pending_speakers", [])
+    speaker_counts = state.get("speaker_counts", {})
+    agendas = state.get("agendas", [])
+    current_idx = state.get("current_agenda_idx", 0)
+
+    if not messages:
+        return {}
+
+    last_msg = messages[-1]
+    speaker_name = getattr(last_msg, 'name', '')
+    content = getattr(last_msg, 'content', '')
+
+    # 1. 현재 발언자를 pending에서 제거
+    new_pending = [s for s in pending if s != speaker_name]
+
+    # 2. speaker_counts 업데이트
+    new_counts = speaker_counts.copy()
+    new_counts[speaker_name] = new_counts.get(speaker_name, 0) + 1
+
+    # 3. 멘션 추출 (하이브리드)
+    valid_speakers = ["Host", "PM", "Designer", "TechLead", "DevOps"]
+    mentions = extract_mentions_rule_based(content, valid_speakers)
+
+    if not mentions and speaker_name != "Host":
+        # 규칙 실패 시 LLM 사용
+        mentions = await extract_mentions_llm(content, model, valid_speakers)
+
+    # 4. 새 멘션을 pending에 추가 (중복 제외)
+    for m in mentions:
+        if m not in new_pending and m != speaker_name:
+            new_pending.append(m)
+
+    # 5. Host 발언이면 안건 완료 체크
+    new_idx = current_idx
+    new_agendas = agendas.copy()
+
+    if speaker_name == "Host" and detect_agenda_completion(content):
+        if current_idx < len(new_agendas):
+            new_agendas[current_idx]["status"] = "completed"
+            new_idx = current_idx + 1
+            new_pending = []  # 안건 변경 시 pending 초기화
+
+    return {
+        "pending_speakers": new_pending,
+        "speaker_counts": new_counts,
+        "current_agenda_idx": new_idx,
+        "agendas": new_agendas,
+        "consecutive_host_delegations": 0,  # 정상 진행 시 리셋
+    }
+
+
+async def refill_speakers(state: MeetingState, model) -> dict:
+    """pending_speakers 비었을 때 채우기"""
+    agendas = state.get("agendas", [])
+    current_idx = state.get("current_agenda_idx", 0)
+    speaker_counts = state.get("speaker_counts", {})
+    consecutive = state.get("consecutive_host_delegations", 0)
+
+    if current_idx >= len(agendas):
+        return {"pending_speakers": []}  # 모든 안건 완료
+
+    current_agenda = agendas[current_idx]
+    required = current_agenda.get("required_speakers", [])
+
+    # 1차: 안건의 required_speakers 중 미발언자
+    already_spoken = set(speaker_counts.keys())
+    remaining = get_remaining_speakers(required, already_spoken)
+
+    if remaining:
+        return {
+            "pending_speakers": remaining[:2],  # 최대 2명씩
+            "consecutive_host_delegations": 0,
+        }
+
+    # 2차: Host 위임 (무한루프 방지)
+    if consecutive >= 3:
+        # 강제로 Host가 마무리하도록
+        return {
+            "pending_speakers": ["Host"],
+            "consecutive_host_delegations": 0,
+        }
+
+    return {
+        "pending_speakers": ["Host"],
+        "consecutive_host_delegations": consecutive + 1,
+    }
+
+
+def condition_router(state: MeetingState) -> str:
+    """pending_speakers 기반 라우팅 (LLM 없음)"""
+    pending = state.get("pending_speakers", [])
+    agendas = state.get("agendas", [])
+    current_idx = state.get("current_agenda_idx", 0)
+
+    # 모든 안건 완료 체크
+    if current_idx >= len(agendas):
+        return END
+
+    if pending:
+        return pending[0].lower()
+
+    # 빈 큐 → refill_speakers 노드로
+    return "refill_speakers"
 
 
 def create_meeting_workflow(
     profiles_path: str = "config/agent_profiles.yaml",
     model: ChatOpenAI = None
-) -> object:
-    """langgraph-supervisor 기반 회의 워크플로우 생성
+):
+    """안건 기반 회의 워크플로우 생성
 
     Args:
         profiles_path: agent_profiles.yaml 경로
@@ -44,76 +207,56 @@ def create_meeting_workflow(
     # 1. 프로필 로드
     profiles = load_agent_profiles(profiles_path)
 
-    # 2. 모든 에이전트 이름 수집
-    agent_names = list(profiles.keys())
+    # 2. StateGraph 생성
+    workflow = StateGraph(MeetingState)
 
-    # 3. Coordinator 프롬프트 생성
-    coordinator_prompt = build_coordinator_prompt(agent_names)
+    # 3. refill_speakers 노드 추가
+    async def refill_with_model(state: MeetingState):
+        return await refill_speakers(state, model)
+    
+    workflow.add_node("refill_speakers", refill_with_model)
 
-    # 4. 모든 에이전트 그래프 빌드 (Host 포함, 특별 처리 없음)
-    # 모든 에이전트에게 참여자 목록을 전달하여 서로를 언급할 수 있도록 함
-    agent_graphs = []
+    # 4. process_response 노드 추가
+    async def process_with_model(state: MeetingState):
+        return await process_response(state, model)
+    
+    workflow.add_node("process_response", process_with_model)
+
+    # 5. 각 에이전트 노드 추가
     for name, profile in profiles.items():
-        agent_graph = build_agent_graph(profile, model, agent_names)
-        agent_graphs.append(agent_graph)
+        agent_node = build_agent_node(profile, model, list(profiles.keys()))
+        workflow.add_node(name.lower(), agent_node)
 
-    # 5. Coordinator(Silent Supervisor) 생성
-    # post_model_hook으로 판단 계층 주입
-    handoff_hook = create_handoff_hook(agent_names)
+    # 6. 진입점: refill_speakers
+    workflow.set_entry_point("refill_speakers")
 
-    meeting_supervisor = create_supervisor(
-        agents=agent_graphs,
-        model=model,
-        supervisor_name="Coordinator",
-        prompt=coordinator_prompt,
-        state_schema=MeetingState,
-        post_model_hook=handoff_hook,  # 텍스트 출력 시 도구 호출 주입
-        add_handoff_back_messages=False  # Flat 구조: transfer_back 메시지 비활성화
+    # 7. 에이전트 → process_response
+    for name in profiles.keys():
+        workflow.add_edge(name.lower(), "process_response")
+
+    # 8. process_response → condition_router
+    available_targets = {name.lower(): name.lower() for name in profiles.keys()}
+    available_targets["refill_speakers"] = "refill_speakers"
+    available_targets[END] = END
+
+    workflow.add_conditional_edges(
+        "process_response",
+        condition_router,
+        available_targets
     )
 
-    # 6. 컴파일
-    workflow = meeting_supervisor.compile()
+    # 9. refill_speakers → condition_router
+    workflow.add_conditional_edges(
+        "refill_speakers",
+        condition_router,
+        available_targets
+    )
 
-    return workflow
+    # 10. 컴파일
+    return workflow.compile()
 
 
-def validate_phase_transition(state: MeetingState, new_phase: str) -> bool:
-    """Phase 전환 조건 검증
 
-    Args:
-        state: 현재 회의 상태
-        new_phase: 전환하려는 Phase
 
-    Returns:
-        bool: 전환 가능 여부
-    """
-    current_phase = state.get("current_phase", "opening")
-    speaker_counts = state.get("speaker_counts", {})
 
-    transitions = {
-        "opening": {
-            "next": "status_check",
-            "condition": lambda: True
-        },
-        "status_check": {
-            "next": "issue_resolution",
-            "condition": lambda: speaker_counts.get("PM", 0) > 0
-        },
-        "issue_resolution": {
-            "next": "closing",
-            "condition": lambda: speaker_counts.get("TechLead", 0) > 0
-        },
-        "closing": {
-            "next": "END",
-            "condition": lambda: True
-        }
-    }
 
-    rule = transitions.get(current_phase)
-    if not rule:
-        return False
-
-    if rule["next"] != new_phase:
-        return False
-
-    return rule["condition"]()

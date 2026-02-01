@@ -1,84 +1,75 @@
-"""Hierarchical 에이전트 팩토리
+"""에이전트 팩토리
 
-YAML 프로필에서 재귀적으로 에이전트 그래프 빌드
+에이전트 노드 생성 (핸드오프 도구 제거, 간소화된 프롬프트)
 """
 from typing import Any
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
-from langgraph_supervisor import create_supervisor
 
 from thetable.core.profile import AgentProfile
-from thetable.graph.prompts import build_supervisor_prompt
 
 
-def build_agent_graph(
+
+
+
+
+
+
+def build_agent_node(
     profile: AgentProfile,
     model: ChatOpenAI,
     all_agent_names: list[str] = None
 ) -> Any:
-    """프로필에서 재귀적으로 에이전트 그래프 빌드
+    """에이전트 노드 빌드 (핸드오프 도구 없음, 간소화)
 
     Args:
         profile: 에이전트 프로필
         model: LLM 모델
-        all_agent_names: 전체 참여자 목록 (다른 에이전트를 언급할 수 있도록)
+        all_agent_names: 전체 참여자 목록
 
     Returns:
-        Leaf: create_react_agent (Pregel 객체)
-        Supervisor: Callable wrapper function wrapping compiled supervisor graph
+        create_react_agent 객체를 감싼 래퍼 함수
     """
-    # Leaf 노드인 경우 (기존 로직)
-    if not profile.is_supervisor():
-        return create_react_agent(
-            model=model,
-            tools=[],
-            prompt=_build_agent_prompt(profile, all_agent_names),
-            name=profile.name,
-            version='v2'
-        )
+    # 도구 없음 (또는 에이전트별 전용 도구만)
+    tools = []
 
-    # Supervisor 노드인 경우 (새로운 로직)
-    # 1. 하위 에이전트 재귀 빌드
-    child_agents = [
-        build_agent_graph(child_profile, model, all_agent_names)
-        for child_profile in profile.agents
-    ]
+    agent_prompt = _build_agent_prompt(profile, all_agent_names)
 
-    # 2. 내부 supervisor 컴파일
-    internal_supervisor = create_supervisor(
-        agents=child_agents,
+    base_agent = create_react_agent(
         model=model,
-        supervisor_name=f"{profile.name}_internal",
-        prompt=build_supervisor_prompt(profile, profile.get_child_names()),
-        add_handoff_back_messages=True
-    ).compile()
-
-    # 3. Wrapper class 생성 (invoke/ainvoke/__call__ 지원)
-    class SupervisorWrapper:
-        """Supervisor를 callable 노드로 감싸는 wrapper"""
-        def __init__(self, supervisor, name):
-            self._supervisor = supervisor
-            self.name = name
-
-        def __call__(self, state: dict, config: dict = None) -> dict:
-            """Make instance callable (LangGraph v2 passes config)"""
-            return self.invoke(state, config)
-
-        def invoke(self, state: dict, config: dict = None) -> dict:
-            if config:
-                return self._supervisor.invoke(state, config)
-            return self._supervisor.invoke(state)
-
-        async def ainvoke(self, state: dict, config: dict = None) -> dict:
-            if config:
-                return await self._supervisor.ainvoke(state, config)
-            return await self._supervisor.ainvoke(state)
-
-    return SupervisorWrapper(internal_supervisor, profile.name)
+        tools=tools,
+        prompt=agent_prompt,
+        name=profile.name,
+        version='v2'
+    )
+    
+    # 메시지에 name 속성을 설정하는 래퍼 함수
+    async def agent_with_name(state):
+        result = await base_agent.ainvoke(state)
+        
+        # 생성된 메시지에 name 속성 추가
+        if "messages" in result:
+            for msg in result["messages"]:
+                if hasattr(msg, "name") and not msg.name:
+                    msg.name = profile.name
+                elif not hasattr(msg, "name"):
+                    msg.name = profile.name
+        
+        return result
+    
+    return agent_with_name
 
 
-def _build_agent_prompt(profile: AgentProfile, participants: list[str] = None) -> str:
-    """프로필에서 에이전트 프롬프트 생성"""
+def _build_agent_prompt(
+    profile: AgentProfile,
+    participants: list[str] = None
+) -> str:
+    """프로필에서 에이전트 프롬프트 생성 (핸드오프 지침 제거)
+    
+    Args:
+        profile: 에이전트 프로필
+        participants: 참여자 목록
+    """
     
     participants_section = ""
     if participants:
@@ -86,25 +77,22 @@ def _build_agent_prompt(profile: AgentProfile, participants: list[str] = None) -
         if others:
             participants_section = f"""
 
-## Meeting Participants
-Other participants: {', '.join(others)}
+## 회의 참여자
+다른 참여자: {', '.join(others)}
 
-When you need input from others, mention them naturally:
-- "TechLead님, 이 부분 기술 검토 부탁드립니다"
-- "DevOps님 인프라 관점에서 의견 주세요"
-- "Designer님 UX 측면은 어떨까요?"
+다른 참여자의 의견이 필요하면 자연스럽게 언급하세요.
+예: "Designer님의 의견도 듣고 싶습니다"
 """
 
-    return f"""You are {profile.name}, a {profile.role}.
+    return f"""당신은 {profile.name}, {profile.role}입니다.
 
-## Responsibilities
+## 책임
 {chr(10).join(f'- {r}' for r in profile.responsibilities)}
 
-## Expertise
+## 전문 분야
 {chr(10).join(f'- {e}' for e in profile.expertise)}
 {participants_section}
-Respond concisely and professionally in Korean.
-When appropriate, mention other participants to request their input."""
+간결하고 전문적으로 한국어로 응답하세요."""
 
 
 
