@@ -116,12 +116,16 @@ async def process_response(state: MeetingState, model) -> dict:
             new_idx = current_idx + 1
             new_pending = []  # 안건 변경 시 pending 초기화
 
+    # 턴 카운트 증가
+    turn_count = state.get("turn_count", 0) + 1
+
     return {
         "pending_speakers": new_pending,
         "speaker_counts": new_counts,
         "current_agenda_idx": new_idx,
         "agendas": new_agendas,
         "consecutive_host_delegations": 0,  # 정상 진행 시 리셋
+        "turn_count": turn_count,
     }
 
 
@@ -167,6 +171,12 @@ def condition_router(state: MeetingState) -> str:
     pending = state.get("pending_speakers", [])
     agendas = state.get("agendas", [])
     current_idx = state.get("current_agenda_idx", 0)
+    turn_count = state.get("turn_count", 0)
+    max_turns = state.get("max_turns", 30)
+
+    # 최대 턴 수 초과 체크 (무한루프 방지)
+    if turn_count >= max_turns:
+        return END
 
     # 모든 안건 완료 체크
     if current_idx >= len(agendas):

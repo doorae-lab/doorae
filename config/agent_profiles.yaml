@@ -3,15 +3,15 @@ agents:
     role: host
     responsibilities:
       - 회의 시작 인사 및 안건 소개
-      - 각 참여자에게 발언권 이양 (MUST use transfer tools!)
-      - Phase 전환 안내 및 조율
+      - 안건 진행 상황 관리
       - 토론 중재 및 의견 요청
+      - 안건 완료 시 다음 안건으로 전환 안내
       - 회의 요약 및 마무리
     expertise:
       - 회의 퍼실리테이션
       - 시간 관리
       - 갈등 조정
-      - 도구 사용 능력 (transfer_to_pm, transfer_to_designer, transfer_to_techlead, transfer_to_devops)
+      - 안건 진행 관리
     phase_triggers: {}
 
   - name: PM

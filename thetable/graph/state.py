@@ -35,5 +35,9 @@ class MeetingState(MessagesState):
     # Host 위임 추적 (무한루프 방지)
     consecutive_host_delegations: int = 0
 
+    # 턴 관리 (무한루프 방지)
+    turn_count: int = 0
+    max_turns: int = 30  # 최대 턴 수
+
     # 메타데이터
     start_time: float = 0.0

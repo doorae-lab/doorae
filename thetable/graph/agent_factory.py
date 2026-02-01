@@ -1,10 +1,10 @@
 """에이전트 팩토리
 
-에이전트 노드 생성 (핸드오프 도구 제거, 간소화된 프롬프트)
+단순 LLM 호출 기반 에이전트 노드 생성
 """
 from typing import Any
 from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import create_react_agent
+from langchain_core.messages import SystemMessage, AIMessage
 
 from thetable.core.profile import AgentProfile
 
@@ -20,7 +20,7 @@ def build_agent_node(
     model: ChatOpenAI,
     all_agent_names: list[str] = None
 ) -> Any:
-    """에이전트 노드 빌드 (핸드오프 도구 없음, 간소화)
+    """에이전트 노드 빌드 (단순 LLM 호출)
 
     Args:
         profile: 에이전트 프로필
@@ -28,36 +28,57 @@ def build_agent_node(
         all_agent_names: 전체 참여자 목록
 
     Returns:
-        create_react_agent 객체를 감싼 래퍼 함수
+        단순 LLM 호출 래퍼 함수
     """
-    # 도구 없음 (또는 에이전트별 전용 도구만)
-    tools = []
-
     agent_prompt = _build_agent_prompt(profile, all_agent_names)
 
-    base_agent = create_react_agent(
-        model=model,
-        tools=tools,
-        prompt=agent_prompt,
-        name=profile.name,
-        version='v2'
-    )
-    
-    # 메시지에 name 속성을 설정하는 래퍼 함수
-    async def agent_with_name(state):
-        result = await base_agent.ainvoke(state)
+    async def agent_node(state):
+        """단순 LLM 호출로 응답 생성"""
+        from langchain_core.messages import HumanMessage
         
-        # 생성된 메시지에 name 속성 추가
-        if "messages" in result:
-            for msg in result["messages"]:
-                if hasattr(msg, "name") and not msg.name:
-                    msg.name = profile.name
-                elif not hasattr(msg, "name"):
-                    msg.name = profile.name
+        messages = state.get("messages", [])
         
-        return result
-    
-    return agent_with_name
+        # 대화 기록을 명확한 포맷으로 변환
+        # (name 속성을 content에 포함시켜 모델이 문맥을 이해하도록)
+        formatted_messages = []
+        for msg in messages:
+            content = getattr(msg, 'content', '') or ''
+            if not content.strip():
+                continue
+            
+            name = getattr(msg, 'name', None)
+            msg_type = type(msg).__name__
+            
+            if msg_type == 'HumanMessage':
+                # 사용자 메시지는 그대로
+                formatted_messages.append(HumanMessage(content=f"[회의 시작 요청]\n{content}"))
+            elif msg_type == 'AIMessage' and name:
+                # AI 메시지는 발언자 이름을 포함
+                formatted_messages.append(HumanMessage(content=f"[{name}의 발언]\n{content}"))
+        
+        # 현재 발언 요청 추가
+        formatted_messages.append(HumanMessage(
+            content=f"이제 {profile.name}({profile.role})로서 위 대화에 이어 발언해 주세요. 한국어로 간결하게 응답하세요."
+        ))
+        
+        # 시스템 메시지 + 포맷된 대화 기록
+        system_msg = SystemMessage(content=agent_prompt)
+        response = await model.ainvoke([system_msg] + formatted_messages)
+        
+        # name 속성 설정
+        response.name = profile.name
+        
+        # 빈 응답 처리
+        content = getattr(response, 'content', '') or ''
+        if not content.strip():
+            response = AIMessage(
+                content=f"({profile.name}: 현재 추가 의견이 없습니다.)",
+                name=profile.name
+            )
+        
+        return {"messages": [response]}
+
+    return agent_node
 
 
 def _build_agent_prompt(
