@@ -19,6 +19,7 @@ dependencies = [
     "loguru>=0.7.3",
     "rich>=14.3.1",
     "langsmith>=0.6.6",
+    "prompt-toolkit>=3.0.52",
 ]
 
 [project.scripts]
