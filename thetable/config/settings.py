@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.7
     agent_profiles_path: str = "config/agent_profiles.yaml"
 
+    # LangSmith 설정
+    langchain_tracing_v2: bool = False  # 기본값: 비활성화
+    langchain_api_key: Optional[str] = None
+    langchain_project: str = "thetable"  # 기본 프로젝트명
+    langchain_endpoint: Optional[str] = None
+
 
 def get_settings(config_path: Optional[Path] = None) -> Settings:
     """Settings 인스턴스 반환.

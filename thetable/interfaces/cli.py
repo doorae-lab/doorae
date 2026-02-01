@@ -12,7 +12,7 @@ from rich.table import Table
 from langchain_core.messages import HumanMessage
 
 from thetable import __version__
-from thetable.config import get_settings
+from thetable.config import Settings, get_settings, setup_tracing
 from thetable.graph.workflow import create_meeting_workflow
 from thetable.interfaces.logging import setup_logging
 
@@ -73,6 +73,12 @@ def main(
         "-V",
         help="버전 정보 출력",
     ),
+    trace: Optional[bool] = typer.Option(
+        None,
+        "--trace",
+        "-t",
+        help="LangSmith 추적 활성화",
+    ),
 ) -> None:
     """TheTable CLI - AI 기반 팀 회의 시스템
 
@@ -100,12 +106,24 @@ def main(
     # 로깅 설정
     setup_logging(verbose=verbose, quiet=quiet)
 
+    # 설정 로드
+    settings = get_settings(config_path=config)
+
+    # CLI 플래그가 None이면 환경변수 값 사용
+    tracing_enabled = trace if trace is not None else settings.langchain_tracing_v2
+    setup_tracing(
+        enabled=tracing_enabled,
+        api_key=settings.langchain_api_key,
+        project=settings.langchain_project,
+        endpoint=settings.langchain_endpoint,
+    )
+
     # 비동기 실행
     asyncio.run(run_meeting(
         initial_message=message,
         profiles_path=profiles,
         stream=stream,
-        config_path=config,
+        settings=settings,
     ))
 
 
@@ -113,7 +131,7 @@ async def run_meeting(
     initial_message: str,
     profiles_path: Optional[Path] = None,
     stream: bool = False,
-    config_path: Optional[Path] = None,
+    settings: Optional[Settings] = None,
 ) -> None:
     """회의 실행.
 
@@ -121,10 +139,11 @@ async def run_meeting(
         initial_message: 회의 시작 메시지
         profiles_path: agent_profiles.yaml 경로 (None이면 설정값 사용)
         stream: 스트리밍 모드 사용 여부
-        config_path: .env 파일 경로 (None이면 기본 .env 사용)
+        settings: Settings 인스턴스 (None이면 기본 설정 사용)
     """
-    # 설정 로드
-    settings = get_settings(config_path=config_path)
+    # 설정이 없으면 기본 설정 로드
+    if settings is None:
+        settings = get_settings()
 
     # 프로필 경로 결정
     if profiles_path is None:
