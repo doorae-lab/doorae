@@ -18,6 +18,42 @@ def test_agent_profile_creation():
     assert "status_check" in profile.phase_triggers
 
 
+
+def test_is_human_field_default():
+    """is_human 필드 기본값 테스트"""
+    profile = AgentProfile(
+        name="TestAgent",
+        role="test_role",
+        responsibilities=["Test responsibility"],
+        expertise=["Test expertise"]
+    )
+    
+    # 기본값은 False
+    assert profile.is_human is False
+
+
+def test_is_human_field_explicit():
+    """is_human 필드 명시적 설정 테스트"""
+    ai_profile = AgentProfile(
+        name="AIAgent",
+        role="ai_role",
+        responsibilities=["AI responsibility"],
+        expertise=["AI expertise"],
+        is_human=False
+    )
+    
+    human_profile = AgentProfile(
+        name="HumanUser",
+        role="human_role",
+        responsibilities=["Human responsibility"],
+        expertise=["Human expertise"],
+        is_human=True
+    )
+    
+    assert ai_profile.is_human is False
+    assert human_profile.is_human is True
+
+
 def test_load_agent_profiles_from_yaml():
     """YAML에서 Agent Profile 로드 테스트"""
     profiles = load_agent_profiles("config/agent_profiles.yaml")

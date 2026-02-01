@@ -82,3 +82,16 @@ agents:
       - 인터페이스 디자인
       - 사용성 테스트
     phase_triggers: {}
+
+  # 사용자 참여 예시 (주석 해제 시 실제 사용자가 참여 가능)
+  - name: "김철수"
+    role: "백엔드 개발자"
+    is_human: true
+    responsibilities:
+      - 백엔드 아키텍처 의견 제시
+      - 기술적 리스크 검토
+    expertise:
+      - Python
+      - FastAPI
+      - PostgreSQL
+    phase_triggers: {}
