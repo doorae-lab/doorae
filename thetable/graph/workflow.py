@@ -93,13 +93,15 @@ async def process_response(state: MeetingState, model) -> dict:
     new_counts = speaker_counts.copy()
     new_counts[speaker_name] = new_counts.get(speaker_name, 0) + 1
 
-    # 3. 멘션 추출 (하이브리드)
+    # 3. 멘션 추출 (LLM 기반)
     valid_speakers = ["Host", "PM", "Designer", "TechLead", "DevOps"]
-    mentions = extract_mentions_rule_based(content, valid_speakers)
-
-    if not mentions and speaker_name != "Host":
-        # 규칙 실패 시 LLM 사용
-        mentions = await extract_mentions_llm(content, model, valid_speakers)
+    # 규칙 기반은 주석 처리 - LLM만 사용
+    # mentions = extract_mentions_rule_based(content, valid_speakers)
+    # if not mentions and speaker_name != "Host":
+    #     mentions = await extract_mentions_llm(content, model, valid_speakers)
+    
+    # LLM이 직접 판단
+    mentions = await extract_mentions_llm(content, model, valid_speakers)
 
     # 4. 새 멘션을 pending에 추가 (중복 제외)
     for m in mentions:
