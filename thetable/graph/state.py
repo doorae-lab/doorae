@@ -18,6 +18,13 @@ class Agenda(BaseModel):
     status: str = "pending"  # "pending", "in_progress", "completed", "deferred"
     required_speakers: List[str] = []  # 이 안건에서 발언해야 할 참여자
 
+    # 추가 필드 (동적 안건 관리용)
+    owner: Optional[str] = None  # 안건 담당자
+    decision: Optional[str] = None  # 결정 사항
+    time_limit: int = 300  # 초 단위 (5분 기본)
+    start_time: Optional[float] = None  # Unix timestamp
+    end_time: Optional[float] = None  # Unix timestamp
+
 
 class MeetingState(MessagesState):
     """회의 상태"""
