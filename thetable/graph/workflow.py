@@ -220,6 +220,26 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
     # 턴 카운트 증가
     turn_count = state.get("turn_count", 0) + 1
 
+    # 7. 안건 동적 업데이트 (매 발언마다)
+    from thetable.graph.agenda_manager import extract_agenda_updates
+
+    try:
+        # 최근 10개 메시지만 분석 (토큰 절약)
+        recent_messages = messages[-10:] if len(messages) > 10 else messages
+
+        agenda_result = await extract_agenda_updates(
+            llm=model,
+            messages=recent_messages,
+            current_items=new_agendas,
+        )
+
+        # 업데이트된 안건으로 교체
+        new_agendas = agenda_result.items
+
+    except Exception as e:
+        # 안건 업데이트 실패 시 기존 안건 유지
+        print(f"⚠️ 안건 업데이트 실패: {e}")
+
     return {
         "pending_speakers": new_pending,
         "speaker_counts": new_counts,
