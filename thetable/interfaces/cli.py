@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """TheTable CLI - AI-powered team meeting system"""
 import asyncio
+import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 from loguru import logger
@@ -23,6 +24,71 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+
+
+def format_agenda_panel(
+    agendas: List[dict],
+    current_idx: int,
+    start_time: float
+) -> Panel:
+    """안건 상태를 Rich Panel로 포맷팅
+
+    Args:
+        agendas: 안건 리스트
+        current_idx: 현재 안건 인덱스
+        start_time: 회의 시작 시간 (Unix timestamp)
+
+    Returns:
+        Rich Panel 객체
+    """
+    lines = []
+
+    for i, agenda in enumerate(agendas):
+        # 상태 이모지
+        status_emoji = {
+            "pending": "⏳",
+            "in_progress": "🔄",
+            "completed": "✅",
+            "deferred": "⏸️"
+        }.get(agenda["status"], "❓")
+
+        # owner: required_speakers의 첫 번째
+        owner = agenda.get("required_speakers", [""])[0] if agenda.get("required_speakers") else ""
+
+        # 시간 계산
+        time_str = ""
+        if agenda["status"] == "in_progress":
+            # 진행 중: 경과 시간
+            agenda_start = agenda.get("start_time", start_time)
+            elapsed = time.time() - agenda_start
+            mins, secs = divmod(int(elapsed), 60)
+            time_str = f" [{mins}m {secs}s]"
+        elif agenda["status"] == "completed":
+            # 완료: 총 소요 시간
+            agenda_start = agenda.get("start_time")
+            agenda_end = agenda.get("end_time")
+            if agenda_start and agenda_end:
+                elapsed = agenda_end - agenda_start
+                mins, secs = divmod(int(elapsed), 60)
+                time_str = f" [{mins}m {secs}s]"
+
+        # 현재 안건 표시
+        indicator = " ← 현재" if i == current_idx else ""
+
+        # 라인 구성
+        title = agenda["title"]
+        line = f"  {status_emoji} {i+1}. {title} ({owner}){time_str}{indicator}"
+        lines.append(line)
+
+        # 결정사항 표시 (있으면)
+        if agenda.get("decision"):
+            lines.append(f"     └─ {agenda['decision']}")
+
+    return Panel(
+        "\n".join(lines),
+        title="📋 안건 진행 상태",
+        border_style="magenta"
+    )
 
 
 @app.command()
@@ -228,33 +294,35 @@ async def run_meeting(
     if stream:
         # 스트리밍 모드 - astream_events()로 토큰 단위 출력
         current_speaker = None
-        current_agenda_title = None
-        
+        prev_agenda_state = None
+
         async for event in workflow.astream_events(initial_state, version="v2"):
             kind = event["event"]
             
             # on_chain_start: 노드 시작 시 안건 정보 표시
             if kind == "on_chain_start":
-                metadata = event.get("metadata", {})
-                tags = event.get("tags", [])
-                
-                # StateGraph 노드 시작 감지
-                if "langgraph_node" in tags:
-                    node_name = tags[tags.index("langgraph_node") + 1] if tags.index("langgraph_node") + 1 < len(tags) else None
-                    
-                    # 안건 정보 표시 (process_response 노드에서)
-                    if node_name == "process_response":
-                        data = event.get("data", {})
-                        input_data = data.get("input", {})
-                        current_idx = input_data.get("current_agenda_idx", 0)
-                        agendas = input_data.get("agendas", [])
-                        
-                        if current_idx < len(agendas):
-                            agenda_title = agendas[current_idx]["title"]
-                            if agenda_title != current_agenda_title:
-                                current_agenda_title = agenda_title
-                                console.print(f"\n[bold magenta]📋 안건 {current_idx + 1}: {agenda_title}[/bold magenta]")
-                                console.rule(style="magenta")
+                name = event.get("name", "")
+
+                # 안건 상태 변경 감지 및 패널 출력 (process_response 노드에서)
+                if name == "process_response":
+                    data = event.get("data", {})
+                    input_data = data.get("input", {})
+                    current_idx = input_data.get("current_agenda_idx", 0)
+                    agendas = input_data.get("agendas", [])
+
+                    # 상태 변경 감지
+                    current_state = (
+                        current_idx,
+                        tuple((a["title"], a["status"]) for a in agendas)
+                    )
+
+                    if current_state != prev_agenda_state:
+                        prev_agenda_state = current_state
+
+                        # 안건 패널 출력
+                        panel = format_agenda_panel(agendas, current_idx, initial_state["start_time"])
+                        console.print(panel)
+                        console.print()  # 빈 줄
             
             # on_chat_model_start: LLM 호출 시작 (발언자 이름 출력)
             elif kind == "on_chat_model_start":
