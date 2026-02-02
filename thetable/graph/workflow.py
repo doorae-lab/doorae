@@ -290,30 +290,44 @@ def condition_router(state: MeetingState) -> str:
 
 def create_meeting_workflow(
     profiles_path: str = "config/agent_profiles.yaml",
-    model: ChatOpenAI = None
+    main_model: ChatOpenAI = None,
+    task_model: ChatOpenAI = None
 ):
     """안건 기반 회의 워크플로우 생성
 
     Args:
         profiles_path: agent_profiles.yaml 경로
-        model: LLM 모델 (None이면 기본 모델 생성)
+        main_model: 회의 에이전트 응답 생성용 LLM (None이면 기본 모델 생성)
+        task_model: 작은 작업용 LLM (None이면 기본 모델 생성)
 
     Returns:
         CompiledGraph: 실행 가능한 회의 그래프
     """
 
-    if model is None:
-        settings = get_settings()
-        kwargs = {
-            "model": settings.llm_model,
-            "temperature": settings.llm_temperature,
+    settings = get_settings()
+    
+    # Main model (에이전트 응답 생성용)
+    if main_model is None:
+        main_kwargs = {
+            "model": settings.llm_main_model,
+            "temperature": settings.llm_main_temperature,
+            "api_key": settings.openai_api_key,
+            "streaming": True,  # 스트리밍 활성화
+        }
+        if settings.openai_base_url:
+            main_kwargs["base_url"] = settings.openai_base_url
+        main_model = ChatOpenAI(**main_kwargs)
+    
+    # Task model (유틸리티 작업용)
+    if task_model is None:
+        task_kwargs = {
+            "model": settings.llm_task_model,
+            "temperature": settings.llm_task_temperature,
             "api_key": settings.openai_api_key,
         }
         if settings.openai_base_url:
-            kwargs["base_url"] = settings.openai_base_url
-        # 스트리밍 활성화
-        kwargs["streaming"] = True
-        model = ChatOpenAI(**kwargs)
+            task_kwargs["base_url"] = settings.openai_base_url
+        task_model = ChatOpenAI(**task_kwargs)
 
     # 1. 프로필 로드
     profiles = load_agent_profiles(profiles_path)
@@ -321,15 +335,15 @@ def create_meeting_workflow(
     # 2. StateGraph 생성
     workflow = StateGraph(MeetingState)
 
-    # 3. refill_speakers 노드 추가
+    # 3. refill_speakers 노드 추가 (main_model 사용)
     async def refill_with_model(state: MeetingState):
-        return await refill_speakers(state, model)
+        return await refill_speakers(state, main_model)
     
     workflow.add_node("refill_speakers", refill_with_model)
 
-    # 4. process_response 노드 추가
+    # 4. process_response 노드 추가 (task_model 사용)
     async def process_with_model(state: MeetingState):
-        return await process_response(state, model, list(profiles.keys()))
+        return await process_response(state, task_model, list(profiles.keys()))
     
     workflow.add_node("process_response", process_with_model)
 
@@ -339,8 +353,8 @@ def create_meeting_workflow(
             # 사용자 참여자는 입력 노드 생성
             node = create_human_node(profile)
         else:
-            # AI 에이전트는 기존 로직 사용
-            node = build_agent_node(profile, model, list(profiles.keys()), profiles)
+            # AI 에이전트는 기존 로직 사용 (main_model)
+            node = build_agent_node(profile, main_model, list(profiles.keys()), profiles)
         workflow.add_node(name.lower(), node)
 
     # 6. 진입점: refill_speakers

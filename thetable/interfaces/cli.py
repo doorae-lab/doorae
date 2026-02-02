@@ -220,8 +220,10 @@ async def run_meeting(
         Panel(
             f"[bold]회의 시작[/bold]\n\n"
             f"프로필: [cyan]{profiles_path}[/cyan]\n"
-            f"모델: [yellow]{settings.llm_model}[/yellow] "
-            f"(온도: {settings.llm_temperature})",
+            f"Main LLM: [yellow]{settings.llm_main_model}[/yellow] "
+            f"(온도: {settings.llm_main_temperature})\n"
+            f"Task LLM: [yellow]{settings.llm_task_model}[/yellow] "
+            f"(온도: {settings.llm_task_temperature})",
             title="🚀 TheTable",
             border_style="green",
         )
