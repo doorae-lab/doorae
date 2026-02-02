@@ -41,7 +41,8 @@ def build_agent_node(
         messages = state.get("messages", [])
         agendas = state.get("agendas", [])
         current_idx = state.get("current_agenda_idx", 0)
-        
+        summary = state.get("summary", "")
+
         # 대화 기록을 명확한 포맷으로 변환
         # (name 속성을 content에 포함시켜 모델이 문맥을 이해하도록)
         formatted_messages = []
@@ -67,7 +68,17 @@ def build_agent_node(
         
         # 안건 정보를 프롬프트에 포함
         agenda_context = _format_agenda_context(agendas, current_idx)
-        enhanced_prompt = f"{agent_prompt}\n\n{agenda_context}"
+
+        # 요약을 시스템 프롬프트에 포함
+        if summary:
+            enhanced_prompt = f"""{agent_prompt}
+
+## 📝 회의 진행 요약
+{summary}
+
+{agenda_context}"""
+        else:
+            enhanced_prompt = f"{agent_prompt}\n\n{agenda_context}"
         
         # 시스템 메시지 + 포맷된 대화 기록
         system_msg = SystemMessage(content=enhanced_prompt)
