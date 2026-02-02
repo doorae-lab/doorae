@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     
     # LangGraph 설정
     recursion_limit: int = 100  # LangGraph 재귀 깊이 제한
-    max_turns: int = 300  # 회의 최대 턴 수 (무한루프 방지)
+    max_turns: int = 1000  # 회의 최대 턴 수 (무한루프 방지)
     
     agent_profiles_path: str = "config/agent_profiles.yaml"
 

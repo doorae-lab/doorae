@@ -44,7 +44,7 @@ class MeetingState(MessagesState):
 
     # 턴 관리 (무한루프 방지)
     turn_count: int = 0
-    max_turns: int = 300  # 최대 턴 수
+    max_turns: int = 1000  # 최대 턴 수
 
     # 회의 종료 플래그
     meeting_ended: bool = False
