@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # Task LLM (작은 작업: 멘션 추출, 종료 감지, 안건 분석)
     llm_task_model: str = "gpt-4o-mini"  # 나중에 gpt-3.5-turbo 등으로 변경 가능
     llm_task_temperature: float = 0.0    # 일관된 결과 위해 낮게
+    
+    # LangGraph 설정
+    recursion_limit: int = 100  # 회의 최대 턴 수 제한 (기본값: 25)
+    
     agent_profiles_path: str = "config/agent_profiles.yaml"
 
     # LangSmith 설정

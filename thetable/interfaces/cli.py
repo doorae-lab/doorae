@@ -293,12 +293,16 @@ async def run_meeting(
 
     # 실행
     logger.debug(f"Running workflow (stream={stream})...")
+    
+    # LangGraph config 설정
+    graph_config = {"recursion_limit": settings.recursion_limit}
+    
     if stream:
         # 스트리밍 모드 - astream_events()로 토큰 단위 출력
         current_speaker = None
         prev_agenda_state = None
 
-        async for event in workflow.astream_events(initial_state, version="v2"):
+        async for event in workflow.astream_events(initial_state, config=graph_config, version="v2"):
             kind = event["event"]
             
             # on_chain_start: 노드 시작 시 안건 정보 표시
@@ -377,7 +381,7 @@ async def run_meeting(
     else:
         # 일반 모드
         logger.debug("Invoking workflow...")
-        result = await workflow.ainvoke(initial_state)
+        result = await workflow.ainvoke(initial_state, config=graph_config)
         logger.debug(f"Workflow completed. Result keys: {result.keys()}")
 
         # 결과 출력
