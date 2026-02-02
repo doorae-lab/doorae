@@ -176,12 +176,19 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
 
     if speaker_name == "Host" and detect_agenda_completion(content):
         if current_idx < len(new_agendas):
+            import time as time_module
             new_agendas[current_idx]["status"] = "completed"
+            new_agendas[current_idx]["end_time"] = time_module.time()
             new_idx = current_idx + 1
+            # 다음 안건 시작 시간 설정
+            if new_idx < len(new_agendas):
+                new_agendas[new_idx]["status"] = "in_progress"
+                new_agendas[new_idx]["start_time"] = time_module.time()
             new_pending = []  # 안건 변경 시 pending 초기화
 
-    # 6. 마지막 안건에서 Host 회의 종료 발언 감지
-    if speaker_name == "Host" and current_idx == len(agendas) - 1:
+    # 6. Host 회의 종료 발언 감지 (모든 안건이 완료/보류일 때만)
+    all_agendas_done = all(a["status"] in ["completed", "deferred"] for a in new_agendas)
+    if speaker_name == "Host" and all_agendas_done:
         # 키워드 우선 감지
         if detect_meeting_end_keyword(content):
             meeting_ended = True
@@ -205,8 +212,19 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
             current_items=new_agendas,
         )
 
-        # 업데이트된 안건으로 교체
-        new_agendas = agenda_result.items
+        # 업데이트된 안건으로 교체 (타임스탬프 보존)
+        new_agendas_from_llm = agenda_result.items
+
+        # 기존 타임스탬프 복원 (LLM이 제거했을 수 있음)
+        for i, new_agenda in enumerate(new_agendas_from_llm):
+            if i < len(new_agendas):
+                # start_time, end_time 보존
+                if new_agendas[i].get("start_time"):
+                    new_agenda["start_time"] = new_agendas[i]["start_time"]
+                if new_agendas[i].get("end_time"):
+                    new_agenda["end_time"] = new_agendas[i]["end_time"]
+
+        new_agendas = new_agendas_from_llm
 
     except Exception as e:
         # 안건 업데이트 실패 시 기존 안건 유지
@@ -290,30 +308,44 @@ def condition_router(state: MeetingState) -> str:
 
 def create_meeting_workflow(
     profiles_path: str = "config/agent_profiles.yaml",
-    model: ChatOpenAI = None
+    main_model: ChatOpenAI = None,
+    task_model: ChatOpenAI = None
 ):
     """안건 기반 회의 워크플로우 생성
 
     Args:
         profiles_path: agent_profiles.yaml 경로
-        model: LLM 모델 (None이면 기본 모델 생성)
+        main_model: 회의 에이전트 응답 생성용 LLM (None이면 기본 모델 생성)
+        task_model: 작은 작업용 LLM (None이면 기본 모델 생성)
 
     Returns:
         CompiledGraph: 실행 가능한 회의 그래프
     """
 
-    if model is None:
-        settings = get_settings()
-        kwargs = {
-            "model": settings.llm_model,
-            "temperature": settings.llm_temperature,
+    settings = get_settings()
+    
+    # Main model (에이전트 응답 생성용)
+    if main_model is None:
+        main_kwargs = {
+            "model": settings.llm_main_model,
+            "temperature": settings.llm_main_temperature,
+            "api_key": settings.openai_api_key,
+            "streaming": True,  # 스트리밍 활성화
+        }
+        if settings.openai_base_url:
+            main_kwargs["base_url"] = settings.openai_base_url
+        main_model = ChatOpenAI(**main_kwargs)
+    
+    # Task model (유틸리티 작업용)
+    if task_model is None:
+        task_kwargs = {
+            "model": settings.llm_task_model,
+            "temperature": settings.llm_task_temperature,
             "api_key": settings.openai_api_key,
         }
         if settings.openai_base_url:
-            kwargs["base_url"] = settings.openai_base_url
-        # 스트리밍 활성화
-        kwargs["streaming"] = True
-        model = ChatOpenAI(**kwargs)
+            task_kwargs["base_url"] = settings.openai_base_url
+        task_model = ChatOpenAI(**task_kwargs)
 
     # 1. 프로필 로드
     profiles = load_agent_profiles(profiles_path)
@@ -321,15 +353,15 @@ def create_meeting_workflow(
     # 2. StateGraph 생성
     workflow = StateGraph(MeetingState)
 
-    # 3. refill_speakers 노드 추가
+    # 3. refill_speakers 노드 추가 (main_model 사용)
     async def refill_with_model(state: MeetingState):
-        return await refill_speakers(state, model)
+        return await refill_speakers(state, main_model)
     
     workflow.add_node("refill_speakers", refill_with_model)
 
-    # 4. process_response 노드 추가
+    # 4. process_response 노드 추가 (task_model 사용)
     async def process_with_model(state: MeetingState):
-        return await process_response(state, model, list(profiles.keys()))
+        return await process_response(state, task_model, list(profiles.keys()))
     
     workflow.add_node("process_response", process_with_model)
 
@@ -339,8 +371,8 @@ def create_meeting_workflow(
             # 사용자 참여자는 입력 노드 생성
             node = create_human_node(profile)
         else:
-            # AI 에이전트는 기존 로직 사용
-            node = build_agent_node(profile, model, list(profiles.keys()), profiles)
+            # AI 에이전트는 기존 로직 사용 (main_model)
+            node = build_agent_node(profile, main_model, list(profiles.keys()), profiles)
         workflow.add_node(name.lower(), node)
 
     # 6. 진입점: refill_speakers

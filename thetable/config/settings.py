@@ -15,8 +15,19 @@ class Settings(BaseSettings):
 
     openai_api_key: str  # 필수
     openai_base_url: Optional[str] = None  # 선택적 (기본: OpenAI 공식 엔드포인트)
-    llm_model: str = "gpt-4o-mini"
-    llm_temperature: float = 0.7
+    
+    # Main LLM (회의 에이전트 응답 생성)
+    llm_main_model: str = "gpt-4o-mini"
+    llm_main_temperature: float = 0.7
+    
+    # Task LLM (작은 작업: 멘션 추출, 종료 감지, 안건 분석)
+    llm_task_model: str = "gpt-4o-mini"  # 나중에 gpt-3.5-turbo 등으로 변경 가능
+    llm_task_temperature: float = 0.0    # 일관된 결과 위해 낮게
+    
+    # LangGraph 설정
+    recursion_limit: int = 1000  # LangGraph 재귀 깊이 제한
+    max_turns: int = 1000  # 회의 최대 턴 수 (무한루프 방지)
+    
     agent_profiles_path: str = "config/agent_profiles.yaml"
 
     # LangSmith 설정
