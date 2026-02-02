@@ -39,6 +39,8 @@ def build_agent_node(
         from langchain_core.messages import HumanMessage
         
         messages = state.get("messages", [])
+        agendas = state.get("agendas", [])
+        current_idx = state.get("current_agenda_idx", 0)
         
         # 대화 기록을 명확한 포맷으로 변환
         # (name 속성을 content에 포함시켜 모델이 문맥을 이해하도록)
@@ -63,8 +65,12 @@ def build_agent_node(
             content=f"이제 {profile.name}({profile.role})로서 위 대화에 이어 발언해 주세요. 한국어로 간결하게 응답하세요."
         ))
         
+        # 안건 정보를 프롬프트에 포함
+        agenda_context = _format_agenda_context(agendas, current_idx)
+        enhanced_prompt = f"{agent_prompt}\n\n{agenda_context}"
+        
         # 시스템 메시지 + 포맷된 대화 기록
-        system_msg = SystemMessage(content=agent_prompt)
+        system_msg = SystemMessage(content=enhanced_prompt)
         # 발언자 정보를 태그로 추가하여 스트리밍 시 식별 가능하도록
         response = await model.ainvoke(
             [system_msg] + formatted_messages,
@@ -137,6 +143,72 @@ def _build_agent_prompt(
 간결하고 전문적으로 한국어로 응답하세요."""
 
 
+def _format_agenda_context(agendas: list[dict], current_idx: int) -> str:
+    """안건 정보를 프롬프트용으로 포맷팅
+    
+    Args:
+        agendas: 안건 리스트
+        current_idx: 현재 안건 인덱스
+        
+    Returns:
+        포맷된 안건 컨텍스트 문자열
+    """
+    if not agendas:
+        return ""
+    
+    # 상태 이모지 매핑
+    status_emoji = {
+        "pending": "⏳",
+        "in_progress": "🔄",
+        "completed": "✅",
+        "deferred": "⏸️"
+    }
+    
+    # 전체 안건 목록
+    agenda_lines = ["## 📋 회의 안건", ""]
+    for i, agenda in enumerate(agendas):
+        emoji = status_emoji.get(agenda.get("status", "pending"), "❓")
+        title = agenda.get("title", "")
+        
+        # 상태 텍스트
+        status_text = {
+            "pending": "예정",
+            "in_progress": "현재 논의 중",
+            "completed": "완료",
+            "deferred": "보류"
+        }.get(agenda.get("status", "pending"), "")
+        
+        # 현재 안건 표시
+        marker = " ← 현재 안건" if i == current_idx else ""
+        agenda_lines.append(f"{i+1}. {emoji} {title} ({status_text}){marker}")
+    
+    agenda_lines.append("")
+    
+    # 현재 안건 상세 정보
+    if 0 <= current_idx < len(agendas):
+        current_agenda = agendas[current_idx]
+        agenda_lines.extend([
+            "## 🎯 현재 논의 중인 안건",
+            f"**제목**: {current_agenda.get('title', '')}",
+        ])
+        
+        if current_agenda.get("description"):
+            agenda_lines.append(f"**설명**: {current_agenda['description']}")
+        
+        if current_agenda.get("required_speakers"):
+            speakers = ", ".join(current_agenda["required_speakers"])
+            agenda_lines.append(f"**필수 발언자**: {speakers}")
+        
+        if current_agenda.get("owner"):
+            agenda_lines.append(f"**담당자**: {current_agenda['owner']}")
+        
+        if current_agenda.get("decision"):
+            agenda_lines.append(f"**결정사항**: {current_agenda['decision']}")
+        
+        agenda_lines.append("")
+        agenda_lines.append("💡 **지침**: 현재 안건에 집중하여 관련된 의견을 제시하세요.")
+    
+    return "\n".join(agenda_lines)
 
 
 
