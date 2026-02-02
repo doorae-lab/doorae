@@ -25,6 +25,8 @@ agents:
       - 자원 관리
     phase_triggers:
       status_check: "프로젝트 현황을 보고하세요"
+    mcp_tools:
+      - github
 
   - name: TechLead
     role: tech_lead
@@ -37,6 +39,8 @@ agents:
       - 성능 최적화
     phase_triggers:
       issue_resolution: "기술적 해결 방안을 제시하세요"
+    mcp_tools:
+      - github
     # agents:
     #   - name: Backend
     #     role: backend_engineer
@@ -61,37 +65,37 @@ agents:
     #       - CSS
     #     phase_triggers: {}
 
-  - name: DevOps
-    role: devops_engineer
-    responsibilities:
-      - CI/CD 파이프라인 구축
-      - 인프라 관리
-      - 모니터링 시스템
-    expertise:
-      - Kubernetes
-      - Docker
-      - Terraform
-    phase_triggers: {}
-
-  - name: Designer
-    role: designer
-    responsibilities:
-      - UI/UX 설계
-      - 사용자 경험 개선
-    expertise:
-      - 인터페이스 디자인
-      - 사용성 테스트
-    phase_triggers: {}
-
-  # # 사용자 참여 예시 (주석 해제 시 실제 사용자가 참여 가능)
-  # - name: "김철수"
-  #   role: "백엔드 개발자"
-  #   is_human: true
+  # - name: DevOps
+  #   role: devops_engineer
   #   responsibilities:
-  #     - 백엔드 아키텍처 의견 제시
-  #     - 기술적 리스크 검토
+  #     - CI/CD 파이프라인 구축
+  #     - 인프라 관리
+  #     - 모니터링 시스템
   #   expertise:
-  #     - Python
-  #     - FastAPI
-  #     - PostgreSQL
+  #     - Kubernetes
+  #     - Docker
+  #     - Terraform
   #   phase_triggers: {}
+
+  # - name: Designer
+  #   role: designer
+  #   responsibilities:
+  #     - UI/UX 설계
+  #     - 사용자 경험 개선
+  #   expertise:
+  #     - 인터페이스 디자인
+  #     - 사용성 테스트
+  #   phase_triggers: {}
+
+  # 사용자 참여 예시 (주석 해제 시 실제 사용자가 참여 가능)
+  - name: "김철수"
+    role: "백엔드 개발자"
+    is_human: true
+    responsibilities:
+      - 백엔드 아키텍처 의견 제시
+      - 기술적 리스크 검토
+    expertise:
+      - Python
+      - FastAPI
+      - PostgreSQL
+    phase_triggers: {}
