@@ -212,8 +212,19 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
             current_items=new_agendas,
         )
 
-        # 업데이트된 안건으로 교체
-        new_agendas = agenda_result.items
+        # 업데이트된 안건으로 교체 (타임스탬프 보존)
+        new_agendas_from_llm = agenda_result.items
+
+        # 기존 타임스탬프 복원 (LLM이 제거했을 수 있음)
+        for i, new_agenda in enumerate(new_agendas_from_llm):
+            if i < len(new_agendas):
+                # start_time, end_time 보존
+                if new_agendas[i].get("start_time"):
+                    new_agenda["start_time"] = new_agendas[i]["start_time"]
+                if new_agendas[i].get("end_time"):
+                    new_agenda["end_time"] = new_agendas[i]["end_time"]
+
+        new_agendas = new_agendas_from_llm
 
     except Exception as e:
         # 안건 업데이트 실패 시 기존 안건 유지
