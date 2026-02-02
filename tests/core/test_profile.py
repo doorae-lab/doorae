@@ -121,7 +121,7 @@ def test_host_profile_responsibilities():
 
     # 회의 진행 관련 책임 확인
     assert "회의 시작 인사 및 안건 소개" in host.responsibilities
-    assert "Phase 전환 안내 및 조율" in host.responsibilities
+    assert "안건 완료 시 다음 안건으로 전환 안내" in host.responsibilities
     assert "토론 중재 및 의견 요청" in host.responsibilities
     assert "회의 요약 및 마무리" in host.responsibilities
 

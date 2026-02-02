@@ -3,11 +3,11 @@
 아키텍처:
 - pending_speakers 큐 기반 라우팅 (LLM 호출 최소화)
 - 안건(Agenda) 중심의 구조화된 회의 진행
-- 하이브리드 멘션 추출 (규칙 기반 + LLM 보조)
+- LLM 기반 멘션 추출 및 의도 분석
 - Host 명시적 안건 완료 선언
+- AI 자동 안건 관리 (추가/수정/제거)
 """
 import asyncio
-import re
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
@@ -17,27 +17,6 @@ from thetable.config import get_settings
 from thetable.graph.agent_factory import build_agent_node
 from thetable.graph.state import MeetingState
 from thetable.core.profile import load_agent_profiles
-
-
-def extract_mentions_rule_based(content: str, valid_speakers: list[str]) -> list[str]:
-    """규칙 기반 멘션 추출"""
-    mentions = []
-    patterns = [
-        r'@(\w+)',              # @PM, @Designer
-        r'(\w+)님',             # PM님, Designer님
-        r'(\w+)\s*(의견|검토|확인)',  # PM 의견, TechLead 검토
-    ]
-
-    for pattern in patterns:
-        matches = re.findall(pattern, content, re.IGNORECASE)
-        for match in matches:
-            name = match[0] if isinstance(match, tuple) else match
-            # valid_speakers에서 매칭
-            for speaker in valid_speakers:
-                if speaker.lower() == name.lower():
-                    mentions.append(speaker)
-
-    return list(set(mentions))
 
 
 def create_human_node(profile):
@@ -183,13 +162,6 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
     new_counts[speaker_name] = new_counts.get(speaker_name, 0) + 1
 
     # 3. 멘션 추출 (LLM 기반)
-    # valid_speakers는 파라미터로 전달됨
-    # 규칙 기반은 주석 처리 - LLM만 사용
-    # mentions = extract_mentions_rule_based(content, valid_speakers)
-    # if not mentions and speaker_name != "Host":
-    #     mentions = await extract_mentions_llm(content, model, valid_speakers)
-    
-    # LLM이 직접 판단
     mentions = await extract_mentions_llm(content, model, valid_speakers)
 
     # 4. 새 멘션을 pending에 추가 (중복 제외)
