@@ -176,8 +176,14 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
 
     if speaker_name == "Host" and detect_agenda_completion(content):
         if current_idx < len(new_agendas):
+            import time as time_module
             new_agendas[current_idx]["status"] = "completed"
+            new_agendas[current_idx]["end_time"] = time_module.time()
             new_idx = current_idx + 1
+            # 다음 안건 시작 시간 설정
+            if new_idx < len(new_agendas):
+                new_agendas[new_idx]["status"] = "in_progress"
+                new_agendas[new_idx]["start_time"] = time_module.time()
             new_pending = []  # 안건 변경 시 pending 초기화
 
     # 6. Host 회의 종료 발언 감지 (모든 안건이 완료/보류일 때만)

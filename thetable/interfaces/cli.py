@@ -251,8 +251,9 @@ async def run_meeting(
         {
             "title": "회의 시작 및 현황 공유",
             "description": "회의를 시작하고 주간 현황을 공유합니다",
-            "status": "pending",
-            "required_speakers": ["Host", "PM"]
+            "status": "in_progress",
+            "required_speakers": ["Host", "PM"],
+            "start_time": time.time()
         },
         {
             "title": "주요 이슈 논의",
