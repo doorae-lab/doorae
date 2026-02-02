@@ -8,6 +8,8 @@
 - AI 자동 안건 관리 (추가/수정/제거)
 """
 import asyncio
+import logging
+from pathlib import Path
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
@@ -18,6 +20,54 @@ from thetable.graph.agent_factory import build_agent_node
 from thetable.graph.state import MeetingState
 from thetable.graph.summarization import summarize_conversation_node
 from thetable.core.profile import load_agent_profiles
+
+logger = logging.getLogger(__name__)
+
+
+async def initialize_mcp_tools(config_path: str = None) -> dict[str, list]:
+    """MCP tools 초기화 및 서버별 수집
+
+    Args:
+        config_path: mcp_servers.json 경로 (None이면 config/mcp_servers.json)
+
+    Returns:
+        서버별 tools 딕셔너리 {server_name: [tools]}
+    """
+    try:
+        from langchain_mcp_adapters.client import MultiServerMCPClient
+        from thetable.mcp import load_mcp_config, collect_tools_by_server
+
+        # MCP 설정 로드
+        if config_path is None:
+            config_path = Path(__file__).parent.parent.parent / "config" / "mcp_servers.json"
+
+        config_dict = load_mcp_config(config_path)
+
+        if not config_dict:
+            logger.warning("⚠️ 사용 가능한 MCP 서버가 없습니다")
+            return {}
+
+        # MCP 클라이언트 초기화
+        mcp_client = MultiServerMCPClient(config_dict)
+
+        # 모든 서버의 tools 수집
+        server_names = set(config_dict.keys())
+        tools_by_server = await collect_tools_by_server(mcp_client, server_names)
+
+        total = sum(len(t) for t in tools_by_server.values())
+        logger.info(f"✅ MCP 도구 로드 완료: {total}개 도구 ({len(tools_by_server)}개 서버)")
+
+        return tools_by_server
+
+    except ImportError:
+        logger.warning("⚠️ langchain-mcp-adapters가 설치되지 않았습니다")
+        return {}
+    except FileNotFoundError:
+        logger.warning(f"⚠️ MCP 설정 파일을 찾을 수 없습니다: {config_path}")
+        return {}
+    except Exception as e:
+        logger.error(f"⚠️ MCP 초기화 실패: {e}")
+        return {}
 
 
 def create_human_node(profile):
@@ -310,7 +360,8 @@ def condition_router(state: MeetingState) -> str:
 def create_meeting_workflow(
     profiles_path: str = "config/agent_profiles.yaml",
     main_model: ChatOpenAI = None,
-    task_model: ChatOpenAI = None
+    task_model: ChatOpenAI = None,
+    mcp_tools: dict[str, list] = None
 ):
     """안건 기반 회의 워크플로우 생성
 
@@ -318,6 +369,7 @@ def create_meeting_workflow(
         profiles_path: agent_profiles.yaml 경로
         main_model: 회의 에이전트 응답 생성용 LLM (None이면 기본 모델 생성)
         task_model: 작은 작업용 LLM (None이면 기본 모델 생성)
+        mcp_tools: 서버별 MCP tools 딕셔너리 {server_name: [tools]}
 
     Returns:
         CompiledGraph: 실행 가능한 회의 그래프
@@ -378,8 +430,24 @@ def create_meeting_workflow(
             # 사용자 참여자는 입력 노드 생성
             node = create_human_node(profile)
         else:
-            # AI 에이전트는 기존 로직 사용 (main_model)
-            node = build_agent_node(profile, main_model, list(profiles.keys()), profiles)
+            # Agent별 MCP tools 필터링
+            agent_tools = []
+            if mcp_tools and profile.mcp_tools:
+                for server_name in profile.mcp_tools:
+                    if server_name in mcp_tools:
+                        agent_tools.extend(mcp_tools[server_name])
+
+                if agent_tools:
+                    logger.info(f"✅ {profile.name}: {len(agent_tools)}개 MCP 도구 연결 (서버: {', '.join(profile.mcp_tools)})")
+
+            # AI 에이전트는 기존 로직 사용 (main_model + agent별 tools)
+            node = build_agent_node(
+                profile,
+                main_model,
+                agent_tools if agent_tools else None,
+                list(profiles.keys()),
+                profiles
+            )
         workflow.add_node(name.lower(), node)
 
     # 6. 진입점: refill_speakers

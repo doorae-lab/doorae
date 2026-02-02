@@ -1,12 +1,15 @@
 """에이전트 팩토리
 
-단순 LLM 호출 기반 에이전트 노드 생성
+LLM 호출 기반 에이전트 노드 생성 (MCP Tool 지원)
 """
+import logging
 from typing import Any
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, AIMessage
+from langchain_core.messages import SystemMessage, AIMessage, HumanMessage, ToolMessage
 
 from thetable.core.profile import AgentProfile
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -18,26 +21,45 @@ from thetable.core.profile import AgentProfile
 def build_agent_node(
     profile: AgentProfile,
     model: ChatOpenAI,
+    tools: list = None,
     all_agent_names: list[str] = None,
     all_profiles: dict = None
 ) -> Any:
-    """에이전트 노드 빌드 (단순 LLM 호출)
+    """에이전트 노드 빌드 (MCP Tool 지원)
 
     Args:
         profile: 에이전트 프로필
         model: LLM 모델
+        tools: MCP tools 리스트 (선택)
         all_agent_names: 전체 참여자 목록
         all_profiles: 전체 프로필 딕셔너리 (is_human 확인용)
 
     Returns:
-        단순 LLM 호출 래퍼 함수
+        LLM 호출 래퍼 함수 (tool-calling 지원)
     """
     agent_prompt = _build_agent_prompt(profile, all_agent_names, all_profiles)
+    
+    # Tools가 있으면 시스템 프롬프트에 도구 정보 추가
+    if tools:
+        tool_names = [t.name for t in tools]
+        tools_list = ", ".join(sorted(tool_names))
+        tools_instruction = f"""
+
+**AVAILABLE TOOLS:**
+You have access to MCP tools: {tools_list}
+
+When relevant to the discussion, use these tools to:
+- Check actual repository status, open PRs, recent issues
+- Fetch real data before making statements about code or project status
+- Verify facts rather than making assumptions
+
+Always base your contributions on real data when tools are available.
+"""
+        agent_prompt = agent_prompt + tools_instruction
+        logger.info(f"[{profile.name}] 🔧 MCP 도구 바인딩: {len(tools)}개")
 
     async def agent_node(state):
-        """단순 LLM 호출로 응답 생성"""
-        from langchain_core.messages import HumanMessage
-        
+        """LLM 호출로 응답 생성 (Tool-Calling 지원)"""
         messages = state.get("messages", [])
         agendas = state.get("agendas", [])
         current_idx = state.get("current_agenda_idx", 0)
@@ -82,23 +104,85 @@ def build_agent_node(
         
         # 시스템 메시지 + 포맷된 대화 기록
         system_msg = SystemMessage(content=enhanced_prompt)
-        # 발언자 정보를 태그로 추가하여 스트리밍 시 식별 가능하도록
-        response = await model.ainvoke(
-            [system_msg] + formatted_messages,
-            config={"tags": ["participant", f"speaker:{profile.name}"], "run_name": profile.name}
-        )
         
-        # name 속성 설정
-        response.name = profile.name
-        
-        # 빈 응답 처리
-        content = getattr(response, 'content', '') or ''
-        if not content.strip():
-            response = AIMessage(
-                content=f"({profile.name}: 현재 추가 의견이 없습니다.)",
-                name=profile.name
+        # Tool이 없으면 기존 방식 그대로
+        if not tools:
+            response = await model.ainvoke(
+                [system_msg] + formatted_messages,
+                config={"tags": ["participant", f"speaker:{profile.name}"], "run_name": profile.name}
             )
+            response.name = profile.name
+            
+            content = getattr(response, 'content', '') or ''
+            if not content.strip():
+                response = AIMessage(
+                    content=f"({profile.name}: 현재 추가 의견이 없습니다.)",
+                    name=profile.name
+                )
+            
+            return {"messages": [response]}
         
+        # Tool-calling 모드
+        logger.info(f"[{profile.name}] 🔧 MCP tool-calling 모드 활성화")
+        tool_messages = [system_msg] + formatted_messages
+        iteration = 0
+        max_iterations = 5
+        
+        while iteration < max_iterations:
+            iteration += 1
+            logger.debug(f"[{profile.name}] 🔄 Tool-calling 루프 #{iteration}")
+            
+            response = await model.bind_tools(tools).ainvoke(
+                tool_messages,
+                config={"tags": ["participant", f"speaker:{profile.name}"], "run_name": profile.name}
+            )
+            tool_messages.append(response)
+            
+            if not response.tool_calls:
+                logger.info(f"[{profile.name}] ✅ 최종 응답 생성 완료 (총 {iteration}번 반복)")
+                response.name = profile.name
+                
+                content = getattr(response, 'content', '') or ''
+                if not content.strip():
+                    response = AIMessage(
+                        content=f"({profile.name}: 현재 추가 의견이 없습니다.)",
+                        name=profile.name
+                    )
+                
+                return {"messages": [response]}
+            
+            logger.info(f"[{profile.name}] 🛠️ LLM이 {len(response.tool_calls)}개 도구 호출 요청")
+            
+            # 도구 실행
+            for tc in response.tool_calls:
+                tool_name = tc["name"]
+                tool_args = tc.get("args", {})
+                logger.info(f"[{profile.name}]   → 도구: {tool_name}")
+                
+                tool_fn = {t.name: t for t in tools}.get(tool_name)
+                if tool_fn:
+                    try:
+                        result = await tool_fn.ainvoke(tool_args)
+                        logger.debug(f"[{profile.name}]   ✅ 도구 실행 성공")
+                        tool_messages.append(ToolMessage(
+                            content=str(result),
+                            tool_call_id=tc["id"],
+                        ))
+                    except Exception as e:
+                        logger.error(f"[{profile.name}]   ❌ 도구 실행 실패: {e}")
+                        tool_messages.append(ToolMessage(
+                            content=f"Error: {e}",
+                            tool_call_id=tc["id"],
+                        ))
+                else:
+                    logger.warning(f"[{profile.name}]   ⚠️ 알 수 없는 도구: {tool_name}")
+        
+        # 최대 반복 도달
+        logger.warning(f"[{profile.name}] ⚠️ 최대 반복 횟수 도달")
+        response = AIMessage(
+            content=f"({profile.name}: 응답 생성 중 문제가 발생했습니다.)",
+            name=profile.name
+        )
         return {"messages": [response]}
 
     return agent_node

@@ -232,9 +232,27 @@ async def run_meeting(
     logger.debug(f"Settings loaded: {settings}")
     logger.debug(f"Profiles path: {profiles_path}")
 
+    # MCP Tools 초기화
+    logger.debug("Initializing MCP tools...")
+    from thetable.graph.workflow import initialize_mcp_tools
+    try:
+        mcp_tools = await initialize_mcp_tools()
+        if mcp_tools:
+            total = sum(len(t) for t in mcp_tools.values())
+            console.print(f"[green]✅ MCP 도구 로드 완료: {total}개 도구 ({len(mcp_tools)}개 서버)[/green]")
+        else:
+            console.print("[yellow]⚠️  MCP 도구를 사용할 수 없습니다 (설정 또는 환경변수 확인 필요)[/yellow]")
+    except Exception as e:
+        logger.warning(f"MCP 초기화 실패: {e}")
+        console.print(f"[yellow]⚠️  MCP 초기화 실패: {e}[/yellow]")
+        mcp_tools = None
+
     # Workflow 생성
     logger.debug("Creating workflow...")
-    workflow = create_meeting_workflow(profiles_path=str(profiles_path))
+    workflow = create_meeting_workflow(
+        profiles_path=str(profiles_path),
+        mcp_tools=mcp_tools
+    )
     logger.debug(f"Workflow created: {workflow}")
 
     # Human 프로필 이름 추출
