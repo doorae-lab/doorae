@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     
     agent_profiles_path: str = "config/agent_profiles.yaml"
 
+    # 대화 요약 설정
+    max_messages_before_summary: int = 5  # 이 개수 초과 시 요약
+    keep_recent_messages: int = 3  # 최근 몇 개 유지
+    summary_max_tokens: int = 3000  # 요약 최대 토큰
+
     # LangSmith 설정
     langchain_tracing_v2: bool = False  # 기본값: 비활성화
     langchain_api_key: Optional[str] = None

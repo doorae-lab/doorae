@@ -16,6 +16,7 @@ from prompt_toolkit import prompt as pt_prompt
 from thetable.config import get_settings
 from thetable.graph.agent_factory import build_agent_node
 from thetable.graph.state import MeetingState
+from thetable.graph.summarization import summarize_conversation_node
 from thetable.core.profile import load_agent_profiles
 
 
@@ -359,10 +360,16 @@ def create_meeting_workflow(
     
     workflow.add_node("refill_speakers", refill_with_model)
 
-    # 4. process_response 노드 추가 (task_model 사용)
+    # 4. summarize 노드 추가 (task_model 사용)
+    async def summarize_with_model(state: MeetingState):
+        return await summarize_conversation_node(state, task_model)
+
+    workflow.add_node("summarize", summarize_with_model)
+
+    # 5. process_response 노드 추가 (task_model 사용)
     async def process_with_model(state: MeetingState):
         return await process_response(state, task_model, list(profiles.keys()))
-    
+
     workflow.add_node("process_response", process_with_model)
 
     # 5. 각 에이전트 노드 추가 (is_human 분기)
@@ -378,9 +385,11 @@ def create_meeting_workflow(
     # 6. 진입점: refill_speakers
     workflow.set_entry_point("refill_speakers")
 
-    # 7. 에이전트 → process_response
+    # 7. 에이전트 → summarize → process_response
     for name in profiles.keys():
-        workflow.add_edge(name.lower(), "process_response")
+        workflow.add_edge(name.lower(), "summarize")
+
+    workflow.add_edge("summarize", "process_response")
 
     # 8. process_response → condition_router
     available_targets = {name.lower(): name.lower() for name in profiles.keys()}
