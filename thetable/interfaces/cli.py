@@ -350,17 +350,21 @@ async def run_meeting(
                     console.print(f"\n[bold cyan][{speaker}][/bold cyan]")
                     current_speaker = speaker
             
-            # on_chat_model_stream: 토큰 단위 출력
+            # on_chat_model_stream: 토큰 단위 출력 (참여자 응답만)
             elif kind == "on_chat_model_stream":
-                chunk = event["data"]["chunk"]
-                content = getattr(chunk, "content", "")
-                if content:
-                    console.print(content, end="")
+                tags = event.get("tags", [])
+                if "participant" in tags:
+                    chunk = event["data"]["chunk"]
+                    content = getattr(chunk, "content", "")
+                    if content:
+                        console.print(content, end="")
             
-            # on_chat_model_end: LLM 응답 완료 (줄바꿈 및 구분선)
+            # on_chat_model_end: LLM 응답 완료 (줄바꿈 및 구분선, 참여자 응답만)
             elif kind == "on_chat_model_end":
-                console.print()  # 줄바꿈
-                console.rule(style="dim")
+                tags = event.get("tags", [])
+                if "participant" in tags:
+                    console.print()  # 줄바꿈
+                    console.rule(style="dim")
             
             # on_chain_end: 노드 종료 시 pending_speakers 표시
             elif kind == "on_chain_end":

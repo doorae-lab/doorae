@@ -74,7 +74,7 @@ def build_agent_node(
         # 발언자 정보를 태그로 추가하여 스트리밍 시 식별 가능하도록
         response = await model.ainvoke(
             [system_msg] + formatted_messages,
-            config={"tags": [f"speaker:{profile.name}"], "run_name": profile.name}
+            config={"tags": ["participant", f"speaker:{profile.name}"], "run_name": profile.name}
         )
         
         # name 속성 설정

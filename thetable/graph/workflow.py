@@ -180,8 +180,9 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
             new_idx = current_idx + 1
             new_pending = []  # 안건 변경 시 pending 초기화
 
-    # 6. 마지막 안건에서 Host 회의 종료 발언 감지
-    if speaker_name == "Host" and current_idx == len(agendas) - 1:
+    # 6. Host 회의 종료 발언 감지 (모든 안건이 완료/보류일 때만)
+    all_agendas_done = all(a["status"] in ["completed", "deferred"] for a in new_agendas)
+    if speaker_name == "Host" and all_agendas_done:
         # 키워드 우선 감지
         if detect_meeting_end_keyword(content):
             meeting_ended = True
