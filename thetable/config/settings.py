@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     llm_task_temperature: float = 0.0    # 일관된 결과 위해 낮게
     
     # LangGraph 설정
-    recursion_limit: int = 100  # 회의 최대 턴 수 제한 (기본값: 25)
+    recursion_limit: int = 100  # LangGraph 재귀 깊이 제한
+    max_turns: int = 30  # 회의 최대 턴 수 (무한루프 방지)
     
     agent_profiles_path: str = "config/agent_profiles.yaml"
 

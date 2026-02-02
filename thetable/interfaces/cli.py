@@ -288,6 +288,7 @@ async def run_meeting(
         "speaker_counts": {},
         "consecutive_host_delegations": 0,
         "start_time": time.time(),
+        "max_turns": settings.max_turns,
     }
     logger.debug(f"Initial state: {initial_state}")
 
