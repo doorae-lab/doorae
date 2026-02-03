@@ -40,7 +40,7 @@ class BaseAgent:
 
     def _build_system_prompt(self) -> str:
         """시스템 프롬프트 생성"""
-        return f"""You are {self.name}, a {self.profile.role}.
+        prompt = f"""You are {self.name}, a {self.profile.role}.
 
 Your responsibilities:
 {chr(10).join(f'- {r}' for r in self.profile.responsibilities)}
@@ -50,6 +50,12 @@ Your expertise:
 
 Respond according to your role and the given task.
 """
+        
+        # metadata에서 추가 지시사항 로드
+        if "additional_instructions" in self.profile.metadata:
+            prompt += f"\n\n{self.profile.metadata['additional_instructions']}"
+        
+        return prompt
 
     def _build_user_prompt(self, context: Dict[str, Any]) -> str:
         """사용자 프롬프트 생성"""
