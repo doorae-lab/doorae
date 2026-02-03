@@ -5,9 +5,10 @@ LLM 호출 기반 에이전트 노드 생성 (MCP Tool 지원)
 import logging
 from typing import Any
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 
 from thetable.core.profile import AgentProfile
+from thetable.agents.base_agent import BaseAgent
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def build_agent_node(
     all_agent_names: list[str] = None,
     all_profiles: dict = None
 ) -> Any:
-    """에이전트 노드 빌드 (MCP Tool 지원)
+    """에이전트 노드 빌드 (BaseAgent 활용)
 
     Args:
         profile: 에이전트 프로필
@@ -37,57 +38,44 @@ def build_agent_node(
     Returns:
         LLM 호출 래퍼 함수 (tool-calling 지원)
     """
-    agent_prompt = _build_agent_prompt(profile, all_agent_names, all_profiles)
-    
-    # Tools가 있으면 시스템 프롬프트에 도구 정보 추가
+    # BaseAgent 생성
+    agent = BaseAgent(name=profile.name, profile=profile, llm=model)
+
+    # MCP 도구 바인딩
     if tools:
-        tool_names = [t.name for t in tools]
-        tools_list = ", ".join(sorted(tool_names))
-        tools_instruction = f"""
-
-**AVAILABLE TOOLS:**
-You have access to MCP tools: {tools_list}
-
-When relevant to the discussion, use these tools to:
-- Check actual repository status, open PRs, recent issues
-- Fetch real data before making statements about code or project status
-- Verify facts rather than making assumptions
-
-Always base your contributions on real data when tools are available.
-"""
-        agent_prompt = agent_prompt + tools_instruction
+        agent.bind_mcp_tools(tools)
         logger.info(f"[{profile.name}] 🔧 MCP 도구 바인딩: {len(tools)}개")
 
+    # 프롬프트 구성 (LangGraph 컨텍스트 포함)
+    agent_prompt = _build_agent_prompt(profile, all_agent_names, all_profiles)
+
     async def agent_node(state):
-        """LLM 호출로 응답 생성 (Tool-Calling 지원)"""
+        """LLM 호출로 응답 생성 (BaseAgent 활용)"""
         messages = state.get("messages", [])
         agendas = state.get("agendas", [])
         current_idx = state.get("current_agenda_idx", 0)
         summary = state.get("summary", "")
 
         # 대화 기록을 명확한 포맷으로 변환
-        # (name 속성을 content에 포함시켜 모델이 문맥을 이해하도록)
         formatted_messages = []
         for msg in messages:
             content = getattr(msg, 'content', '') or ''
             if not content.strip():
                 continue
-            
+
             name = getattr(msg, 'name', None)
             msg_type = type(msg).__name__
-            
+
             if msg_type == 'HumanMessage':
-                # 사용자 메시지는 그대로
                 formatted_messages.append(HumanMessage(content=f"[회의 시작 요청]\n{content}"))
             elif msg_type == 'AIMessage' and name:
-                # AI 메시지는 발언자 이름을 포함
                 formatted_messages.append(HumanMessage(content=f"[{name}의 발언]\n{content}"))
-        
+
         # 현재 발언 요청 추가
         formatted_messages.append(HumanMessage(
             content=f"이제 {profile.name}({profile.role})로서 위 대화에 이어 발언해 주세요. 한국어로 간결하게 응답하세요."
         ))
-        
+
         # 안건 정보를 프롬프트에 포함
         agenda_context = _format_agenda_context(agendas, current_idx)
 
@@ -101,88 +89,27 @@ Always base your contributions on real data when tools are available.
 {agenda_context}"""
         else:
             enhanced_prompt = f"{agent_prompt}\n\n{agenda_context}"
-        
+
         # 시스템 메시지 + 포맷된 대화 기록
         system_msg = SystemMessage(content=enhanced_prompt)
-        
-        # Tool이 없으면 기존 방식 그대로
-        if not tools:
-            response = await model.ainvoke(
-                [system_msg] + formatted_messages,
-                config={"tags": ["participant", f"speaker:{profile.name}"], "run_name": profile.name}
+        all_messages = [system_msg] + formatted_messages
+
+        # BaseAgent의 invoke_with_tools 사용
+        config = {
+            "tags": ["participant", f"speaker:{profile.name}"],
+            "run_name": profile.name
+        }
+        response = await agent.invoke_with_tools(all_messages, config=config)
+        response.name = profile.name
+
+        # 빈 응답 처리
+        content = getattr(response, 'content', '') or ''
+        if not content.strip():
+            response = AIMessage(
+                content=f"({profile.name}: 현재 추가 의견이 없습니다.)",
+                name=profile.name
             )
-            response.name = profile.name
-            
-            content = getattr(response, 'content', '') or ''
-            if not content.strip():
-                response = AIMessage(
-                    content=f"({profile.name}: 현재 추가 의견이 없습니다.)",
-                    name=profile.name
-                )
-            
-            return {"messages": [response]}
-        
-        # Tool-calling 모드
-        logger.info(f"[{profile.name}] 🔧 MCP tool-calling 모드 활성화")
-        tool_messages = [system_msg] + formatted_messages
-        iteration = 0
-        max_iterations = 5
-        
-        while iteration < max_iterations:
-            iteration += 1
-            logger.debug(f"[{profile.name}] 🔄 Tool-calling 루프 #{iteration}")
-            
-            response = await model.bind_tools(tools).ainvoke(
-                tool_messages,
-                config={"tags": ["participant", f"speaker:{profile.name}"], "run_name": profile.name}
-            )
-            tool_messages.append(response)
-            
-            if not response.tool_calls:
-                logger.info(f"[{profile.name}] ✅ 최종 응답 생성 완료 (총 {iteration}번 반복)")
-                response.name = profile.name
-                
-                content = getattr(response, 'content', '') or ''
-                if not content.strip():
-                    response = AIMessage(
-                        content=f"({profile.name}: 현재 추가 의견이 없습니다.)",
-                        name=profile.name
-                    )
-                
-                return {"messages": [response]}
-            
-            logger.info(f"[{profile.name}] 🛠️ LLM이 {len(response.tool_calls)}개 도구 호출 요청")
-            
-            # 도구 실행
-            for tc in response.tool_calls:
-                tool_name = tc["name"]
-                tool_args = tc.get("args", {})
-                logger.info(f"[{profile.name}]   → 도구: {tool_name}")
-                
-                tool_fn = {t.name: t for t in tools}.get(tool_name)
-                if tool_fn:
-                    try:
-                        result = await tool_fn.ainvoke(tool_args)
-                        logger.debug(f"[{profile.name}]   ✅ 도구 실행 성공")
-                        tool_messages.append(ToolMessage(
-                            content=str(result),
-                            tool_call_id=tc["id"],
-                        ))
-                    except Exception as e:
-                        logger.error(f"[{profile.name}]   ❌ 도구 실행 실패: {e}")
-                        tool_messages.append(ToolMessage(
-                            content=f"Error: {e}",
-                            tool_call_id=tc["id"],
-                        ))
-                else:
-                    logger.warning(f"[{profile.name}]   ⚠️ 알 수 없는 도구: {tool_name}")
-        
-        # 최대 반복 도달
-        logger.warning(f"[{profile.name}] ⚠️ 최대 반복 횟수 도달")
-        response = AIMessage(
-            content=f"({profile.name}: 응답 생성 중 문제가 발생했습니다.)",
-            name=profile.name
-        )
+
         return {"messages": [response]}
 
     return agent_node
@@ -227,6 +154,26 @@ def _build_agent_prompt(
 예: "Designer님의 의견도 듣고 싶습니다"
 """
 
+    # metadata 섹션 생성
+    metadata_section = ""
+    if profile.metadata:
+        metadata_lines = ["", "## Context Metadata"]
+        metadata_lines.append("다음은 MCP 도구 사용 시 참조할 수 있는 컨텍스트 정보입니다:")
+        metadata_lines.append("")
+        
+        for key, value in profile.metadata.items():
+            # 리스트면 쉼표로 구분
+            if isinstance(value, list):
+                value_str = ", ".join(str(v) for v in value)
+            else:
+                value_str = str(value)
+            metadata_lines.append(f"- **{key}**: {value_str}")
+        
+        metadata_lines.append("")
+        metadata_lines.append("💡 이 정보를 MCP 도구(예: GitHub) 호출 시 적극 활용하세요.")
+        
+        metadata_section = "\n".join(metadata_lines)
+
     return f"""당신은 {profile.name}, {profile.role}입니다.
 
 ## 책임
@@ -234,7 +181,7 @@ def _build_agent_prompt(
 
 ## 전문 분야
 {chr(10).join(f'- {e}' for e in profile.expertise)}
-{participants_section}
+{participants_section}{metadata_section}
 간결하고 전문적으로 한국어로 응답하세요."""
 
 

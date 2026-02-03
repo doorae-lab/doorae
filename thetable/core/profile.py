@@ -1,6 +1,6 @@
 """Agent profile system"""
-from typing import Dict, List, Optional
-from pydantic import BaseModel
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field
 import yaml
 
 
@@ -14,6 +14,7 @@ class AgentProfile(BaseModel):
     agents: Optional[List["AgentProfile"]] = None  # 재귀적 하위 에이전트
     is_human: bool = False  # 사용자 참여자 여부
     mcp_tools: List[str] = []  # 사용할 MCP 서버 목록 (예: ["github", "jira"])
+    metadata: Dict[str, Any] = Field(default_factory=dict)  # Agent별 메타데이터 (예: repository 정보)
 
     def matches_phase(self, phase: str) -> bool:
         """특정 phase에서 자동 발언해야 하는지 확인"""
