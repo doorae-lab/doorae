@@ -227,6 +227,26 @@ def _build_agent_prompt(
 예: "Designer님의 의견도 듣고 싶습니다"
 """
 
+    # metadata 섹션 생성
+    metadata_section = ""
+    if profile.metadata:
+        metadata_lines = ["", "## Context Metadata"]
+        metadata_lines.append("다음은 MCP 도구 사용 시 참조할 수 있는 컨텍스트 정보입니다:")
+        metadata_lines.append("")
+        
+        for key, value in profile.metadata.items():
+            # 리스트면 쉼표로 구분
+            if isinstance(value, list):
+                value_str = ", ".join(str(v) for v in value)
+            else:
+                value_str = str(value)
+            metadata_lines.append(f"- **{key}**: {value_str}")
+        
+        metadata_lines.append("")
+        metadata_lines.append("💡 이 정보를 MCP 도구(예: GitHub) 호출 시 적극 활용하세요.")
+        
+        metadata_section = "\n".join(metadata_lines)
+
     return f"""당신은 {profile.name}, {profile.role}입니다.
 
 ## 책임
@@ -234,7 +254,7 @@ def _build_agent_prompt(
 
 ## 전문 분야
 {chr(10).join(f'- {e}' for e in profile.expertise)}
-{participants_section}
+{participants_section}{metadata_section}
 간결하고 전문적으로 한국어로 응답하세요."""
 
 
