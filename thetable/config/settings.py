@@ -23,7 +23,11 @@ class Settings(BaseSettings):
     # Task LLM (작은 작업: 멘션 추출, 종료 감지, 안건 분석)
     llm_task_model: str = "gpt-4o-mini"  # 나중에 gpt-3.5-turbo 등으로 변경 가능
     llm_task_temperature: float = 0.0    # 일관된 결과 위해 낮게
-    
+
+    # LLM 연결 설정
+    llm_timeout: float = 60.0  # 초 단위
+    llm_max_retries: int = 3
+
     # LangGraph 설정
     recursion_limit: int = 1000  # LangGraph 재귀 깊이 제한
     max_turns: int = 1000  # 회의 최대 턴 수 (무한루프 방지)

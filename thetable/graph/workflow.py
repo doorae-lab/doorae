@@ -384,6 +384,8 @@ def create_meeting_workflow(
             "temperature": settings.llm_main_temperature,
             "api_key": settings.openai_api_key,
             "streaming": True,  # 스트리밍 활성화
+            "timeout": settings.llm_timeout,
+            "max_retries": settings.llm_max_retries,
         }
         if settings.openai_base_url:
             main_kwargs["base_url"] = settings.openai_base_url
@@ -395,6 +397,8 @@ def create_meeting_workflow(
             "model": settings.llm_task_model,
             "temperature": settings.llm_task_temperature,
             "api_key": settings.openai_api_key,
+            "timeout": settings.llm_timeout,
+            "max_retries": settings.llm_max_retries,
         }
         if settings.openai_base_url:
             task_kwargs["base_url"] = settings.openai_base_url

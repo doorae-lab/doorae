@@ -95,8 +95,86 @@ Always base your contributions on real data when tools are available.
         else:
             logger.warning(f"[{self.name}] ⚠️ 빈 MCP 도구 목록으로 바인딩 시도")
 
+    async def invoke_with_tools(
+        self,
+        messages: list,
+        config: Optional[Dict[str, Any]] = None
+    ) -> AIMessage:
+        """Tool-calling 루프 실행 (LangGraph 통합용)
+
+        Args:
+            messages: SystemMessage, HumanMessage 등 메시지 리스트
+            config: LLM 호출 config (tags, run_name 등)
+
+        Returns:
+            최종 AIMessage (tool_calls가 없는 응답)
+        """
+        if not self._mcp_tools:
+            # 도구 없으면 단순 호출
+            response = await self._llm.ainvoke(messages, config=config)
+            return response
+
+        # Tool-calling 루프
+        logger.info(f"[{self.name}] 🔧 MCP tool-calling 모드 활성화 ({len(self._mcp_tools)}개 도구)")
+        tool_messages = list(messages)  # 복사
+        iteration = 0
+        max_iterations = 10
+
+        while iteration < max_iterations:
+            iteration += 1
+            logger.debug(f"[{self.name}] 🔄 Tool-calling 루프 #{iteration}")
+
+            response = await self._llm.bind_tools(self._mcp_tools).ainvoke(
+                tool_messages,
+                config=config
+            )
+            tool_messages.append(response)
+
+            if not response.tool_calls:
+                logger.info(f"[{self.name}] ✅ 최종 응답 생성 완료 (총 {iteration}번 반복)")
+                return response
+
+            logger.info(f"[{self.name}] 🛠️ LLM이 {len(response.tool_calls)}개 도구 호출 요청")
+
+            # 도구 실행
+            for tc in response.tool_calls:
+                tool_name = tc["name"]
+                tool_args = tc.get("args", {})
+                logger.info(f"[{self.name}]   → 도구: {tool_name}")
+                logger.debug(f"[{self.name}]      인자: {tool_args}")
+
+                tool_fn = {t.name: t for t in self._mcp_tools}.get(tool_name)
+                if tool_fn:
+                    try:
+                        result = await tool_fn.ainvoke(tool_args)
+                        logger.debug(f"[{self.name}]   ✅ 도구 실행 성공: {tool_name}")
+                        logger.debug(f"[{self.name}]      결과 (처음 200자): {str(result)[:200]}")
+                        tool_messages.append(ToolMessage(
+                            content=str(result),
+                            tool_call_id=tc["id"],
+                        ))
+                    except Exception as e:
+                        logger.error(f"[{self.name}]   ❌ 도구 실행 실패: {tool_name}, 오류: {e}")
+                        tool_messages.append(ToolMessage(
+                            content=f"Error executing {tool_name}: {e}",
+                            tool_call_id=tc["id"],
+                        ))
+                else:
+                    logger.warning(f"[{self.name}]   ⚠️ 알 수 없는 도구: {tool_name}")
+
+        # 최대 반복 도달
+        logger.warning(f"[{self.name}] ⚠️ 최대 반복 횟수 도달 ({max_iterations})")
+        return AIMessage(
+            content=f"({self.name}: 응답 생성 중 문제가 발생했습니다.)",
+            name=self.name
+        )
+
     async def generate_response(self, context: Dict[str, Any]) -> str:
-        """응답 생성 (MCP Tool-Calling 지원)"""
+        """응답 생성 (MCP Tool-Calling 지원)
+
+        Note: 이 메서드는 하위 호환성을 위해 유지됩니다.
+              새로운 코드에서는 invoke_with_tools를 사용하세요.
+        """
         # MCP 도구가 없으면 기존 로직
         if not self._mcp_tools:
             logger.debug(f"[{self.name}] MCP 도구 없음 - 일반 LLM 모드로 실행")
@@ -106,56 +184,12 @@ Always base your contributions on real data when tools are available.
             ])
             chain = prompt | self._llm | StrOutputParser()
             return await chain.ainvoke({})
-        
-        # MCP 도구가 있으면 tool-calling 루프
-        logger.info(f"[{self.name}] 🔧 MCP tool-calling 모드 활성화 ({len(self._mcp_tools)}개 도구)")
+
+        # invoke_with_tools 사용
         user_prompt = self._build_user_prompt(context)
         messages = [
             SystemMessage(content=self._system_prompt),
             HumanMessage(content=user_prompt),
         ]
-        
-        iteration = 0
-        max_iterations = 5  # 무한 루프 방지
-        
-        while iteration < max_iterations:
-            iteration += 1
-            logger.debug(f"[{self.name}] 🔄 Tool-calling 루프 #{iteration} 시작")
-            
-            response = await self._llm.bind_tools(self._mcp_tools).ainvoke(messages)
-            messages.append(response)
-            
-            if not response.tool_calls:
-                logger.info(f"[{self.name}] ✅ 최종 응답 생성 완료 (총 {iteration}번 반복)")
-                return response.content
-            
-            logger.info(f"[{self.name}] 🛠️ LLM이 {len(response.tool_calls)}개 도구 호출 요청")
-            
-            # 도구 실행
-            for tc in response.tool_calls:
-                tool_name = tc["name"]
-                tool_args = tc.get("args", {})
-                logger.info(f"[{self.name}]   → 도구: {tool_name}")
-                logger.debug(f"[{self.name}]      인자: {tool_args}")
-                
-                tool_fn = {t.name: t for t in self._mcp_tools}.get(tool_name)
-                if tool_fn:
-                    try:
-                        result = await tool_fn.ainvoke(tool_args)
-                        logger.debug(f"[{self.name}]   ✅ 도구 실행 성공: {tool_name}")
-                        logger.debug(f"[{self.name}]      결과 (처음 200자): {str(result)[:200]}")
-                        messages.append(ToolMessage(
-                            content=str(result),
-                            tool_call_id=tc["id"],
-                        ))
-                    except Exception as e:
-                        logger.error(f"[{self.name}]   ❌ 도구 실행 실패: {tool_name}, 오류: {e}")
-                        messages.append(ToolMessage(
-                            content=f"Error executing {tool_name}: {e}",
-                            tool_call_id=tc["id"],
-                        ))
-                else:
-                    logger.warning(f"[{self.name}]   ⚠️ 알 수 없는 도구: {tool_name}")
-        
-        logger.warning(f"[{self.name}] ⚠️ 최대 반복 횟수 도달 ({max_iterations})")
-        return messages[-1].content if messages else "(응답 생성 실패)"
+        response = await self.invoke_with_tools(messages)
+        return response.content or "(응답 생성 실패)"
