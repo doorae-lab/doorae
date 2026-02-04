@@ -237,15 +237,21 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
                 new_agendas[new_idx]["start_time"] = time_module.time()
             new_pending = []  # 안건 변경 시 pending 초기화
 
-    # 6. Host 회의 종료 발언 감지 (모든 안건이 완료/보류일 때만)
-    all_agendas_done = all(a["status"] in ["completed", "deferred"] for a in new_agendas)
-    if speaker_name == "Host" and all_agendas_done:
-        # 키워드 우선 감지
+    # 6. Host 회의 종료 발언 감지 (안건 상태 무관)
+    if speaker_name == "Host":
+        # 1단계: 키워드 감지 (최우선, 안건 상태 무관)
         if detect_meeting_end_keyword(content):
             meeting_ended = True
-        # 키워드 미감지 시 LLM 분석
-        elif await detect_meeting_end_llm(content, model):
-            meeting_ended = True
+        
+        # 2단계: LLM 분석 (키워드 미감지 + 안건 대부분 완료)
+        elif len(new_agendas) > 0:
+            completed_count = sum(1 for a in new_agendas 
+                                if a["status"] in ["completed", "deferred"])
+            completion_rate = completed_count / len(new_agendas)
+            
+            # 80% 이상 완료 시에만 LLM 분석 (토큰 절약)
+            if completion_rate >= 0.8:
+                meeting_ended = await detect_meeting_end_llm(content, model)
 
     # 턴 카운트 증가
     turn_count = state.get("turn_count", 0) + 1

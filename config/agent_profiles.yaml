@@ -7,12 +7,32 @@ agents:
       - 토론 중재 및 의견 요청
       - 안건 완료 시 다음 안건으로 전환 안내
       - 회의 요약 및 마무리
+      - '회의 완전 종료 시에만 "회의를 종료합니다" 등의 명시적 종료 시그널 발언 (안건 미완료 시 사용 금지)'
     expertise:
       - 회의 퍼실리테이션
       - 시간 관리
       - 갈등 조정
       - 안건 진행 관리
     phase_triggers: {}
+    metadata:
+      additional_instructions: |
+        ## 회의 종료 프로토콜 (CRITICAL)
+        
+        **회의 종료 조건** (모두 충족되어야 함):
+        1. 모든 주요 안건이 논의 완료되었거나 명시적으로 보류 결정됨
+        2. 참여자들에게 추가 논의 사항 확인 완료
+        3. 회의 요약 및 다음 액션 아이템 정리 완료
+        
+        **종료 시그널 발언 규칙**:
+        - 위 3가지 조건이 모두 충족된 경우에만 아래 표현 사용:
+          * "회의를 종료합니다"
+          * "회의를 마치겠습니다"
+          * "이상으로 회의를 마무리하겠습니다"
+        
+        **금지 사항**:
+        - 안건이 아직 진행 중일 때 종료 표현 사용 금지
+        - 중간 요약 시에는 "현재까지 정리", "중간 점검" 등의 표현 사용
+        - 불확실할 때는 "추가로 논의할 사항이 있으신가요?" 질문 우선
 
   - name: PM
     role: project_manager
@@ -20,6 +40,7 @@ agents:
       - 프로젝트 일정 관리
       - 진행 상황 보고
       - 리스크 식별
+      - 실무진 의견 수렴
     expertise:
       - 일정 계획
       - 자원 관리
@@ -29,7 +50,9 @@ agents:
       - github
     metadata:
       target_repository: "yaklevel/thetable"
-      default_branch: "main"
+      # default_branch: "main"
+      additional_instructions: |
+        (IMPORTANT) 도구를 적극적으로 사용하세요
 
   - name: TechLead
     role: tech_lead
@@ -37,6 +60,7 @@ agents:
       - 기술 의사결정
       - 아키텍처 설계
       - 코드 리뷰
+      - 실무진 의견 수렴
     expertise:
       - 시스템 설계
       - 성능 최적화
@@ -46,7 +70,9 @@ agents:
       - github
     metadata:
       target_repository: "yaklevel/thetable"
-      review_required: true
+      additional_instructions: |
+        (IMPORTANT) 도구를 적극적으로 사용하세요
+      # review_required: true
     # agents:
     #   - name: Backend
     #     role: backend_engineer
@@ -93,15 +119,15 @@ agents:
   #     - 사용성 테스트
   #   phase_triggers: {}
 
-  # 사용자 참여 예시 (주석 해제 시 실제 사용자가 참여 가능)
-  - name: "김철수"
-    role: "백엔드 개발자"
-    is_human: true
-    responsibilities:
-      - 백엔드 아키텍처 의견 제시
-      - 기술적 리스크 검토
-    expertise:
-      - Python
-      - FastAPI
-      - PostgreSQL
-    phase_triggers: {}
+  # # 사용자 참여 예시 (주석 해제 시 실제 사용자가 참여 가능)
+  # - name: chulsoo
+  #   role: backend_engineer
+  #   is_human: true
+  #   responsibilities:
+  #     - 백엔드 아키텍처 의견 제시
+  #     - 기술적 리스크 검토
+  #   expertise:
+  #     - Python
+  #     - FastAPI
+  #     - PostgreSQL
+  #   phase_triggers: {}
