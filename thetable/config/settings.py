@@ -19,10 +19,12 @@ class Settings(BaseSettings):
     # Main LLM (회의 에이전트 응답 생성)
     llm_main_model: str = "gpt-4o-mini"
     llm_main_temperature: float = 0.7
+    llm_main_max_tokens: int = 4096  # 응답 최대 토큰 (기본값)
     
     # Task LLM (작은 작업: 멘션 추출, 종료 감지, 안건 분석)
     llm_task_model: str = "gpt-4o-mini"  # 나중에 gpt-3.5-turbo 등으로 변경 가능
     llm_task_temperature: float = 0.0    # 일관된 결과 위해 낮게
+    llm_task_max_tokens: int = 2048  # Task LLM은 더 짧은 응답
 
     # LLM 연결 설정
     llm_timeout: float = 60.0  # 초 단위

@@ -7,16 +7,32 @@ from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 from pydantic import BaseModel, Field
 
 
+class AgendaItem(BaseModel):
+    """개별 안건 항목"""
+    title: str = Field(description="안건 제목")
+    description: str = Field(default="", description="안건 설명")
+    status: str = Field(default="pending", description="상태: pending, in_progress, completed, deferred")
+    required_speakers: List[str] = Field(default_factory=list, description="필수 발언자 목록")
+    owner: Optional[str] = Field(default=None, description="담당자")
+    decision: Optional[str] = Field(default=None, description="결정사항")
+    start_time: Optional[float] = Field(default=None, description="시작 시간")
+    end_time: Optional[float] = Field(default=None, description="종료 시간")
+
+
 class AgendaExtractionResult(BaseModel):
     """안건 추출 결과"""
-    items: List[dict] = Field(
+    items: List[AgendaItem] = Field(
         default_factory=list,
-        description="업데이트된 안건 리스트 (dict 형태)"
+        description="업데이트된 안건 리스트"
     )
     changes_summary: Optional[str] = Field(
         default=None,
         description="변경사항 요약 (디버깅용)"
     )
+
+    def items_as_dicts(self) -> List[dict]:
+        """items를 dict 리스트로 변환 (워크플로우 호환용)"""
+        return [item.model_dump() for item in self.items]
 
 
 async def extract_agenda_updates(
@@ -126,7 +142,9 @@ async def extract_agenda_updates(
         except Exception as inner_e:
             # 최종 fallback: 기존 안건 유지
             print(f"⚠️ 안건 추출 실패 (유지): {e}, {inner_e}")
+            # dict를 AgendaItem으로 변환
+            fallback_items = [AgendaItem(**item) for item in current_items]
             return AgendaExtractionResult(
-                items=current_items,
+                items=fallback_items,
                 changes_summary=f"추출 실패, 기존 안건 유지: {str(e)}"
             )
