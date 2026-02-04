@@ -10,7 +10,7 @@
 import asyncio
 from pathlib import Path
 from langchain_core.messages import HumanMessage
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph, END
 from prompt_toolkit import prompt as pt_prompt
 from loguru import logger
@@ -275,22 +275,39 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
         )
 
         # 업데이트된 안건으로 교체 (타임스탬프 보존)
-        new_agendas_from_llm = agenda_result.items
-        
-        # 빈 리스트가 반환되면 기존 안건 유지 (중요!)
-        if not new_agendas_from_llm:
-            logger.warning("안건 추출 결과가 비어있어 기존 안건 유지")
+        # agenda_result가 None이거나 items가 없으면 기존 안건 유지
+        if agenda_result is None:
+            logger.warning("안건 추출 결과가 None, 기존 안건 유지")
         else:
-            # 기존 타임스탬프 복원 (LLM이 제거했을 수 있음)
-            for i, new_agenda in enumerate(new_agendas_from_llm):
-                if i < len(new_agendas):
-                    # start_time, end_time 보존
-                    if new_agendas[i].get("start_time"):
-                        new_agenda["start_time"] = new_agendas[i]["start_time"]
-                    if new_agendas[i].get("end_time"):
-                        new_agenda["end_time"] = new_agendas[i]["end_time"]
+            # AgendaItem 리스트를 dict 리스트로 변환
+            new_agendas_from_llm = agenda_result.items_as_dicts()
+            
+            # 빈 리스트가 반환되면 기존 안건 유지 (중요!)
+            if not new_agendas_from_llm:
+                logger.warning("안건 추출 결과가 비어있어 기존 안건 유지")
+            else:
+                # 기존 타임스탬프 및 필수 정보 복원 (LLM이 제거했을 수 있음)
+                for i, new_agenda in enumerate(new_agendas_from_llm):
+                    if i < len(new_agendas):
+                        old_agenda = new_agendas[i]
+                        
+                        # 1. 필수 필드 보존 (새 안건에 없으면 기존 값 유지)
+                        if not new_agenda.get("required_speakers") and old_agenda.get("required_speakers"):
+                            new_agenda["required_speakers"] = old_agenda["required_speakers"]
+                            
+                        if not new_agenda.get("description") and old_agenda.get("description"):
+                            new_agenda["description"] = old_agenda["description"]
+                            
+                        if not new_agenda.get("owner") and old_agenda.get("owner"):
+                            new_agenda["owner"] = old_agenda["owner"]
 
-            new_agendas = new_agendas_from_llm
+                        # 2. 시스템 관리 필드 보존 (start_time, end_time)
+                        if old_agenda.get("start_time"):
+                            new_agenda["start_time"] = old_agenda["start_time"]
+                        if old_agenda.get("end_time"):
+                            new_agenda["end_time"] = old_agenda["end_time"]
+
+                new_agendas = new_agendas_from_llm
 
     except Exception as e:
         # 안건 업데이트 실패 시 기존 안건 유지
@@ -391,8 +408,8 @@ def condition_router(state: MeetingState) -> str:
 
 def create_meeting_workflow(
     profiles_path: str = "config/agent_profiles.yaml",
-    main_model: ChatOpenAI = None,
-    task_model: ChatOpenAI = None,
+    main_model = None,  # BaseChatModel
+    task_model = None,  # BaseChatModel
     mcp_tools: dict[str, list] = None
 ):
     """안건 기반 회의 워크플로우 생성
@@ -412,31 +429,41 @@ def create_meeting_workflow(
     # Main model (에이전트 응답 생성용)
     if main_model is None:
         main_kwargs = {
-            "model": settings.llm_main_model,
             "temperature": settings.llm_main_temperature,
             "max_tokens": settings.llm_main_max_tokens,
-            "api_key": settings.openai_api_key,
-            "streaming": True,  # 스트리밍 활성화
+            "streaming": True,
             "timeout": settings.llm_timeout,
             "max_retries": settings.llm_max_retries,
         }
+        if settings.openai_api_key:
+            main_kwargs["api_key"] = settings.openai_api_key
         if settings.openai_base_url:
             main_kwargs["base_url"] = settings.openai_base_url
-        main_model = ChatOpenAI(**main_kwargs)
+            
+        main_model = init_chat_model(
+            model=settings.llm_main_model,
+            model_provider=settings.llm_main_provider,
+            **main_kwargs
+        )
     
     # Task model (유틸리티 작업용)
     if task_model is None:
         task_kwargs = {
-            "model": settings.llm_task_model,
             "temperature": settings.llm_task_temperature,
             "max_tokens": settings.llm_task_max_tokens,
-            "api_key": settings.openai_api_key,
             "timeout": settings.llm_timeout,
             "max_retries": settings.llm_max_retries,
         }
+        if settings.openai_api_key:
+            task_kwargs["api_key"] = settings.openai_api_key
         if settings.openai_base_url:
             task_kwargs["base_url"] = settings.openai_base_url
-        task_model = ChatOpenAI(**task_kwargs)
+            
+        task_model = init_chat_model(
+            model=settings.llm_task_model,
+            model_provider=settings.llm_task_provider,
+            **task_kwargs
+        )
 
     # 1. 프로필 로드
     profiles = load_agent_profiles(profiles_path)
