@@ -40,6 +40,7 @@ agents:
       - 프로젝트 일정 관리
       - 진행 상황 보고
       - 리스크 식별
+      - 실무진 의견 수렴
     expertise:
       - 일정 계획
       - 자원 관리
@@ -49,7 +50,9 @@ agents:
       - github
     metadata:
       target_repository: "yaklevel/thetable"
-      default_branch: "main"
+      # default_branch: "main"
+      additional_instructions: |
+        (IMPORTANT) 도구를 적극적으로 사용하세요
 
   - name: TechLead
     role: tech_lead
@@ -57,6 +60,7 @@ agents:
       - 기술 의사결정
       - 아키텍처 설계
       - 코드 리뷰
+      - 실무진 의견 수렴
     expertise:
       - 시스템 설계
       - 성능 최적화
@@ -66,7 +70,9 @@ agents:
       - github
     metadata:
       target_repository: "yaklevel/thetable"
-      review_required: true
+      additional_instructions: |
+        (IMPORTANT) 도구를 적극적으로 사용하세요
+      # review_required: true
     # agents:
     #   - name: Backend
     #     role: backend_engineer
@@ -113,15 +119,15 @@ agents:
   #     - 사용성 테스트
   #   phase_triggers: {}
 
-  # 사용자 참여 예시 (주석 해제 시 실제 사용자가 참여 가능)
-  - name: "김철수"
-    role: "백엔드 개발자"
-    is_human: true
-    responsibilities:
-      - 백엔드 아키텍처 의견 제시
-      - 기술적 리스크 검토
-    expertise:
-      - Python
-      - FastAPI
-      - PostgreSQL
-    phase_triggers: {}
+  # # 사용자 참여 예시 (주석 해제 시 실제 사용자가 참여 가능)
+  # - name: chulsoo
+  #   role: backend_engineer
+  #   is_human: true
+  #   responsibilities:
+  #     - 백엔드 아키텍처 의견 제시
+  #     - 기술적 리스크 검토
+  #   expertise:
+  #     - Python
+  #     - FastAPI
+  #     - PostgreSQL
+  #   phase_triggers: {}
