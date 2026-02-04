@@ -5,6 +5,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_openai import ChatOpenAI
+from openai import LengthFinishReasonError
 
 from thetable.config import get_settings
 from thetable.core.profile import AgentProfile
@@ -31,8 +32,9 @@ class BaseAgent:
         """기본 LLM 초기화"""
         settings = get_settings()
         kwargs = {
-            "model": settings.llm_model,
-            "temperature": settings.llm_temperature,
+            "model": settings.llm_main_model,
+            "temperature": settings.llm_main_temperature,
+            "max_tokens": settings.llm_main_max_tokens,
         }
         if settings.openai_base_url:
             kwargs["base_url"] = settings.openai_base_url
@@ -124,16 +126,24 @@ Always base your contributions on real data when tools are available.
         logger.info(f"[{self.name}] 🔧 MCP tool-calling 모드 활성화 ({len(self._mcp_tools)}개 도구)")
         tool_messages = list(messages)  # 복사
         iteration = 0
-        max_iterations = 10
+        max_iterations = 50
 
         while iteration < max_iterations:
             iteration += 1
             logger.debug(f"[{self.name}] 🔄 Tool-calling 루프 #{iteration}")
 
-            response = await self._llm.bind_tools(self._mcp_tools).ainvoke(
-                tool_messages,
-                config=config
-            )
+            try:
+                response = await self._llm.bind_tools(self._mcp_tools).ainvoke(
+                    tool_messages,
+                    config=config
+                )
+            except LengthFinishReasonError as e:
+                logger.error(f"[{self.name}] ❌ 토큰 길이 제한 도달: {e}")
+                return AIMessage(
+                    content=f"({self.name}: 응답이 너무 길어 생성을 중단했습니다. 더 간결한 질문으로 다시 시도해주세요.)",
+                    name=self.name
+                )
+            
             tool_messages.append(response)
 
             if not response.tool_calls:

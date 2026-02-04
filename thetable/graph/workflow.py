@@ -270,7 +270,7 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
         )
 
         # 업데이트된 안건으로 교체 (타임스탬프 보존)
-        new_agendas_from_llm = agenda_result.items
+        new_agendas_from_llm = agenda_result.items_as_dicts()
 
         # 기존 타임스탬프 복원 (LLM이 제거했을 수 있음)
         for i, new_agenda in enumerate(new_agendas_from_llm):
@@ -388,6 +388,7 @@ def create_meeting_workflow(
         main_kwargs = {
             "model": settings.llm_main_model,
             "temperature": settings.llm_main_temperature,
+            "max_tokens": settings.llm_main_max_tokens,
             "api_key": settings.openai_api_key,
             "streaming": True,  # 스트리밍 활성화
             "timeout": settings.llm_timeout,
@@ -402,6 +403,7 @@ def create_meeting_workflow(
         task_kwargs = {
             "model": settings.llm_task_model,
             "temperature": settings.llm_task_temperature,
+            "max_tokens": settings.llm_task_max_tokens,
             "api_key": settings.openai_api_key,
             "timeout": settings.llm_timeout,
             "max_retries": settings.llm_max_retries,
