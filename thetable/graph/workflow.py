@@ -8,20 +8,18 @@
 - AI 자동 안건 관리 (추가/수정/제거)
 """
 import asyncio
-import logging
 from pathlib import Path
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from prompt_toolkit import prompt as pt_prompt
+from loguru import logger
 
 from thetable.config import get_settings
 from thetable.graph.agent_factory import build_agent_node
 from thetable.graph.state import MeetingState
 from thetable.graph.summarization import summarize_conversation_node
 from thetable.core.profile import load_agent_profiles
-
-logger = logging.getLogger(__name__)
 
 
 async def initialize_mcp_tools(config_path: str = None) -> dict[str, list]:
@@ -145,11 +143,15 @@ async def extract_mentions_llm(content: str, model, valid_speakers: list[str]) -
 
     response = await model.ainvoke(prompt)
     result = response.content.strip()
+    
+    logger.debug(f"멘션 추출 LLM 응답: '{result}' (발언: {content[:50]}...)")
 
     if result == "없음":
         return []
 
-    return [s.strip() for s in result.split(',') if s.strip() in valid_speakers]
+    extracted = [s.strip() for s in result.split(',') if s.strip() in valid_speakers]
+    logger.debug(f"추출된 발화자: {extracted}")
+    return extracted
 
 
 def detect_agenda_completion(content: str) -> bool:
@@ -166,9 +168,12 @@ def detect_meeting_end_keyword(content: str) -> bool:
     """Host 발언에서 회의 종료 키워드 감지"""
     end_keywords = [
         "회의를 마치겠습니다", "회의를 종료", "이상으로 마치겠습니다",
-        "오늘 회의는 여기까지", "수고하셨습니다", "회의 종료"
+        "오늘 회의는 여기까지", "회의 종료합니다"
     ]
-    return any(kw in content for kw in end_keywords)
+    result = any(kw in content for kw in end_keywords)
+    if result:
+        logger.debug(f"회의 종료 키워드 감지됨: {content[:50]}...")
+    return result
 
 
 async def detect_meeting_end_llm(content: str, model) -> bool:
@@ -270,18 +275,22 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
         )
 
         # 업데이트된 안건으로 교체 (타임스탬프 보존)
-        new_agendas_from_llm = agenda_result.items_as_dicts()
+        new_agendas_from_llm = agenda_result.items
+        
+        # 빈 리스트가 반환되면 기존 안건 유지 (중요!)
+        if not new_agendas_from_llm:
+            logger.warning("안건 추출 결과가 비어있어 기존 안건 유지")
+        else:
+            # 기존 타임스탬프 복원 (LLM이 제거했을 수 있음)
+            for i, new_agenda in enumerate(new_agendas_from_llm):
+                if i < len(new_agendas):
+                    # start_time, end_time 보존
+                    if new_agendas[i].get("start_time"):
+                        new_agenda["start_time"] = new_agendas[i]["start_time"]
+                    if new_agendas[i].get("end_time"):
+                        new_agenda["end_time"] = new_agendas[i]["end_time"]
 
-        # 기존 타임스탬프 복원 (LLM이 제거했을 수 있음)
-        for i, new_agenda in enumerate(new_agendas_from_llm):
-            if i < len(new_agendas):
-                # start_time, end_time 보존
-                if new_agendas[i].get("start_time"):
-                    new_agenda["start_time"] = new_agendas[i]["start_time"]
-                if new_agendas[i].get("end_time"):
-                    new_agenda["end_time"] = new_agendas[i]["end_time"]
-
-        new_agendas = new_agendas_from_llm
+            new_agendas = new_agendas_from_llm
 
     except Exception as e:
         # 안건 업데이트 실패 시 기존 안건 유지
@@ -298,7 +307,7 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
     }
 
 
-async def refill_speakers(state: MeetingState, model) -> dict:
+async def refill_speakers(state: MeetingState, model, valid_speakers: list[str] = None) -> dict:
     """pending_speakers 비었을 때 채우기"""
     agendas = state.get("agendas", [])
     current_idx = state.get("current_agenda_idx", 0)
@@ -310,10 +319,19 @@ async def refill_speakers(state: MeetingState, model) -> dict:
 
     current_agenda = agendas[current_idx]
     required = current_agenda.get("required_speakers", [])
+    
+    # 실제 존재하는 에이전트만 필터링 (Designer, DevOps 등 없는 에이전트 무시)
+    if valid_speakers:
+        valid_required = [s for s in required if s in valid_speakers]
+        logger.debug(f"refill_speakers: required={required}, valid_required={valid_required}")
+    else:
+        valid_required = required
 
     # 1차: 안건의 required_speakers 중 미발언자
     already_spoken = set(speaker_counts.keys())
-    remaining = get_remaining_speakers(required, already_spoken)
+    remaining = get_remaining_speakers(valid_required, already_spoken)
+    
+    logger.debug(f"refill_speakers: already_spoken={already_spoken}, remaining={remaining}")
 
     if remaining:
         return {
@@ -344,22 +362,30 @@ def condition_router(state: MeetingState) -> str:
     max_turns = state.get("max_turns", 30)
     meeting_ended = state.get("meeting_ended", False)
 
+    logger.debug(f"condition_router: pending={pending}, meeting_ended={meeting_ended}, turn={turn_count}/{max_turns}, idx={current_idx}/{len(agendas)}")
+
     # 회의 종료 플래그 최우선 체크
     if meeting_ended:
+        logger.debug("condition_router: END (meeting_ended)")
         return END
 
     # 최대 턴 수 초과 체크 (무한루프 방지)
     if turn_count >= max_turns:
+        logger.debug("condition_router: END (max_turns)")
         return END
 
     # 모든 안건 완료 체크
     if current_idx >= len(agendas):
+        logger.debug("condition_router: END (all agendas done)")
         return END
 
     if pending:
-        return pending[0].lower()
+        next_speaker = pending[0].lower()
+        logger.debug(f"condition_router: routing to '{next_speaker}'")
+        return next_speaker
 
     # 빈 큐 → refill_speakers 노드로
+    logger.debug("condition_router: routing to 'refill_speakers'")
     return "refill_speakers"
 
 
@@ -420,7 +446,7 @@ def create_meeting_workflow(
 
     # 3. refill_speakers 노드 추가 (main_model 사용)
     async def refill_with_model(state: MeetingState):
-        return await refill_speakers(state, main_model)
+        return await refill_speakers(state, main_model, list(profiles.keys()))
     
     workflow.add_node("refill_speakers", refill_with_model)
 

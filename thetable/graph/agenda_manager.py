@@ -109,7 +109,7 @@ async def extract_agenda_updates(
 
     try:
         # 1차 시도: 구조화된 출력
-        structured_llm = llm.with_structured_output(AgendaExtractionResult)
+        structured_llm = llm.with_structured_output(AgendaExtractionResult, method="function_calling")
         result = await structured_llm.ainvoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content="위 대화를 분석하여 안건 목록을 업데이트해주세요.")
