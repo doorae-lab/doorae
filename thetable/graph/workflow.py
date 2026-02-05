@@ -309,6 +309,16 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
 
                 new_agendas = new_agendas_from_llm
 
+        # 상태-타임스탬프 일관성 보장
+        for agenda in new_agendas:
+            # in_progress 상태인데 start_time이 없으면 현재 시간으로 설정
+            if agenda["status"] == "in_progress" and not agenda.get("start_time"):
+                agenda["start_time"] = time_module.time()
+
+            # completed/deferred 상태인데 end_time이 없으면 현재 시간으로 설정
+            if agenda["status"] in ["completed", "deferred"] and not agenda.get("end_time"):
+                agenda["end_time"] = time_module.time()
+
     except Exception as e:
         # 안건 업데이트 실패 시 기존 안건 유지
         print(f"⚠️ 안건 업데이트 실패: {e}")
