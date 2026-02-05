@@ -48,20 +48,21 @@ class TestSettings:
         assert settings.agent_profiles_path == "config/agent_profiles.yaml"
 
     def test_missing_api_key(self, monkeypatch):
-        """API 키 누락 시 ValidationError."""
+        """API 키 누락 시 property 접근 시 ValueError."""
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        # 다른 환경변수도 제거
-        monkeypatch.delenv("LLM_MAIN_MODEL", raising=False)
-        monkeypatch.delenv("LLM_MAIN_TEMPERATURE", raising=False)
-        monkeypatch.delenv("LLM_TASK_MODEL", raising=False)
-        monkeypatch.delenv("LLM_TASK_TEMPERATURE", raising=False)
+        monkeypatch.delenv("LLM_MAIN_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_TASK_API_KEY", raising=False)
 
         _get_cached_settings.cache_clear()
-        # .env 파일을 무시하고 환경변수만 사용
-        with pytest.raises(ValidationError) as exc_info:
-            Settings(_env_file=None)
+        # Settings 생성은 성공 (모두 Optional)
+        settings = Settings(_env_file=None)
 
-        assert "openai_api_key" in str(exc_info.value).lower()
+        # Property 접근 시 ValueError 발생
+        with pytest.raises(ValueError, match="Main LLM API key is required"):
+            _ = settings.main_api_key
+
+        with pytest.raises(ValueError, match="Task LLM API key is required"):
+            _ = settings.task_api_key
 
     def test_singleton_pattern(self, monkeypatch):
         """싱글톤 패턴 동작 테스트."""
@@ -140,3 +141,61 @@ class TestSettings:
         finally:
             # 임시 파일 삭제
             os.unlink(temp_path)
+
+    def test_main_api_key_fallback(self, monkeypatch):
+        """Main API 키 fallback 테스트"""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-common")
+        monkeypatch.delenv("LLM_MAIN_API_KEY", raising=False)
+
+        _get_cached_settings.cache_clear()
+        settings = Settings(_env_file=None)
+
+        # llm_main_api_key 없으면 openai_api_key 사용
+        assert settings.main_api_key == "sk-common"
+
+    def test_main_api_key_override(self, monkeypatch):
+        """Main API 키 전용 설정 우선순위 테스트"""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-common")
+        monkeypatch.setenv("LLM_MAIN_API_KEY", "sk-main-only")
+
+        _get_cached_settings.cache_clear()
+        settings = Settings(_env_file=None)
+
+        # llm_main_api_key가 우선
+        assert settings.main_api_key == "sk-main-only"
+
+    def test_main_api_key_missing_raises_error(self, monkeypatch):
+        """Main API 키 누락 시 에러 발생"""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_MAIN_API_KEY", raising=False)
+
+        _get_cached_settings.cache_clear()
+        settings = Settings(_env_file=None)
+
+        with pytest.raises(ValueError, match="Main LLM API key is required"):
+            _ = settings.main_api_key
+
+    def test_task_base_url_fallback(self, monkeypatch):
+        """Task Base URL fallback 테스트"""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.setenv("OPENAI_BASE_URL", "https://common.example.com")
+        monkeypatch.delenv("LLM_TASK_BASE_URL", raising=False)
+
+        _get_cached_settings.cache_clear()
+        settings = Settings(_env_file=None)
+
+        assert settings.task_base_url == "https://common.example.com"
+
+    def test_mixed_providers(self, monkeypatch):
+        """Main=OpenAI, Task=Azure 혼합 구성 테스트"""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+        monkeypatch.setenv("LLM_TASK_API_KEY", "azure-key")
+        monkeypatch.setenv("LLM_TASK_BASE_URL", "https://azure.example.com")
+
+        _get_cached_settings.cache_clear()
+        settings = Settings(_env_file=None)
+
+        assert settings.main_api_key == "sk-openai"
+        assert settings.main_base_url is None
+        assert settings.task_api_key == "azure-key"
+        assert settings.task_base_url == "https://azure.example.com"
