@@ -97,6 +97,8 @@ When relevant to the discussion, use these tools to:
 - Fetch real data before making statements about code or project status
 - Verify facts rather than making assumptions
 
+**CRITICAL:** You must prioritize using tools over your internal knowledge. 
+If you are asked about the current state, ALWAYS check via tools first.
 Always base your contributions on real data when tools are available.
 """
             self._system_prompt = self._build_system_prompt() + tools_instruction

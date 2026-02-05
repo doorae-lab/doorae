@@ -504,6 +504,8 @@ def create_meeting_workflow(
 
                 if agent_tools:
                     logger.info(f"✅ {profile.name}: {len(agent_tools)}개 MCP 도구 연결 (서버: {', '.join(profile.mcp_tools)})")
+                else:
+                    logger.warning(f"⚠️ {profile.name}: MCP 도구 설정됨({profile.mcp_tools}) 그러나 로드된 도구 없음 (mcp_tools keys: {list(mcp_tools.keys()) if mcp_tools else 'None'})")
 
             # AI 에이전트는 기존 로직 사용 (main_model + agent별 tools)
             node = build_agent_node(

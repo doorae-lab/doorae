@@ -1,12 +1,12 @@
 {
   "mcpServers": {
     "github": {
-      "command": "npx",
+      "command": "go",
       "args": [
-        "-y",
-        "@modelcontextprotocol/server-github"
+        "run",
+        "github.com/github/github-mcp-server/cmd/github-mcp-server@latest",
+        "stdio"
       ],
-      "transport": "stdio",
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
       }
