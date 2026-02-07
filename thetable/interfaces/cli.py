@@ -27,6 +27,96 @@ app = typer.Typer(
 console = Console()
 
 
+# 스트리밍 이벤트 핸들러
+def _handle_chain_start(event: dict, state_ref: dict) -> None:
+    """on_chain_start 이벤트 처리 - 안건 상태 표시"""
+    name = event.get("name", "")
+    if name != "process_response":
+        return
+
+    data = event.get("data", {})
+    input_data = data.get("input", {})
+    current_idx = input_data.get("current_agenda_idx", 0)
+    agendas = input_data.get("agendas", [])
+
+    # 상태 변경 감지
+    current_state = (
+        current_idx,
+        tuple((a["title"], a["status"]) for a in agendas)
+    )
+
+    if current_state != state_ref.get("prev_agenda_state"):
+        state_ref["prev_agenda_state"] = current_state
+        # 안건 패널 출력
+        panel = format_agenda_panel(agendas, current_idx, state_ref["start_time"])
+        console.print(panel)
+        console.print()
+
+
+def _handle_chat_model_start(event: dict, state_ref: dict) -> None:
+    """on_chat_model_start 이벤트 처리 - 발언자 표시"""
+    speaker = event.get("name")
+
+    # run_name이 없으면 tags에서 speaker: 접두사 찾기
+    if not speaker or speaker == "ChatOpenAI":
+        tags = event.get("tags", [])
+        for tag in tags:
+            if tag.startswith("speaker:"):
+                speaker = tag.replace("speaker:", "")
+                break
+
+    # 발언자가 변경되었으면 표시
+    if speaker and speaker not in ("ChatOpenAI", "RunnableSequence") and speaker != state_ref.get("current_speaker"):
+        if state_ref.get("current_speaker"):
+            console.print()  # 이전 발언 줄바꿈
+        console.print(f"\n[bold cyan][{speaker}][/bold cyan]")
+        state_ref["current_speaker"] = speaker
+
+
+def _handle_chat_model_stream(event: dict) -> None:
+    """on_chat_model_stream 이벤트 처리 - 토큰 출력"""
+    tags = event.get("tags", [])
+    if "participant" not in tags:
+        return
+
+    chunk = event["data"]["chunk"]
+    content = getattr(chunk, "content", "")
+    if content:
+        console.print(content, end="")
+
+
+def _handle_chat_model_end(event: dict) -> None:
+    """on_chat_model_end 이벤트 처리 - 응답 완료"""
+    tags = event.get("tags", [])
+    if "participant" in tags:
+        console.print()  # 줄바꿈
+        console.rule(style="dim")
+
+
+def _handle_chain_end(event: dict) -> None:
+    """on_chain_end 이벤트 처리 - pending_speakers 표시"""
+    tags = event.get("tags", [])
+    if "langgraph_node" not in tags:
+        return
+
+    # node_name 추출
+    try:
+        idx = tags.index("langgraph_node")
+        node_name = tags[idx + 1] if idx + 1 < len(tags) else None
+    except (ValueError, IndexError):
+        return
+
+    if node_name != "process_response":
+        return
+
+    data = event.get("data", {})
+    output_data = data.get("output", {})
+    pending = output_data.get("pending_speakers", [])
+
+    if pending:
+        console.print(f"[dim]다음 발언 예정: {', '.join(pending)}[/dim]")
+
+
 def format_agenda_panel(
     agendas: List[dict],
     current_idx: int,
@@ -321,89 +411,30 @@ async def run_meeting(
     
     if stream:
         # 스트리밍 모드 - astream_events()로 토큰 단위 출력
-        current_speaker = None
-        prev_agenda_state = None
+        state_ref = {
+            "current_speaker": None,
+            "prev_agenda_state": None,
+            "start_time": initial_state["start_time"]
+        }
+
+        # 이벤트 핸들러 매핑
+        event_handlers = {
+            "on_chain_start": _handle_chain_start,
+            "on_chat_model_start": _handle_chat_model_start,
+            "on_chat_model_stream": _handle_chat_model_stream,
+            "on_chat_model_end": _handle_chat_model_end,
+            "on_chain_end": _handle_chain_end,
+        }
 
         async for event in workflow.astream_events(initial_state, config=graph_config, version="v2"):
             kind = event["event"]
-            
-            # on_chain_start: 노드 시작 시 안건 정보 표시
-            if kind == "on_chain_start":
-                name = event.get("name", "")
-
-                # 안건 상태 변경 감지 및 패널 출력 (process_response 노드에서)
-                if name == "process_response":
-                    data = event.get("data", {})
-                    input_data = data.get("input", {})
-                    current_idx = input_data.get("current_agenda_idx", 0)
-                    agendas = input_data.get("agendas", [])
-
-                    # 상태 변경 감지
-                    current_state = (
-                        current_idx,
-                        tuple((a["title"], a["status"]) for a in agendas)
-                    )
-
-                    if current_state != prev_agenda_state:
-                        prev_agenda_state = current_state
-
-                        # 안건 패널 출력
-                        panel = format_agenda_panel(agendas, current_idx, initial_state["start_time"])
-                        console.print(panel)
-                        console.print()  # 빈 줄
-            
-            # on_chat_model_start: LLM 호출 시작 (발언자 이름 출력)
-            elif kind == "on_chat_model_start":
-                # run_name에서 발언자 추출
-                speaker = event.get("name")
-                
-                # run_name이 없으면 tags에서 speaker: 접두사 찾기
-                if not speaker or speaker == "ChatOpenAI":
-                    tags = event.get("tags", [])
-                    for tag in tags:
-                        if tag.startswith("speaker:"):
-                            speaker = tag.replace("speaker:", "")
-                            break
-                
-                # 발언자가 변경되었으면 표시
-                if speaker and speaker not in ("ChatOpenAI", "RunnableSequence") and speaker != current_speaker:
-                    if current_speaker:
-                        console.print()  # 이전 발언 줄바꿈
-                    console.print(f"\n[bold cyan][{speaker}][/bold cyan]")
-                    current_speaker = speaker
-            
-            # on_chat_model_stream: 토큰 단위 출력 (참여자 응답만)
-            elif kind == "on_chat_model_stream":
-                tags = event.get("tags", [])
-                if "participant" in tags:
-                    chunk = event["data"]["chunk"]
-                    content = getattr(chunk, "content", "")
-                    if content:
-                        console.print(content, end="")
-            
-            # on_chat_model_end: LLM 응답 완료 (줄바꿈 및 구분선, 참여자 응답만)
-            elif kind == "on_chat_model_end":
-                tags = event.get("tags", [])
-                if "participant" in tags:
-                    console.print()  # 줄바꿈
-                    console.rule(style="dim")
-            
-            # on_chain_end: 노드 종료 시 pending_speakers 표시
-            elif kind == "on_chain_end":
-                metadata = event.get("metadata", {})
-                tags = event.get("tags", [])
-                
-                # process_response 노드 종료 시 pending_speakers 표시
-                if "langgraph_node" in tags:
-                    node_name = tags[tags.index("langgraph_node") + 1] if tags.index("langgraph_node") + 1 < len(tags) else None
-                    
-                    if node_name == "process_response":
-                        data = event.get("data", {})
-                        output_data = data.get("output", {})
-                        pending = output_data.get("pending_speakers", [])
-                        
-                        if pending:
-                            console.print(f"[dim]다음 발언 예정: {', '.join(pending)}[/dim]")
+            handler = event_handlers.get(kind)
+            if handler:
+                # state_ref를 받는 핸들러와 받지 않는 핸들러 구분
+                if kind in ("on_chain_start", "on_chat_model_start"):
+                    handler(event, state_ref)
+                else:
+                    handler(event)
     else:
         # 일반 모드
         logger.debug("Invoking workflow...")
