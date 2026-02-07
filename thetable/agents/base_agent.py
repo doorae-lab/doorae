@@ -1,6 +1,10 @@
 """Base agent with LLM integration"""
+import asyncio
 import logging
 from typing import Dict, Any, Optional
+import httpx
+import httpcore
+import openai
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
@@ -11,6 +15,17 @@ from thetable.config import get_settings
 from thetable.core.profile import AgentProfile
 
 logger = logging.getLogger(__name__)
+
+_RETRYABLE_EXCEPTIONS = (
+    httpx.RemoteProtocolError,
+    httpx.ReadError,
+    httpx.ConnectError,
+    httpcore.RemoteProtocolError,
+    httpcore.ReadError,
+    openai.APIConnectionError,
+    openai.APITimeoutError,
+    ConnectionError,
+)
 
 
 class BaseAgent:
@@ -77,6 +92,51 @@ Respond according to your role and the given task.
 
         return "\n".join(parts)
 
+    async def _ainvoke_with_retry(
+        self,
+        llm: ChatOpenAI,
+        messages: list,
+        config: Optional[Dict[str, Any]] = None,
+        max_retries: int = 3
+    ) -> AIMessage:
+        """LLM 호출에 네트워크 에러 재시도 로직 적용
+
+        Args:
+            llm: 호출할 LLM 인스턴스 (bind_tools 결과일 수도 있음)
+            messages: 메시지 리스트
+            config: LangChain config
+            max_retries: 최대 재시도 횟수
+
+        Returns:
+            AIMessage
+
+        Raises:
+            네트워크 에러가 max_retries 초과 시 원본 예외 re-raise
+        """
+        last_exception = None
+
+        for attempt in range(max_retries):
+            try:
+                return await llm.ainvoke(messages, config=config)
+            except _RETRYABLE_EXCEPTIONS as e:
+                last_exception = e
+                if attempt < max_retries - 1:
+                    # Exponential backoff: 1s, 2s, 4s (cap at 10s)
+                    delay = min(2 ** attempt, 10)
+                    logger.warning(
+                        f"[{self.name}] ⚠️ LLM 호출 네트워크 에러 (재시도 {attempt + 1}/{max_retries}): "
+                        f"{type(e).__name__}: {e}. {delay}초 후 재시도..."
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(
+                        f"[{self.name}] ❌ LLM 호출 최대 재시도 횟수 초과 ({max_retries}번): "
+                        f"{type(e).__name__}: {e}"
+                    )
+
+        # 최종 실패 시 원래 예외 re-raise
+        raise last_exception
+
     def bind_mcp_tools(self, tools: list) -> None:
         """MCP 도구를 에이전트에 바인딩하고 시스템 프롬프트를 업데이트."""
         self._mcp_tools = tools
@@ -122,7 +182,7 @@ Always base your contributions on real data when tools are available.
         """
         if not self._mcp_tools:
             # 도구 없으면 단순 호출
-            response = await self._llm.ainvoke(messages, config=config)
+            response = await self._ainvoke_with_retry(self._llm, messages, config=config)
             return response
 
         # Tool-calling 루프
@@ -136,7 +196,8 @@ Always base your contributions on real data when tools are available.
             logger.debug(f"[{self.name}] 🔄 Tool-calling 루프 #{iteration}")
 
             try:
-                response = await self._llm.bind_tools(self._mcp_tools).ainvoke(
+                response = await self._ainvoke_with_retry(
+                    self._llm.bind_tools(self._mcp_tools),
                     tool_messages,
                     config=config
                 )
