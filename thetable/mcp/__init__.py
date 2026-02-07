@@ -30,15 +30,15 @@ def load_mcp_config(
         예: {"github": {"url": "...", "transport": "streamable_http", "headers": {...}}}
     """
     from dotenv import load_dotenv
-    
+    from thetable import PROJECT_ROOT
+
     # .env 파일 로드 (프로젝트 루트에서)
-    project_root = Path(__file__).parent.parent.parent
-    env_path = project_root / ".env"
+    env_path = PROJECT_ROOT / ".env"
     if env_path.exists():
         load_dotenv(env_path)
-    
+
     if config_path is None:
-        config_path = Path(__file__).parent.parent.parent / "config" / "mcp_servers.json"
+        config_path = PROJECT_ROOT / "config" / "mcp_servers.json"
     else:
         config_path = Path(config_path)
 

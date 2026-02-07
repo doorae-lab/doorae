@@ -15,17 +15,14 @@ async def initialize_mcp_tools(config_path: Optional[str] = None) -> dict[str, l
     Returns:
         서버별 tools 딕셔너리 {server_name: [tools]}
     """
-    from pathlib import Path
-
     try:
         from langchain_mcp_adapters.client import MultiServerMCPClient
+        from thetable import PROJECT_ROOT
         from thetable.mcp import load_mcp_config, collect_tools_by_server
 
         # MCP 설정 로드
         if config_path is None:
-            config_path = (
-                Path(__file__).parent.parent.parent / "config" / "mcp_servers.json"
-            )
+            config_path = PROJECT_ROOT / "config" / "mcp_servers.json"
 
         config_dict = load_mcp_config(config_path)
 
