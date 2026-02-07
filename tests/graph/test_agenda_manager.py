@@ -60,8 +60,8 @@ async def test_extract_agenda_updates_basic():
 
     # 검증
     assert len(result.items) == 2
-    assert result.items[0]["title"] == "기존 안건"
-    assert result.items[1]["title"] == "새로운 배포 이슈"
+    assert result.items[0].title == "기존 안건"
+    assert result.items[1].title == "새로운 배포 이슈"
     assert mock_llm.with_structured_output.called
 
 
@@ -102,7 +102,7 @@ async def test_extract_agenda_updates_no_change():
 
     # 검증
     assert len(result.items) == 1
-    assert result.items[0]["title"] == "기존 안건"
+    assert result.items[0].title == "기존 안건"
 
 
 @pytest.mark.asyncio
@@ -139,7 +139,7 @@ async def test_extract_agenda_updates_llm_failure():
 
     # 검증: 기존 안건이 그대로 유지되어야 함
     assert len(result.items) == 1
-    assert result.items[0]["title"] == "기존 안건"
+    assert result.items[0].title == "기존 안건"
     assert "실패" in result.changes_summary
 
 
@@ -185,8 +185,8 @@ async def test_extract_agenda_updates_status_change():
     )
 
     # 검증
-    assert result.items[0]["status"] == "completed"
-    assert result.items[0].get("decision") == "내일 배포하기로 결정"
+    assert result.items[0].status == "completed"
+    assert result.items[0].decision == "내일 배포하기로 결정"
 
 
 @pytest.mark.asyncio
@@ -230,4 +230,4 @@ async def test_extract_agenda_updates_owner_assignment():
     )
 
     # 검증
-    assert result.items[0].get("owner") == "TechLead"
+    assert result.items[0].owner == "TechLead"
