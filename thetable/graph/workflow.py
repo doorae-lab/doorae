@@ -291,31 +291,17 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
                     if i < len(new_agendas):
                         old_agenda = new_agendas[i]
                         
-                        # 1. 필수 필드 보존 (새 안건에 없으면 기존 값 유지)
-                        if not new_agenda.get("required_speakers") and old_agenda.get("required_speakers"):
-                            new_agenda["required_speakers"] = old_agenda["required_speakers"]
-                            
-                        if not new_agenda.get("description") and old_agenda.get("description"):
-                            new_agenda["description"] = old_agenda["description"]
-                            
-                        if not new_agenda.get("owner") and old_agenda.get("owner"):
-                            new_agenda["owner"] = old_agenda["owner"]
-
-                        # 2. 시스템 관리 필드 보존 (start_time, end_time)
-                        if old_agenda.get("start_time"):
-                            new_agenda["start_time"] = old_agenda["start_time"]
-                        if old_agenda.get("end_time"):
-                            new_agenda["end_time"] = old_agenda["end_time"]
+                        # 필수 필드 보존 (새 안건에 없으면 기존 값 유지)
+                        for field, value in old_agenda.items():
+                            if value and not new_agenda.get(field):
+                                new_agenda[field] = value
 
                 new_agendas = new_agendas_from_llm
 
-        # 상태-타임스탬프 일관성 보장
+        # 상태-타임스탬프 일관성 보장 (없으면 현재 시간 설정)
         for agenda in new_agendas:
-            # in_progress 상태인데 start_time이 없으면 현재 시간으로 설정
             if agenda["status"] == "in_progress" and not agenda.get("start_time"):
                 agenda["start_time"] = time_module.time()
-
-            # completed/deferred 상태인데 end_time이 없으면 현재 시간으로 설정
             if agenda["status"] in ["completed", "deferred"] and not agenda.get("end_time"):
                 agenda["end_time"] = time_module.time()
 
