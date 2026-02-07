@@ -93,8 +93,8 @@ def _handle_chat_model_end(event: dict) -> None:
         console.rule(style="dim")
 
 
-def _handle_chain_end(event: dict) -> None:
-    """on_chain_end 이벤트 처리 - pending_speakers 표시"""
+def _handle_chain_end(event: dict, state_ref: dict) -> None:
+    """on_chain_end 이벤트 처리 - pending_speakers 표시 및 상태 누적"""
     tags = event.get("tags", [])
     if "langgraph_node" not in tags:
         return
@@ -115,6 +115,40 @@ def _handle_chain_end(event: dict) -> None:
 
     if pending:
         console.print(f"[dim]다음 발언 예정: {', '.join(pending)}[/dim]")
+
+    # 상태 누적 (요약 테이블용)
+    if "agendas" in output_data:
+        state_ref["agendas"] = output_data["agendas"]
+    if "speaker_counts" in output_data:
+        state_ref["speaker_counts"] = output_data["speaker_counts"]
+
+
+def _print_summary_table(agendas: Optional[List[dict]], speaker_counts: Optional[dict]) -> None:
+    """회의 요약 테이블 출력
+
+    Args:
+        agendas: 안건 리스트 (optional)
+        speaker_counts: 발언 횟수 딕셔너리 (optional)
+    """
+    if not agendas and not speaker_counts:
+        return
+
+    table = Table(title="회의 요약", show_header=True)
+    table.add_column("항목", style="cyan")
+    table.add_column("값", style="yellow")
+
+    # 안건 상태
+    if agendas:
+        completed = sum(1 for a in agendas if a["status"] == "completed")
+        table.add_row("완료된 안건", f"{completed}/{len(agendas)}")
+
+    # 발언 횟수
+    if speaker_counts:
+        for speaker, count in speaker_counts.items():
+            table.add_row(f"{speaker} 발언 횟수", str(count))
+
+    console.print("\n")
+    console.print(table)
 
 
 def format_agenda_panel(
@@ -193,11 +227,10 @@ def main(
         exists=True,
         dir_okay=False,
     ),
-    stream: bool = typer.Option(
+    no_stream: bool = typer.Option(
         False,
-        "--stream",
-        "-s",
-        help="스트리밍 모드 사용 (실시간 출력)",
+        "--no-stream",
+        help="스트리밍 모드 비활성화 (배치 모드 사용)",
     ),
     config: Optional[Path] = typer.Option(
         None,
@@ -247,8 +280,12 @@ def main(
 
         # 다른 옵션과 함께 사용
 
-        thetable --message "회의 시작" --stream -v
+        thetable --message "회의 시작" -v
         thetable --profiles config/custom.yaml
+
+        # 배치 모드 사용 (스트리밍 비활성화)
+
+        thetable --no-stream
     """
     # 버전 출력
     if version:
@@ -257,6 +294,9 @@ def main(
 
     # 로깅 설정
     setup_logging(verbose=verbose, quiet=quiet)
+
+    # 스트리밍 모드 계산 (--no-stream 플래그의 반대)
+    stream = not no_stream
 
     # 설정 로드
     settings = get_settings(config_path=config)
@@ -387,7 +427,9 @@ async def _run_streaming(workflow, state: dict, config: dict) -> None:
     state_ref = {
         "current_speaker": None,
         "prev_agenda_state": None,
-        "start_time": state["start_time"]
+        "start_time": state["start_time"],
+        "agendas": None,
+        "speaker_counts": None,
     }
 
     # 이벤트 핸들러 매핑
@@ -404,10 +446,13 @@ async def _run_streaming(workflow, state: dict, config: dict) -> None:
         handler = event_handlers.get(kind)
         if handler:
             # state_ref를 받는 핸들러와 받지 않는 핸들러 구분
-            if kind in ("on_chain_start", "on_chat_model_start"):
+            if kind in ("on_chain_start", "on_chat_model_start", "on_chain_end"):
                 handler(event, state_ref)
             else:
                 handler(event)
+
+    # 스트리밍 완료 후 요약 테이블 출력
+    _print_summary_table(state_ref.get("agendas"), state_ref.get("speaker_counts"))
 
 
 async def _run_batch(workflow, state: dict, config: dict) -> dict:
@@ -442,25 +487,7 @@ async def _run_batch(workflow, state: dict, config: dict) -> dict:
         console.rule(style="dim")
 
     # 메타 정보 테이블
-    if "agendas" in result or "speaker_counts" in result:
-        table = Table(title="회의 요약", show_header=True)
-        table.add_column("항목", style="cyan")
-        table.add_column("값", style="yellow")
-
-        # 안건 상태
-        if "agendas" in result:
-            agendas = result["agendas"]
-            completed = sum(1 for a in agendas if a["status"] == "completed")
-            table.add_row("완료된 안건", f"{completed}/{len(agendas)}")
-
-        # 발언 횟수
-        if "speaker_counts" in result:
-            counts = result["speaker_counts"]
-            for speaker, count in counts.items():
-                table.add_row(f"{speaker} 발언 횟수", str(count))
-
-        console.print("\n")
-        console.print(table)
+    _print_summary_table(result.get("agendas"), result.get("speaker_counts"))
 
     return result
 
