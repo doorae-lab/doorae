@@ -13,15 +13,20 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    openai_api_key: str  # 필수
+    # === 공통 설정 (Fallback) ===
+    openai_api_key: Optional[str] = None  # Main/Task 공통 fallback
     openai_base_url: Optional[str] = None  # 선택적 (기본: OpenAI 공식 엔드포인트)
-    
-    # Main LLM (회의 에이전트 응답 생성)
+
+    # === Main LLM (회의 에이전트 응답 생성) ===
+    llm_main_api_key: Optional[str] = None  # Main LLM 전용 (None이면 openai_api_key 사용)
+    llm_main_base_url: Optional[str] = None  # Main LLM 전용 (None이면 openai_base_url 사용)
     llm_main_model: str = "gpt-4o-mini"
     llm_main_temperature: float = 0.7
     llm_main_max_tokens: int = 4096  # 응답 최대 토큰 (기본값)
-    
-    # Task LLM (작은 작업: 멘션 추출, 종료 감지, 안건 분석)
+
+    # === Task LLM (작은 작업: 멘션 추출, 종료 감지, 안건 분석) ===
+    llm_task_api_key: Optional[str] = None  # Task LLM 전용 (None이면 openai_api_key 사용)
+    llm_task_base_url: Optional[str] = None  # Task LLM 전용 (None이면 openai_base_url 사용)
     llm_task_model: str = "gpt-4o-mini"  # 나중에 gpt-3.5-turbo 등으로 변경 가능
     llm_task_temperature: float = 0.0    # 일관된 결과 위해 낮게
     llm_task_max_tokens: int = 2048  # Task LLM은 더 짧은 응답
@@ -46,6 +51,43 @@ class Settings(BaseSettings):
     langchain_api_key: Optional[str] = None
     langchain_project: str = "thetable"  # 기본 프로젝트명
     langchain_endpoint: Optional[str] = None
+
+    # === Property: Fallback 처리 ===
+    @property
+    def main_api_key(self) -> str:
+        """Main LLM API 키 (fallback: openai_api_key)"""
+        key = self.llm_main_api_key or self.openai_api_key
+        if not key:
+            raise ValueError(
+                "Main LLM API key is required.\n"
+                "Please set one of the following in your .env file:\n"
+                "  - LLM_MAIN_API_KEY (Main LLM 전용)\n"
+                "  - OPENAI_API_KEY (공통 fallback)"
+            )
+        return key
+
+    @property
+    def main_base_url(self) -> Optional[str]:
+        """Main LLM Base URL (fallback: openai_base_url)"""
+        return self.llm_main_base_url or self.openai_base_url
+
+    @property
+    def task_api_key(self) -> str:
+        """Task LLM API 키 (fallback: openai_api_key)"""
+        key = self.llm_task_api_key or self.openai_api_key
+        if not key:
+            raise ValueError(
+                "Task LLM API key is required.\n"
+                "Please set one of the following in your .env file:\n"
+                "  - LLM_TASK_API_KEY (Task LLM 전용)\n"
+                "  - OPENAI_API_KEY (공통 fallback)"
+            )
+        return key
+
+    @property
+    def task_base_url(self) -> Optional[str]:
+        """Task LLM Base URL (fallback: openai_base_url)"""
+        return self.llm_task_base_url or self.openai_base_url
 
 
 def get_settings(config_path: Optional[Path] = None) -> Settings:

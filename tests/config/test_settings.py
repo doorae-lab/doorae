@@ -48,8 +48,10 @@ class TestSettings:
         assert settings.agent_profiles_path == "config/agent_profiles.yaml"
 
     def test_missing_api_key(self, monkeypatch):
-        """API 키 누락 시 ValidationError."""
+        """API 키 누락 시 property 접근 시 ValueError 발생 (PR #74)."""
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_MAIN_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_TASK_API_KEY", raising=False)
         # 다른 환경변수도 제거
         monkeypatch.delenv("LLM_MAIN_MODEL", raising=False)
         monkeypatch.delenv("LLM_MAIN_TEMPERATURE", raising=False)
@@ -58,10 +60,17 @@ class TestSettings:
 
         _get_cached_settings.cache_clear()
         # .env 파일을 무시하고 환경변수만 사용
-        with pytest.raises(ValidationError) as exc_info:
-            Settings(_env_file=None)
+        settings = Settings(_env_file=None)
 
-        assert "openai_api_key" in str(exc_info.value).lower()
+        # main_api_key property 접근 시 ValueError 발생
+        with pytest.raises(ValueError) as exc_info:
+            _ = settings.main_api_key
+        assert "Main LLM API key is required" in str(exc_info.value)
+
+        # task_api_key property 접근 시 ValueError 발생
+        with pytest.raises(ValueError) as exc_info:
+            _ = settings.task_api_key
+        assert "Task LLM API key is required" in str(exc_info.value)
 
     def test_singleton_pattern(self, monkeypatch):
         """싱글톤 패턴 동작 테스트."""

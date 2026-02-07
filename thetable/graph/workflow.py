@@ -52,13 +52,13 @@ def create_meeting_workflow(
             "model": settings.llm_main_model,
             "temperature": settings.llm_main_temperature,
             "max_tokens": settings.llm_main_max_tokens,
-            "api_key": settings.openai_api_key,
+            "api_key": settings.main_api_key,  # Property 사용 (fallback 처리)
             "streaming": True,  # 스트리밍 활성화
             "timeout": settings.llm_timeout,
             "max_retries": settings.llm_max_retries,
         }
-        if settings.openai_base_url:
-            main_kwargs["base_url"] = settings.openai_base_url
+        if settings.main_base_url:  # Property 사용 (fallback 처리)
+            main_kwargs["base_url"] = settings.main_base_url
         main_model = ChatOpenAI(**main_kwargs)
 
     # Task model (유틸리티 작업용)
@@ -67,12 +67,12 @@ def create_meeting_workflow(
             "model": settings.llm_task_model,
             "temperature": settings.llm_task_temperature,
             "max_tokens": settings.llm_task_max_tokens,
-            "api_key": settings.openai_api_key,
+            "api_key": settings.task_api_key,  # Property 사용 (fallback 처리)
             "timeout": settings.llm_timeout,
             "max_retries": settings.llm_max_retries,
         }
-        if settings.openai_base_url:
-            task_kwargs["base_url"] = settings.openai_base_url
+        if settings.task_base_url:  # Property 사용 (fallback 처리)
+            task_kwargs["base_url"] = settings.task_base_url
         task_model = ChatOpenAI(**task_kwargs)
 
     # 1. 프로필 로드

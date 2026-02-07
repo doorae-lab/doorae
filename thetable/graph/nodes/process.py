@@ -126,6 +126,55 @@ class ProcessResponseNode(BaseNode):
 
         return result == "예"
 
+    def _merge_llm_agendas(
+        self, agenda_result, existing_agendas: list[dict]
+    ) -> list[dict] | None:
+        """LLM 추출 안건과 기존 안건 병합
+
+        Args:
+            agenda_result: extract_agenda_updates 반환값
+            existing_agendas: 기존 안건 리스트
+
+        Returns:
+            병합된 안건 리스트 또는 None (업데이트 불가 시)
+        """
+        if agenda_result is None:
+            logger.warning("안건 추출 결과가 None, 기존 안건 유지")
+            return None
+
+        new_agendas = agenda_result.items_as_dicts()
+        if not new_agendas:
+            logger.warning("안건 추출 결과가 비어있어 기존 안건 유지")
+            return None
+
+        for i, new_agenda in enumerate(new_agendas):
+            if i >= len(existing_agendas):
+                break
+            # 기존 안건의 값이 있고 새 안건에 없는 필드만 복원
+            defaults = {
+                k: v
+                for k, v in existing_agendas[i].items()
+                if v and not new_agenda.get(k)
+            }
+            new_agenda.update(defaults)
+
+        return new_agendas
+
+    def _ensure_agenda_timestamps(self, agendas: list[dict]) -> None:
+        """안건 상태에 맞는 타임스탬프 보장
+
+        Args:
+            agendas: 타임스탬프를 확인할 안건 리스트 (in-place 수정)
+        """
+        now = time.time()
+        for agenda in agendas:
+            if agenda["status"] == "in_progress" and not agenda.get("start_time"):
+                agenda["start_time"] = now
+            if agenda["status"] in ("completed", "deferred") and not agenda.get(
+                "end_time"
+            ):
+                agenda["end_time"] = now
+
     async def execute(self, state: MeetingState) -> Dict[str, Any]:
         """에이전트 응답 처리
 
@@ -214,19 +263,12 @@ class ProcessResponseNode(BaseNode):
                 current_items=new_agendas,
             )
 
-            # 업데이트된 안건으로 교체 (타임스탬프 보존)
-            new_agendas_from_llm = agenda_result.items_as_dicts()
-
-            # 기존 타임스탬프 복원 (LLM이 제거했을 수 있음)
-            for i, new_agenda in enumerate(new_agendas_from_llm):
-                if i < len(new_agendas):
-                    # start_time, end_time 보존
-                    if new_agendas[i].get("start_time"):
-                        new_agenda["start_time"] = new_agendas[i]["start_time"]
-                    if new_agendas[i].get("end_time"):
-                        new_agenda["end_time"] = new_agendas[i]["end_time"]
-
-            new_agendas = new_agendas_from_llm
+            # LLM 안건과 기존 안건 병합 (depth 개선)
+            merged_agendas = self._merge_llm_agendas(agenda_result, new_agendas)
+            if merged_agendas:
+                new_agendas = merged_agendas
+                # 타임스탬프 보장 (PR #75, #81)
+                self._ensure_agenda_timestamps(new_agendas)
 
         except Exception as e:
             # 안건 업데이트 실패 시 기존 안건 유지
