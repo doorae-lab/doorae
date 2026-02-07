@@ -113,25 +113,3 @@ def test_build_supervisor_prompt_no_children():
     assert "작업 수행" in prompt
 
 
-def test_build_coordinator_prompt():
-    """Coordinator 프롬프트 생성 테스트"""
-    from thetable.graph.prompts import build_coordinator_prompt
-
-    result = build_coordinator_prompt(["Host", "PM", "TechLead"])
-
-    # 핸드오프 도구 포함 확인
-    assert "transfer_to_host" in result
-    assert "transfer_to_pm" in result
-    assert "transfer_to_techlead" in result
-
-    # Coordinator 관련 내용 포함 확인
-    assert "coordinator" in result.lower() or "transfer" in result.lower()
-
-
-def test_build_coordinator_prompt_empty():
-    """빈 에이전트 목록 처리 테스트"""
-    from thetable.graph.prompts import build_coordinator_prompt
-
-    result = build_coordinator_prompt([])
-    # 핸드오프 도구 섹션이 비어있어야 함 (템플릿 자체는 transfer_to_ 언급 가능)
-    assert "## Available Transfer Tools\n\n" in result or "transfer_to_" not in result

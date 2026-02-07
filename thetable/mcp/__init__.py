@@ -1,13 +1,11 @@
 """MCP server configuration loader and tool management."""
 
 import json
-import logging
 import os
 import re
 from pathlib import Path
 from typing import Any
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 _ENV_VAR_PATTERN = re.compile(r'\$\{(\w+)\}')
 
@@ -63,6 +61,68 @@ def _resolve_env_vars(obj: Any) -> Any:
     return obj
 
 
+def _infer_transport(entry: dict) -> dict:
+    """transport 타입 추론
+
+    Args:
+        entry: 서버 설정 딕셔너리
+
+    Returns:
+        transport가 설정된 딕셔너리
+    """
+    if "transport" not in entry:
+        if "url" in entry:
+            entry["transport"] = "streamable_http"
+        elif "command" in entry:
+            entry["transport"] = "stdio"
+    return entry
+
+
+def _build_streamable_http_headers(name: str, entry: dict) -> dict | None:
+    """streamable_http 헤더 필터링 및 검증
+
+    Args:
+        name: 서버 이름
+        entry: 서버 설정 딕셔너리
+
+    Returns:
+        유효한 설정 딕셔너리 또는 None (건너뛰기)
+    """
+    # 지원되지 않는 파라미터 제거
+    entry.pop("env", None)
+    entry.pop("args", None)
+
+    if "headers" not in entry:
+        return entry
+
+    original_headers = entry["headers"].copy()
+    filtered_headers = {}
+
+    for k, v in entry["headers"].items():
+        if not v or not v.strip():
+            continue
+
+        # Authorization 헤더 특별 처리
+        if k == "Authorization":
+            parts = v.strip().split(None, 1)
+            if len(parts) < 2 or not parts[1]:
+                continue
+
+        filtered_headers[k] = v
+
+    entry["headers"] = filtered_headers
+
+    # Authorization 헤더가 필터링되었다면 None 반환 (건너뛰기)
+    if "Authorization" in original_headers and "Authorization" not in entry["headers"]:
+        logger.warning(f"⚠️  '{name}' MCP 서버 건너뜀: 인증 토큰 환경변수가 설정되지 않음")
+        return None
+
+    if not entry["headers"]:
+        entry.pop("headers")
+
+    return entry
+
+
 def _to_client_config(servers: dict) -> dict:
     """mcpServers 포맷 → MultiServerMCPClient 포맷 변환.
 
@@ -70,52 +130,21 @@ def _to_client_config(servers: dict) -> dict:
     - "transport" 명시 → 그대로 사용
     - "url" 있고 transport 없음 → "streamable_http"
     - "command" 있고 transport 없음 → "stdio"
-    
+
     langchain-mcp-adapters 0.1.0 호환성:
     - streamable_http: env 파라미터 제거 (지원되지 않음)
     - 필수 환경변수 미설정 시 서버 건너뛰기
     """
     result = {}
     for name, cfg in servers.items():
-        entry = dict(cfg)
-        if "transport" not in entry:
-            if "url" in entry:
-                entry["transport"] = "streamable_http"
-            elif "command" in entry:
-                entry["transport"] = "stdio"
-        
-        # streamable_http 트랜스포트에서 지원하지 않는 파라미터 제거
+        entry = _infer_transport(dict(cfg))
+
+        # streamable_http 트랜스포트는 특별 처리
         if entry.get("transport") == "streamable_http":
-            entry.pop("env", None)
-            entry.pop("args", None)
-            
-            # 빈 헤더 값 필터링 (환경변수가 설정되지 않은 경우)
-            if "headers" in entry:
-                original_headers = entry["headers"].copy()
-                filtered_headers = {}
-                
-                for k, v in entry["headers"].items():
-                    if not v or not v.strip():
-                        continue
-                    
-                    # Authorization 헤더 특별 처리
-                    if k == "Authorization":
-                        parts = v.strip().split(None, 1)
-                        if len(parts) < 2 or not parts[1]:
-                            continue
-                    
-                    filtered_headers[k] = v
-                
-                entry["headers"] = filtered_headers
-                
-                # Authorization 헤더가 필터링되었다면 서버 건너뛰기
-                if "Authorization" in original_headers and "Authorization" not in entry["headers"]:
-                    print(f"⚠️  '{name}' MCP 서버 건너뜀: 인증 토큰 환경변수가 설정되지 않음")
-                    continue
-                
-                if not entry["headers"]:
-                    entry.pop("headers")
-        
+            entry = _build_streamable_http_headers(name, entry)
+            if entry is None:  # 건너뛰기
+                continue
+
         result[name] = entry
     return result
 

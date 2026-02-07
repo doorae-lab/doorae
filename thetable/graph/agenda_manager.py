@@ -5,6 +5,7 @@ from typing import List, Optional
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 from pydantic import BaseModel, Field
+from thetable.graph.constants import STATUS_EMOJI
 
 
 class AgendaItem(BaseModel):
@@ -56,12 +57,7 @@ async def extract_agenda_updates(
     if current_items:
         current_agenda_text = "**현재 안건 목록:**\n"
         for idx, item in enumerate(current_items, 1):
-            status_emoji = {
-                "pending": "⏳",
-                "in_progress": "🔄",
-                "completed": "✅",
-                "deferred": "⏸️"
-            }.get(item.get("status", "pending"), "❓")
+            status_emoji = STATUS_EMOJI.get(item.get("status", "pending"), "❓")
             owner_text = f" (담당: {item['owner']})" if item.get("owner") else ""
             decision_text = f" → \"{item['decision']}\"" if item.get("decision") else ""
             current_agenda_text += f"{idx}. {status_emoji} {item['title']}{owner_text}{decision_text}\n"
@@ -149,7 +145,8 @@ async def extract_agenda_updates(
 
         except Exception as inner_e:
             # 최종 fallback: 기존 안건 유지
-            print(f"⚠️ 안건 추출 실패 (유지): {e}, {inner_e}")
+            from loguru import logger
+            logger.warning(f"⚠️ 안건 추출 실패 (유지): {e}, {inner_e}")
             # dict를 AgendaItem으로 변환
             fallback_items = [AgendaItem(**item) for item in current_items]
             return AgendaExtractionResult(

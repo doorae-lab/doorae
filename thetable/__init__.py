@@ -1,4 +1,4 @@
-"""TheTable - Supervisor 기반 AI 회의 시스템"""
+"""TheTable - AI 기반 자동화 회의 시스템"""
 
 from pathlib import Path
 

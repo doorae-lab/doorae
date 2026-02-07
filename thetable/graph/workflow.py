@@ -7,11 +7,11 @@
 - Host 명시적 안건 완료 선언
 - AI 자동 안건 관리 (추가/수정/제거)
 """
-import logging
-from langchain_openai import ChatOpenAI
+from langchain_core.language_models import BaseChatModel
 from langgraph.graph import StateGraph, END
+from loguru import logger
 
-from thetable.config import get_settings
+from thetable.config import create_main_llm, create_task_llm
 from thetable.graph.state import MeetingState
 from thetable.core.profile import load_agent_profiles
 from thetable.graph.nodes import (
@@ -23,13 +23,11 @@ from thetable.graph.nodes import (
     initialize_mcp_tools,
 )
 
-logger = logging.getLogger(__name__)
-
 
 def create_meeting_workflow(
     profiles_path: str = "config/agent_profiles.yaml",
-    main_model: ChatOpenAI = None,
-    task_model: ChatOpenAI = None,
+    main_model: BaseChatModel = None,
+    task_model: BaseChatModel = None,
     mcp_tools: dict[str, list] = None
 ):
     """안건 기반 회의 워크플로우 생성
@@ -44,36 +42,13 @@ def create_meeting_workflow(
         CompiledGraph: 실행 가능한 회의 그래프
     """
 
-    settings = get_settings()
-
-    # Main model (에이전트 응답 생성용)
+    # Main model (에이전트 응답 생성용, 스트리밍 활성화)
     if main_model is None:
-        main_kwargs = {
-            "model": settings.llm_main_model,
-            "temperature": settings.llm_main_temperature,
-            "max_tokens": settings.llm_main_max_tokens,
-            "api_key": settings.main_api_key,  # Property 사용 (fallback 처리)
-            "streaming": True,  # 스트리밍 활성화
-            "timeout": settings.llm_timeout,
-            "max_retries": settings.llm_max_retries,
-        }
-        if settings.main_base_url:  # Property 사용 (fallback 처리)
-            main_kwargs["base_url"] = settings.main_base_url
-        main_model = ChatOpenAI(**main_kwargs)
+        main_model = create_main_llm(streaming=True)
 
     # Task model (유틸리티 작업용)
     if task_model is None:
-        task_kwargs = {
-            "model": settings.llm_task_model,
-            "temperature": settings.llm_task_temperature,
-            "max_tokens": settings.llm_task_max_tokens,
-            "api_key": settings.task_api_key,  # Property 사용 (fallback 처리)
-            "timeout": settings.llm_timeout,
-            "max_retries": settings.llm_max_retries,
-        }
-        if settings.task_base_url:  # Property 사용 (fallback 처리)
-            task_kwargs["base_url"] = settings.task_base_url
-        task_model = ChatOpenAI(**task_kwargs)
+        task_model = create_task_llm()
 
     # 1. 프로필 로드
     profiles = load_agent_profiles(profiles_path)

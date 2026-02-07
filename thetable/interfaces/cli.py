@@ -15,6 +15,7 @@ from langchain_core.messages import HumanMessage
 from thetable import __version__
 from thetable.config import Settings, get_settings, setup_tracing
 from thetable.graph.workflow import create_meeting_workflow
+from thetable.graph.constants import STATUS_EMOJI, HOST_ROLE_NAME, AGENT_COLORS
 from thetable.interfaces.logging import setup_logging
 
 
@@ -24,6 +25,96 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+
+
+# 스트리밍 이벤트 핸들러
+def _handle_chain_start(event: dict, state_ref: dict) -> None:
+    """on_chain_start 이벤트 처리 - 안건 상태 표시"""
+    name = event.get("name", "")
+    if name != "process_response":
+        return
+
+    data = event.get("data", {})
+    input_data = data.get("input", {})
+    current_idx = input_data.get("current_agenda_idx", 0)
+    agendas = input_data.get("agendas", [])
+
+    # 상태 변경 감지
+    current_state = (
+        current_idx,
+        tuple((a["title"], a["status"]) for a in agendas)
+    )
+
+    if current_state != state_ref.get("prev_agenda_state"):
+        state_ref["prev_agenda_state"] = current_state
+        # 안건 패널 출력
+        panel = format_agenda_panel(agendas, current_idx, state_ref["start_time"])
+        console.print(panel)
+        console.print()
+
+
+def _handle_chat_model_start(event: dict, state_ref: dict) -> None:
+    """on_chat_model_start 이벤트 처리 - 발언자 표시"""
+    speaker = event.get("name")
+
+    # run_name이 없으면 tags에서 speaker: 접두사 찾기
+    if not speaker or speaker == "ChatOpenAI":
+        tags = event.get("tags", [])
+        for tag in tags:
+            if tag.startswith("speaker:"):
+                speaker = tag.replace("speaker:", "")
+                break
+
+    # 발언자가 변경되었으면 표시
+    if speaker and speaker not in ("ChatOpenAI", "RunnableSequence") and speaker != state_ref.get("current_speaker"):
+        if state_ref.get("current_speaker"):
+            console.print()  # 이전 발언 줄바꿈
+        console.print(f"\n[bold cyan][{speaker}][/bold cyan]")
+        state_ref["current_speaker"] = speaker
+
+
+def _handle_chat_model_stream(event: dict) -> None:
+    """on_chat_model_stream 이벤트 처리 - 토큰 출력"""
+    tags = event.get("tags", [])
+    if "participant" not in tags:
+        return
+
+    chunk = event["data"]["chunk"]
+    content = getattr(chunk, "content", "")
+    if content:
+        console.print(content, end="")
+
+
+def _handle_chat_model_end(event: dict) -> None:
+    """on_chat_model_end 이벤트 처리 - 응답 완료"""
+    tags = event.get("tags", [])
+    if "participant" in tags:
+        console.print()  # 줄바꿈
+        console.rule(style="dim")
+
+
+def _handle_chain_end(event: dict) -> None:
+    """on_chain_end 이벤트 처리 - pending_speakers 표시"""
+    tags = event.get("tags", [])
+    if "langgraph_node" not in tags:
+        return
+
+    # node_name 추출
+    try:
+        idx = tags.index("langgraph_node")
+        node_name = tags[idx + 1] if idx + 1 < len(tags) else None
+    except (ValueError, IndexError):
+        return
+
+    if node_name != "process_response":
+        return
+
+    data = event.get("data", {})
+    output_data = data.get("output", {})
+    pending = output_data.get("pending_speakers", [])
+
+    if pending:
+        console.print(f"[dim]다음 발언 예정: {', '.join(pending)}[/dim]")
 
 
 def format_agenda_panel(
@@ -45,12 +136,7 @@ def format_agenda_panel(
 
     for i, agenda in enumerate(agendas):
         # 상태 이모지
-        status_emoji = {
-            "pending": "⏳",
-            "in_progress": "🔄",
-            "completed": "✅",
-            "deferred": "⏸️"
-        }.get(agenda["status"], "❓")
+        status_emoji = STATUS_EMOJI.get(agenda["status"], "❓")
 
         # owner: required_speakers의 첫 번째
         owner = agenda.get("required_speakers", [""])[0] if agenda.get("required_speakers") else ""
@@ -193,6 +279,192 @@ def main(
     ))
 
 
+async def _initialize_mcp(settings: Settings) -> dict[str, list] | None:
+    """MCP 도구 초기화
+
+    Args:
+        settings: Settings 인스턴스
+
+    Returns:
+        서버별 MCP 도구 딕셔너리 또는 None
+    """
+    logger.debug("Initializing MCP tools...")
+    from thetable.graph.workflow import initialize_mcp_tools
+    try:
+        mcp_tools = await initialize_mcp_tools()
+        if mcp_tools:
+            total = sum(len(t) for t in mcp_tools.values())
+            console.print(f"[green]✅ MCP 도구 로드 완료: {total}개 도구 ({len(mcp_tools)}개 서버)[/green]")
+        else:
+            console.print("[yellow]⚠️  MCP 도구를 사용할 수 없습니다[/yellow]")
+            console.print("[yellow]   확인 사항:[/yellow]")
+            console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
+            console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
+        return mcp_tools
+    except Exception as e:
+        logger.warning(f"MCP 초기화 실패: {e}")
+        console.print(f"[yellow]⚠️  MCP 초기화 실패: {e}[/yellow]")
+        console.print("[yellow]   확인 사항:[/yellow]")
+        console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
+        console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
+        return None
+
+
+def _build_initial_state(
+    settings: Settings,
+    profiles_path: Path,
+    initial_message: str,
+    human_names: list[str]
+) -> dict:
+    """초기 상태 구성
+
+    Args:
+        settings: Settings 인스턴스
+        profiles_path: 프로필 경로
+        initial_message: 초기 메시지
+        human_names: Human 참여자 이름 리스트
+
+    Returns:
+        초기 상태 딕셔너리
+    """
+    import time
+
+    # 기본 안건 정의
+    base_agendas = [
+        {
+            "title": "회의 시작 및 현황 공유",
+            "description": "회의를 시작하고 주간 현황을 공유합니다",
+            "status": "in_progress",
+            "required_speakers": ["Host", "PM"],
+            "start_time": time.time()
+        },
+        {
+            "title": "주요 이슈 논의",
+            "description": "당면한 문제들을 논의하고 해결 방안을 모색합니다",
+            "status": "pending",
+            "required_speakers": ["TechLead", "Designer", "DevOps"]
+        },
+        {
+            "title": "향후 일정 및 계획",
+            "description": "다음 단계 일정과 계획을 수립합니다",
+            "status": "pending",
+            "required_speakers": ["PM", "TechLead"]
+        },
+        {
+            "title": "회의 마무리",
+            "description": "논의 내용을 정리하고 액션 아이템을 확정합니다",
+            "status": "pending",
+            "required_speakers": ["Host"]
+        },
+    ]
+
+    # Human 참여자를 모든 안건에 추가
+    for agenda in base_agendas:
+        for human_name in human_names:
+            if human_name not in agenda["required_speakers"]:
+                agenda["required_speakers"].append(human_name)
+
+    return {
+        "messages": [HumanMessage(content=initial_message)],
+        "agendas": base_agendas,
+        "current_agenda_idx": 0,
+        "pending_speakers": [],
+        "speaker_counts": {},
+        "consecutive_host_delegations": 0,
+        "start_time": time.time(),
+        "max_turns": settings.max_turns,
+    }
+
+
+async def _run_streaming(workflow, state: dict, config: dict) -> None:
+    """스트리밍 모드 실행
+
+    Args:
+        workflow: 워크플로우 인스턴스
+        state: 초기 상태
+        config: LangGraph 설정
+    """
+    state_ref = {
+        "current_speaker": None,
+        "prev_agenda_state": None,
+        "start_time": state["start_time"]
+    }
+
+    # 이벤트 핸들러 매핑
+    event_handlers = {
+        "on_chain_start": _handle_chain_start,
+        "on_chat_model_start": _handle_chat_model_start,
+        "on_chat_model_stream": _handle_chat_model_stream,
+        "on_chat_model_end": _handle_chat_model_end,
+        "on_chain_end": _handle_chain_end,
+    }
+
+    async for event in workflow.astream_events(state, config=config, version="v2"):
+        kind = event["event"]
+        handler = event_handlers.get(kind)
+        if handler:
+            # state_ref를 받는 핸들러와 받지 않는 핸들러 구분
+            if kind in ("on_chain_start", "on_chat_model_start"):
+                handler(event, state_ref)
+            else:
+                handler(event)
+
+
+async def _run_batch(workflow, state: dict, config: dict) -> dict:
+    """배치 모드 실행
+
+    Args:
+        workflow: 워크플로우 인스턴스
+        state: 초기 상태
+        config: LangGraph 설정
+
+    Returns:
+        실행 결과 딕셔너리
+    """
+    logger.debug("Invoking workflow...")
+    result = await workflow.ainvoke(state, config=config)
+    logger.debug(f"Workflow completed. Result keys: {result.keys()}")
+
+    # 결과 출력
+    console.print("\n[bold]📝 회의 기록[/bold]")
+    console.rule(style="yellow")
+
+    # 참가자 목록 추출 및 색상 할당
+    speakers = list(dict.fromkeys(getattr(msg, "name", "System") for msg in result.get("messages", [])))
+    color_map = {speaker: AGENT_COLORS[i % len(AGENT_COLORS)] for i, speaker in enumerate(speakers)}
+
+    for msg in result.get("messages", []):
+        speaker = getattr(msg, "name", "System")
+        color = color_map.get(speaker, "white")
+
+        console.print(f"\n[bold {color}][{speaker}][/bold {color}]")
+        console.print(msg.content)
+        console.rule(style="dim")
+
+    # 메타 정보 테이블
+    if "agendas" in result or "speaker_counts" in result:
+        table = Table(title="회의 요약", show_header=True)
+        table.add_column("항목", style="cyan")
+        table.add_column("값", style="yellow")
+
+        # 안건 상태
+        if "agendas" in result:
+            agendas = result["agendas"]
+            completed = sum(1 for a in agendas if a["status"] == "completed")
+            table.add_row("완료된 안건", f"{completed}/{len(agendas)}")
+
+        # 발언 횟수
+        if "speaker_counts" in result:
+            counts = result["speaker_counts"]
+            for speaker, count in counts.items():
+                table.add_row(f"{speaker} 발언 횟수", str(count))
+
+        console.print("\n")
+        console.print(table)
+
+    return result
+
+
 async def run_meeting(
     initial_message: str,
     profiles_path: Optional[Path] = None,
@@ -233,25 +505,7 @@ async def run_meeting(
     logger.debug(f"Profiles path: {profiles_path}")
 
     # MCP Tools 초기화
-    logger.debug("Initializing MCP tools...")
-    from thetable.graph.workflow import initialize_mcp_tools
-    try:
-        mcp_tools = await initialize_mcp_tools()
-        if mcp_tools:
-            total = sum(len(t) for t in mcp_tools.values())
-            console.print(f"[green]✅ MCP 도구 로드 완료: {total}개 도구 ({len(mcp_tools)}개 서버)[/green]")
-        else:
-            console.print("[yellow]⚠️  MCP 도구를 사용할 수 없습니다[/yellow]")
-            console.print("[yellow]   확인 사항:[/yellow]")
-            console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
-            console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
-    except Exception as e:
-        logger.warning(f"MCP 초기화 실패: {e}")
-        console.print(f"[yellow]⚠️  MCP 초기화 실패: {e}[/yellow]")
-        console.print("[yellow]   확인 사항:[/yellow]")
-        console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
-        console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
-        mcp_tools = None
+    mcp_tools = await _initialize_mcp(settings)
 
     # Workflow 생성
     logger.debug("Creating workflow...")
@@ -267,192 +521,18 @@ async def run_meeting(
     human_names = [name for name, p in profiles.items() if p.is_human]
     logger.debug(f"Human participants: {human_names}")
 
-    # 초기 상태 - 안건 기반
-    import time
-    
-    # 기본 안건 정의
-    base_agendas = [
-        {
-            "title": "회의 시작 및 현황 공유",
-            "description": "회의를 시작하고 주간 현황을 공유합니다",
-            "status": "in_progress",
-            "required_speakers": ["Host", "PM"],
-            "start_time": time.time()
-        },
-        {
-            "title": "주요 이슈 논의",
-            "description": "당면한 문제들을 논의하고 해결 방안을 모색합니다",
-            "status": "pending",
-            "required_speakers": ["TechLead", "Designer", "DevOps"]
-        },
-        {
-            "title": "향후 일정 및 계획",
-            "description": "다음 단계 일정과 계획을 수립합니다",
-            "status": "pending",
-            "required_speakers": ["PM", "TechLead"]
-        },
-        {
-            "title": "회의 마무리",
-            "description": "논의 내용을 정리하고 액션 아이템을 확정합니다",
-            "status": "pending",
-            "required_speakers": ["Host"]
-        },
-    ]
-    
-    # Human 참여자를 모든 안건에 추가
-    for agenda in base_agendas:
-        for human_name in human_names:
-            if human_name not in agenda["required_speakers"]:
-                agenda["required_speakers"].append(human_name)
-    
-    initial_state = {
-        "messages": [HumanMessage(content=initial_message)],
-        "agendas": base_agendas,
-        "current_agenda_idx": 0,
-        "pending_speakers": [],
-        "speaker_counts": {},
-        "consecutive_host_delegations": 0,
-        "start_time": time.time(),
-        "max_turns": settings.max_turns,
-    }
+    # 초기 상태 구성
+    initial_state = _build_initial_state(settings, profiles_path, initial_message, human_names)
     logger.debug(f"Initial state: {initial_state}")
 
     # 실행
     logger.debug(f"Running workflow (stream={stream})...")
-    
-    # LangGraph config 설정
     graph_config = {"recursion_limit": settings.recursion_limit}
-    
+
     if stream:
-        # 스트리밍 모드 - astream_events()로 토큰 단위 출력
-        current_speaker = None
-        prev_agenda_state = None
-
-        async for event in workflow.astream_events(initial_state, config=graph_config, version="v2"):
-            kind = event["event"]
-            
-            # on_chain_start: 노드 시작 시 안건 정보 표시
-            if kind == "on_chain_start":
-                name = event.get("name", "")
-
-                # 안건 상태 변경 감지 및 패널 출력 (process_response 노드에서)
-                if name == "process_response":
-                    data = event.get("data", {})
-                    input_data = data.get("input", {})
-                    current_idx = input_data.get("current_agenda_idx", 0)
-                    agendas = input_data.get("agendas", [])
-
-                    # 상태 변경 감지
-                    current_state = (
-                        current_idx,
-                        tuple((a["title"], a["status"]) for a in agendas)
-                    )
-
-                    if current_state != prev_agenda_state:
-                        prev_agenda_state = current_state
-
-                        # 안건 패널 출력
-                        panel = format_agenda_panel(agendas, current_idx, initial_state["start_time"])
-                        console.print(panel)
-                        console.print()  # 빈 줄
-            
-            # on_chat_model_start: LLM 호출 시작 (발언자 이름 출력)
-            elif kind == "on_chat_model_start":
-                # run_name에서 발언자 추출
-                speaker = event.get("name")
-                
-                # run_name이 없으면 tags에서 speaker: 접두사 찾기
-                if not speaker or speaker == "ChatOpenAI":
-                    tags = event.get("tags", [])
-                    for tag in tags:
-                        if tag.startswith("speaker:"):
-                            speaker = tag.replace("speaker:", "")
-                            break
-                
-                # 발언자가 변경되었으면 표시
-                if speaker and speaker not in ("ChatOpenAI", "RunnableSequence") and speaker != current_speaker:
-                    if current_speaker:
-                        console.print()  # 이전 발언 줄바꿈
-                    console.print(f"\n[bold cyan][{speaker}][/bold cyan]")
-                    current_speaker = speaker
-            
-            # on_chat_model_stream: 토큰 단위 출력 (참여자 응답만)
-            elif kind == "on_chat_model_stream":
-                tags = event.get("tags", [])
-                if "participant" in tags:
-                    chunk = event["data"]["chunk"]
-                    content = getattr(chunk, "content", "")
-                    if content:
-                        console.print(content, end="")
-            
-            # on_chat_model_end: LLM 응답 완료 (줄바꿈 및 구분선, 참여자 응답만)
-            elif kind == "on_chat_model_end":
-                tags = event.get("tags", [])
-                if "participant" in tags:
-                    console.print()  # 줄바꿈
-                    console.rule(style="dim")
-            
-            # on_chain_end: 노드 종료 시 pending_speakers 표시
-            elif kind == "on_chain_end":
-                metadata = event.get("metadata", {})
-                tags = event.get("tags", [])
-                
-                # process_response 노드 종료 시 pending_speakers 표시
-                if "langgraph_node" in tags:
-                    node_name = tags[tags.index("langgraph_node") + 1] if tags.index("langgraph_node") + 1 < len(tags) else None
-                    
-                    if node_name == "process_response":
-                        data = event.get("data", {})
-                        output_data = data.get("output", {})
-                        pending = output_data.get("pending_speakers", [])
-                        
-                        if pending:
-                            console.print(f"[dim]다음 발언 예정: {', '.join(pending)}[/dim]")
+        await _run_streaming(workflow, initial_state, graph_config)
     else:
-        # 일반 모드
-        logger.debug("Invoking workflow...")
-        result = await workflow.ainvoke(initial_state, config=graph_config)
-        logger.debug(f"Workflow completed. Result keys: {result.keys()}")
-
-        # 결과 출력
-        console.print("\n[bold]📝 회의 기록[/bold]")
-        console.rule(style="yellow")
-
-        for msg in result.get("messages", []):
-            speaker = getattr(msg, "name", "System")
-            # 에이전트별 색상
-            color_map = {
-                "Host": "green",
-                "Analyst": "blue",
-                "Critic": "red",
-                "Optimizer": "yellow",
-            }
-            color = color_map.get(speaker, "white")
-
-            console.print(f"\n[bold {color}][{speaker}][/bold {color}]")
-            console.print(msg.content)
-            console.rule(style="dim")
-
-        # 메타 정보 테이블
-        if "agendas" in result or "speaker_counts" in result:
-            table = Table(title="회의 요약", show_header=True)
-            table.add_column("항목", style="cyan")
-            table.add_column("값", style="yellow")
-
-            # 안건 상태
-            if "agendas" in result:
-                agendas = result["agendas"]
-                completed = sum(1 for a in agendas if a["status"] == "completed")
-                table.add_row("완료된 안건", f"{completed}/{len(agendas)}")
-
-            # 발언 횟수
-            if "speaker_counts" in result:
-                counts = result["speaker_counts"]
-                for speaker, count in counts.items():
-                    table.add_row(f"{speaker} 발언 횟수", str(count))
-
-            console.print("\n")
-            console.print(table)
+        await _run_batch(workflow, initial_state, graph_config)
 
     # 회의 종료 패널
     console.print(

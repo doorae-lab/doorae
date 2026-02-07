@@ -1,9 +1,7 @@
 """노드 레지스트리 - 플러그인 시스템"""
 
 from typing import Type, Dict, Optional
-import logging
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class NodeRegistry:

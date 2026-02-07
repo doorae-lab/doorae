@@ -1,16 +1,14 @@
 """Base agent with LLM integration"""
-import logging
 from typing import Dict, Any, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
-from langchain_openai import ChatOpenAI
+from langchain_core.language_models import BaseChatModel
 from openai import LengthFinishReasonError
+from loguru import logger
 
-from thetable.config import get_settings
+from thetable.config import create_main_llm
 from thetable.core.profile import AgentProfile
-
-logger = logging.getLogger(__name__)
 
 
 class BaseAgent:
@@ -20,28 +18,13 @@ class BaseAgent:
         self,
         name: str,
         profile: AgentProfile,
-        llm: Optional[ChatOpenAI] = None,
+        llm: Optional[BaseChatModel] = None,
     ):
         self.name = name
         self.profile = profile
-        self._llm = llm or self._init_default_llm()
+        self._llm = llm or create_main_llm()
         self._mcp_tools: list = []
         self._system_prompt = self._build_system_prompt()
-
-    def _init_default_llm(self) -> ChatOpenAI:
-        """기본 LLM 초기화 (Main LLM 사용)"""
-        settings = get_settings()
-        kwargs = {
-            "model": settings.llm_main_model,
-            "temperature": settings.llm_main_temperature,
-            "max_tokens": settings.llm_main_max_tokens,
-            "api_key": settings.main_api_key,  # Property 사용 (fallback 처리)
-            "timeout": settings.llm_timeout,
-            "max_retries": settings.llm_max_retries,
-        }
-        if settings.main_base_url:  # Property 사용 (fallback 처리)
-            kwargs["base_url"] = settings.main_base_url
-        return ChatOpenAI(**kwargs)
 
     def _build_system_prompt(self) -> str:
         """시스템 프롬프트 생성"""
