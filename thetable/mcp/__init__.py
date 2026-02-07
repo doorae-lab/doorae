@@ -143,6 +143,6 @@ async def collect_tools_by_server(
             logger.info(f"MCP 서버 '{name}': {len(tools_by_server[name])}개 도구 로드")
         except ValueError:
             logger.warning(f"MCP 서버 '{name}'을(를) 찾을 수 없습니다. 건너뜁니다.")
-        except Exception:
-            logger.error(f"MCP 서버 '{name}' 도구 로드 실패")
+        except Exception as e:
+            logger.error(f"MCP 서버 '{name}' 도구 로드 실패: {e}")
     return tools_by_server

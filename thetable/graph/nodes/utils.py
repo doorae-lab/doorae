@@ -51,6 +51,6 @@ async def initialize_mcp_tools(config_path: Optional[str] = None) -> dict[str, l
     except FileNotFoundError:
         logger.warning(f"⚠️ MCP 설정 파일을 찾을 수 없습니다: {config_path}")
         return {}
-    except Exception as e:
-        logger.error(f"⚠️ MCP 초기화 실패: {e}")
-        return {}
+    except Exception:
+        logger.exception("❌ MCP 초기화 중 예상치 못한 오류 발생")
+        raise
