@@ -8,6 +8,7 @@
 - AI 자동 안건 관리 (추가/수정/제거)
 """
 import asyncio
+import time as time_module
 from pathlib import Path
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
@@ -195,6 +196,49 @@ def get_remaining_speakers(required_speakers: list[str], already_spoken: set) ->
     return [s for s in required_speakers if s not in already_spoken]
 
 
+def _merge_llm_agendas(agenda_result, existing_agendas: list[dict]) -> list[dict] | None:
+    """LLM 추출 안건과 기존 안건 병합
+
+    Args:
+        agenda_result: extract_agenda_updates 반환값
+        existing_agendas: 기존 안건 리스트
+
+    Returns:
+        병합된 안건 리스트 또는 None (업데이트 불가 시)
+    """
+    if agenda_result is None:
+        logger.warning("안건 추출 결과가 None, 기존 안건 유지")
+        return None
+
+    new_agendas = agenda_result.items_as_dicts()
+    if not new_agendas:
+        logger.warning("안건 추출 결과가 비어있어 기존 안건 유지")
+        return None
+
+    for i, new_agenda in enumerate(new_agendas):
+        if i >= len(existing_agendas):
+            break
+        # 기존 안건의 값이 있고 새 안건에 없는 필드만 복원
+        defaults = {k: v for k, v in existing_agendas[i].items() if v and not new_agenda.get(k)}
+        new_agenda.update(defaults)
+
+    return new_agendas
+
+
+def _ensure_agenda_timestamps(agendas: list[dict]) -> None:
+    """안건 상태에 맞는 타임스탬프 보장
+
+    Args:
+        agendas: 타임스탬프를 확인할 안건 리스트 (in-place 수정)
+    """
+    now = time_module.time()
+    for agenda in agendas:
+        if agenda["status"] == "in_progress" and not agenda.get("start_time"):
+            agenda["start_time"] = now
+        if agenda["status"] in ("completed", "deferred") and not agenda.get("end_time"):
+            agenda["end_time"] = now
+
+
 async def process_response(state: MeetingState, model, valid_speakers: list[str]) -> dict:
     """에이전트 응답 처리"""
     messages = state.get("messages", [])
@@ -232,7 +276,6 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
 
     if speaker_name == "Host" and detect_agenda_completion(content):
         if current_idx < len(new_agendas):
-            import time as time_module
             new_agendas[current_idx]["status"] = "completed"
             new_agendas[current_idx]["end_time"] = time_module.time()
             new_idx = current_idx + 1
@@ -265,48 +308,15 @@ async def process_response(state: MeetingState, model, valid_speakers: list[str]
     from thetable.graph.agenda_manager import extract_agenda_updates
 
     try:
-        # 최근 10개 메시지만 분석 (토큰 절약)
         recent_messages = messages[-10:] if len(messages) > 10 else messages
-
         agenda_result = await extract_agenda_updates(
-            llm=model,
-            messages=recent_messages,
-            current_items=new_agendas,
+            llm=model, messages=recent_messages, current_items=new_agendas,
         )
-
-        # 업데이트된 안건으로 교체 (타임스탬프 보존)
-        # agenda_result가 None이거나 items가 없으면 기존 안건 유지
-        if agenda_result is None:
-            logger.warning("안건 추출 결과가 None, 기존 안건 유지")
-        else:
-            # AgendaItem 리스트를 dict 리스트로 변환
-            new_agendas_from_llm = agenda_result.items_as_dicts()
-            
-            # 빈 리스트가 반환되면 기존 안건 유지 (중요!)
-            if not new_agendas_from_llm:
-                logger.warning("안건 추출 결과가 비어있어 기존 안건 유지")
-            else:
-                # 기존 타임스탬프 및 필수 정보 복원 (LLM이 제거했을 수 있음)
-                for i, new_agenda in enumerate(new_agendas_from_llm):
-                    if i < len(new_agendas):
-                        old_agenda = new_agendas[i]
-                        
-                        # 필수 필드 보존 (새 안건에 없으면 기존 값 유지)
-                        for field, value in old_agenda.items():
-                            if value and not new_agenda.get(field):
-                                new_agenda[field] = value
-
-                new_agendas = new_agendas_from_llm
-
-        # 상태-타임스탬프 일관성 보장 (없으면 현재 시간 설정)
-        for agenda in new_agendas:
-            if agenda["status"] == "in_progress" and not agenda.get("start_time"):
-                agenda["start_time"] = time_module.time()
-            if agenda["status"] in ["completed", "deferred"] and not agenda.get("end_time"):
-                agenda["end_time"] = time_module.time()
-
+        merged = _merge_llm_agendas(agenda_result, new_agendas)
+        if merged is not None:
+            new_agendas = merged
+        _ensure_agenda_timestamps(new_agendas)
     except Exception as e:
-        # 안건 업데이트 실패 시 기존 안건 유지
         print(f"⚠️ 안건 업데이트 실패: {e}")
 
     return {
