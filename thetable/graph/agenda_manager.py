@@ -109,11 +109,21 @@ async def extract_agenda_updates(
 
     try:
         # 1차 시도: 구조화된 출력
-        structured_llm = llm.with_structured_output(AgendaExtractionResult)
+        kwargs = {}
+        # OpenAI 모델인 경우 function_calling 모드 명시 (스키마 호환성 위함)
+        if "OpenAI" in llm.__class__.__name__:
+            kwargs["method"] = "function_calling"
+            
+        structured_llm = llm.with_structured_output(AgendaExtractionResult, **kwargs)
         result = await structured_llm.ainvoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content="위 대화를 분석하여 안건 목록을 업데이트해주세요.")
         ])
+        
+        # structured output이 None을 반환하면 fallback으로 이동
+        if result is None:
+            raise ValueError("Structured output returned None")
+            
         return result
 
     except Exception as e:

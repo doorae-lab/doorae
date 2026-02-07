@@ -1,19 +1,12 @@
 {
   "mcpServers": {
     "github": {
-      "command": "docker",
+      "command": "go",
       "args": [
         "run",
-        "-i",
-        "--rm",
-        "-e",
-        "GITHUB_PERSONAL_ACCESS_TOKEN",
-        "ghcr.io/github/github-mcp-server",
-        "stdio",
-        "--log-file",
-        "/dev/null"
+        "github.com/github/github-mcp-server/cmd/github-mcp-server@latest",
+        "stdio"
       ],
-      "transport": "stdio",
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
       }
