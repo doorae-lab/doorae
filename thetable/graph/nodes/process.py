@@ -1,15 +1,14 @@
 """ProcessResponseNode - 에이전트 응답 처리"""
 
 import time
-import logging
 from typing import Dict, Any
+from loguru import logger
+
 from thetable.graph.nodes.base import BaseNode, NodeType
 from thetable.graph.nodes.registry import register_node
 # utils import 제거 - 함수들을 private 메서드로 이동
 from thetable.graph.state import MeetingState
 from thetable.graph.constants import HOST_ROLE_NAME
-
-logger = logging.getLogger(__name__)
 
 
 @register_node("process_response", category="utility")

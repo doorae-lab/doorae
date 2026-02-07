@@ -145,7 +145,8 @@ async def extract_agenda_updates(
 
         except Exception as inner_e:
             # 최종 fallback: 기존 안건 유지
-            print(f"⚠️ 안건 추출 실패 (유지): {e}, {inner_e}")
+            from loguru import logger
+            logger.warning(f"⚠️ 안건 추출 실패 (유지): {e}, {inner_e}")
             # dict를 AgendaItem으로 변환
             fallback_items = [AgendaItem(**item) for item in current_items]
             return AgendaExtractionResult(

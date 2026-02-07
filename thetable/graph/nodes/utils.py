@@ -1,9 +1,7 @@
 """유틸리티 함수들 - 회의 워크플로우 헬퍼"""
 
-import logging
 from typing import Optional
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 async def initialize_mcp_tools(config_path: Optional[str] = None) -> dict[str, list]:

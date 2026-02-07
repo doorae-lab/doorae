@@ -2,6 +2,8 @@
 
 from typing import Dict, Any
 from langchain_core.messages import HumanMessage, RemoveMessage
+from loguru import logger
+
 from thetable.config import get_settings
 from thetable.graph.nodes.base import BaseNode, NodeType
 from thetable.graph.nodes.registry import register_node
@@ -99,7 +101,7 @@ class SummarizationNode(BaseNode):
             new_summary = response.content
         except Exception as e:
             # 요약 실패 시 기존 요약 유지
-            print(f"요약 생성 실패: {e}")
+            logger.warning(f"요약 생성 실패: {e}")
             new_summary = current_summary
 
         # 오래된 메시지 삭제 (최근 N개만 유지)

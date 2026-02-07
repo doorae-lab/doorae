@@ -1,16 +1,15 @@
 """AgentNode - AI 에이전트 노드"""
 
-import logging
 from typing import Dict, Any, Optional
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
+from loguru import logger
+
 from thetable.core.profile import AgentProfile
 from thetable.agents.base_agent import BaseAgent
 from thetable.graph.nodes.base import BaseNode, NodeType
 from thetable.graph.nodes.registry import register_node
 from thetable.graph.state import MeetingState
 from thetable.graph.constants import STATUS_EMOJI, STATUS_TEXT
-
-logger = logging.getLogger(__name__)
 
 
 @register_node("agent", category="agents")

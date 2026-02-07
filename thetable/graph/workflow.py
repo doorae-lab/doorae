@@ -7,9 +7,9 @@
 - Host 명시적 안건 완료 선언
 - AI 자동 안건 관리 (추가/수정/제거)
 """
-import logging
 from langchain_core.language_models import BaseChatModel
 from langgraph.graph import StateGraph, END
+from loguru import logger
 
 from thetable.config import create_main_llm, create_task_llm
 from thetable.graph.state import MeetingState
@@ -22,8 +22,6 @@ from thetable.graph.nodes import (
     condition_router,
     initialize_mcp_tools,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def create_meeting_workflow(

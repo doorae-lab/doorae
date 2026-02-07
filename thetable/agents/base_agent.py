@@ -1,16 +1,14 @@
 """Base agent with LLM integration"""
-import logging
 from typing import Dict, Any, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_core.language_models import BaseChatModel
 from openai import LengthFinishReasonError
+from loguru import logger
 
 from thetable.config import create_main_llm
 from thetable.core.profile import AgentProfile
-
-logger = logging.getLogger(__name__)
 
 
 class BaseAgent:

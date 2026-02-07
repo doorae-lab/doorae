@@ -1,13 +1,11 @@
 """MCP server configuration loader and tool management."""
 
 import json
-import logging
 import os
 import re
 from pathlib import Path
 from typing import Any
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 _ENV_VAR_PATTERN = re.compile(r'\$\{(\w+)\}')
 
@@ -116,7 +114,7 @@ def _build_streamable_http_headers(name: str, entry: dict) -> dict | None:
 
     # Authorization 헤더가 필터링되었다면 None 반환 (건너뛰기)
     if "Authorization" in original_headers and "Authorization" not in entry["headers"]:
-        print(f"⚠️  '{name}' MCP 서버 건너뜀: 인증 토큰 환경변수가 설정되지 않음")
+        logger.warning(f"⚠️  '{name}' MCP 서버 건너뜀: 인증 토큰 환경변수가 설정되지 않음")
         return None
 
     if not entry["headers"]:
