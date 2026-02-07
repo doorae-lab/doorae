@@ -29,15 +29,16 @@ class BaseAgent:
         self._system_prompt = self._build_system_prompt()
 
     def _init_default_llm(self) -> ChatOpenAI:
-        """기본 LLM 초기화"""
+        """기본 LLM 초기화 (Main LLM 사용)"""
         settings = get_settings()
         kwargs = {
             "model": settings.llm_main_model,
             "temperature": settings.llm_main_temperature,
             "max_tokens": settings.llm_main_max_tokens,
+            "api_key": settings.main_api_key,  # Property 사용 (fallback 처리)
         }
-        if settings.openai_base_url:
-            kwargs["base_url"] = settings.openai_base_url
+        if settings.main_base_url:  # Property 사용 (fallback 처리)
+            kwargs["base_url"] = settings.main_base_url
         return ChatOpenAI(**kwargs)
 
     def _build_system_prompt(self) -> str:
@@ -135,7 +136,7 @@ Always base your contributions on real data when tools are available.
             logger.debug(f"[{self.name}] 🔄 Tool-calling 루프 #{iteration}")
 
             try:
-                response = await self._llm.bind_tools(self._mcp_tools).ainvoke(
+                response = await self._llm.bind_tools(self._mcp_tools, tool_choice="any").ainvoke(
                     tool_messages,
                     config=config
                 )
