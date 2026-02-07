@@ -59,7 +59,7 @@ def format_agenda_panel(
         time_str = ""
         if agenda["status"] == "in_progress":
             # 진행 중: 경과 시간
-            agenda_start = agenda.get("start_time", start_time)
+            agenda_start = agenda.get("start_time") or start_time
             elapsed = time.time() - agenda_start
             mins, secs = divmod(int(elapsed), 60)
             time_str = f" [{mins}m {secs}s]"
