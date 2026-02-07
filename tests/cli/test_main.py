@@ -34,3 +34,10 @@ def test_cli_custom_message():
     """커스텀 메시지로 실행 테스트"""
     result = runner.invoke(app, ["--message", "커스텀 회의", "--help"])
     assert result.exit_code == 0
+
+
+def test_cli_no_stream_option():
+    """--no-stream 옵션 존재 확인"""
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "--no-stream" in result.stdout
