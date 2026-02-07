@@ -136,7 +136,7 @@ Always base your contributions on real data when tools are available.
             logger.debug(f"[{self.name}] 🔄 Tool-calling 루프 #{iteration}")
 
             try:
-                response = await self._llm.bind_tools(self._mcp_tools, tool_choice="any").ainvoke(
+                response = await self._llm.bind_tools(self._mcp_tools).ainvoke(
                     tool_messages,
                     config=config
                 )
