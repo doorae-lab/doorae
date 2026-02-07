@@ -10,7 +10,7 @@
 import asyncio
 from pathlib import Path
 from langchain_core.messages import HumanMessage
-from langchain.chat_models import init_chat_model
+from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from prompt_toolkit import prompt as pt_prompt
 from loguru import logger
@@ -408,8 +408,8 @@ def condition_router(state: MeetingState) -> str:
 
 def create_meeting_workflow(
     profiles_path: str = "config/agent_profiles.yaml",
-    main_model = None,  # BaseChatModel
-    task_model = None,  # BaseChatModel
+    main_model = None,  # ChatOpenAI
+    task_model = None,  # ChatOpenAI
     mcp_tools: dict[str, list] = None
 ):
     """안건 기반 회의 워크플로우 생성
@@ -425,10 +425,11 @@ def create_meeting_workflow(
     """
 
     settings = get_settings()
-    
+
     # Main model (에이전트 응답 생성용)
     if main_model is None:
-        main_kwargs = {
+        kwargs = {
+            "model": settings.llm_main_model,
             "temperature": settings.llm_main_temperature,
             "max_tokens": settings.llm_main_max_tokens,
             "streaming": True,
@@ -436,34 +437,25 @@ def create_meeting_workflow(
             "max_retries": settings.llm_max_retries,
         }
         if settings.openai_api_key:
-            main_kwargs["api_key"] = settings.openai_api_key
+            kwargs["api_key"] = settings.openai_api_key
         if settings.openai_base_url:
-            main_kwargs["base_url"] = settings.openai_base_url
-            
-        main_model = init_chat_model(
-            model=settings.llm_main_model,
-            model_provider=settings.llm_main_provider,
-            **main_kwargs
-        )
-    
+            kwargs["base_url"] = settings.openai_base_url
+        main_model = ChatOpenAI(**kwargs)
+
     # Task model (유틸리티 작업용)
     if task_model is None:
-        task_kwargs = {
+        kwargs = {
+            "model": settings.llm_task_model,
             "temperature": settings.llm_task_temperature,
             "max_tokens": settings.llm_task_max_tokens,
             "timeout": settings.llm_timeout,
             "max_retries": settings.llm_max_retries,
         }
         if settings.openai_api_key:
-            task_kwargs["api_key"] = settings.openai_api_key
+            kwargs["api_key"] = settings.openai_api_key
         if settings.openai_base_url:
-            task_kwargs["base_url"] = settings.openai_base_url
-            
-        task_model = init_chat_model(
-            model=settings.llm_task_model,
-            model_provider=settings.llm_task_provider,
-            **task_kwargs
-        )
+            kwargs["base_url"] = settings.openai_base_url
+        task_model = ChatOpenAI(**kwargs)
 
     # 1. 프로필 로드
     profiles = load_agent_profiles(profiles_path)
