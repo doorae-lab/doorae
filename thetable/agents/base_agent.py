@@ -36,6 +36,8 @@ class BaseAgent:
             "temperature": settings.llm_main_temperature,
             "max_tokens": settings.llm_main_max_tokens,
             "api_key": settings.main_api_key,  # Property 사용 (fallback 처리)
+            "timeout": settings.llm_timeout,
+            "max_retries": settings.llm_max_retries,
         }
         if settings.main_base_url:  # Property 사용 (fallback 처리)
             kwargs["base_url"] = settings.main_base_url
@@ -136,7 +138,7 @@ Always base your contributions on real data when tools are available.
             logger.debug(f"[{self.name}] 🔄 Tool-calling 루프 #{iteration}")
 
             try:
-                response = await self._llm.bind_tools(self._mcp_tools, tool_choice="any").ainvoke(
+                response = await self._llm.bind_tools(self._mcp_tools).ainvoke(
                     tool_messages,
                     config=config
                 )

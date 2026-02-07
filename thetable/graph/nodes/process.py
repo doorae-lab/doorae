@@ -57,13 +57,17 @@ class ProcessResponseNode(BaseNode):
 
 언급된 참여자 이름만 쉼표로 구분하여 출력 (없으면 "없음"):"""
 
-        response = await self.model.ainvoke(prompt)
-        result = response.content.strip()
+        try:
+            response = await self.model.ainvoke(prompt)
+            result = response.content.strip()
 
-        if result == "없음":
+            if result == "없음":
+                return []
+
+            return [s.strip() for s in result.split(",") if s.strip() in self.valid_speakers]
+        except Exception as e:
+            logger.warning(f"⚠️ 멘션 추출 LLM 호출 실패 (발언: {content[:30]}...): {type(e).__name__}: {e}")
             return []
-
-        return [s.strip() for s in result.split(",") if s.strip() in self.valid_speakers]
 
     def _detect_agenda_completion(self, content: str) -> bool:
         """Host 발언에서 안건 완료 키워드 감지
@@ -121,10 +125,14 @@ class ProcessResponseNode(BaseNode):
 
 회의 종료 의도가 명확하면 "예", 아니면 "아니오"로만 답하세요:"""
 
-        response = await self.model.ainvoke(prompt)
-        result = response.content.strip()
+        try:
+            response = await self.model.ainvoke(prompt)
+            result = response.content.strip()
 
-        return result == "예"
+            return result == "예"
+        except Exception as e:
+            logger.warning(f"⚠️ 회의 종료 감지 LLM 호출 실패 (발언: {content[:30]}...): {type(e).__name__}: {e}")
+            return False
 
     def _merge_llm_agendas(
         self, agenda_result, existing_agendas: list[dict]

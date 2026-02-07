@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+from langchain_core.messages import AIMessage
 from thetable.agents.base_agent import BaseAgent
 from thetable.core.profile import AgentProfile
 

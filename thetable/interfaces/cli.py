@@ -241,10 +241,16 @@ async def run_meeting(
             total = sum(len(t) for t in mcp_tools.values())
             console.print(f"[green]✅ MCP 도구 로드 완료: {total}개 도구 ({len(mcp_tools)}개 서버)[/green]")
         else:
-            console.print("[yellow]⚠️  MCP 도구를 사용할 수 없습니다 (설정 또는 환경변수 확인 필요)[/yellow]")
+            console.print("[yellow]⚠️  MCP 도구를 사용할 수 없습니다[/yellow]")
+            console.print("[yellow]   확인 사항:[/yellow]")
+            console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
+            console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
     except Exception as e:
         logger.warning(f"MCP 초기화 실패: {e}")
         console.print(f"[yellow]⚠️  MCP 초기화 실패: {e}[/yellow]")
+        console.print("[yellow]   확인 사항:[/yellow]")
+        console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
+        console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
         mcp_tools = None
 
     # Workflow 생성
