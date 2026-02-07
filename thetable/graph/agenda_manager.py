@@ -5,6 +5,7 @@ from typing import List, Optional
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 from pydantic import BaseModel, Field
+from thetable.graph.constants import STATUS_EMOJI
 
 
 class AgendaItem(BaseModel):
@@ -56,12 +57,7 @@ async def extract_agenda_updates(
     if current_items:
         current_agenda_text = "**현재 안건 목록:**\n"
         for idx, item in enumerate(current_items, 1):
-            status_emoji = {
-                "pending": "⏳",
-                "in_progress": "🔄",
-                "completed": "✅",
-                "deferred": "⏸️"
-            }.get(item.get("status", "pending"), "❓")
+            status_emoji = STATUS_EMOJI.get(item.get("status", "pending"), "❓")
             owner_text = f" (담당: {item['owner']})" if item.get("owner") else ""
             decision_text = f" → \"{item['decision']}\"" if item.get("decision") else ""
             current_agenda_text += f"{idx}. {status_emoji} {item['title']}{owner_text}{decision_text}\n"

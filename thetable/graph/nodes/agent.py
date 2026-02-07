@@ -8,6 +8,7 @@ from thetable.agents.base_agent import BaseAgent
 from thetable.graph.nodes.base import BaseNode, NodeType
 from thetable.graph.nodes.registry import register_node
 from thetable.graph.state import MeetingState
+from thetable.graph.constants import STATUS_EMOJI, STATUS_TEXT
 
 logger = logging.getLogger(__name__)
 
@@ -228,31 +229,18 @@ class AgentNode(BaseNode):
         if not agendas:
             return ""
 
-        # 상태 이모지 매핑
-        status_emoji = {
-            "pending": "⏳",
-            "in_progress": "🔄",
-            "completed": "✅",
-            "deferred": "⏸️",
-        }
-
         # 전체 안건 목록
         agenda_lines = ["## 📋 회의 안건", ""]
         for i, agenda in enumerate(agendas):
-            emoji = status_emoji.get(agenda.get("status", "pending"), "❓")
+            emoji = STATUS_EMOJI.get(agenda.get("status", "pending"), "❓")
             title = agenda.get("title", "")
 
             # 상태 텍스트
-            status_text = {
-                "pending": "예정",
-                "in_progress": "현재 논의 중",
-                "completed": "완료",
-                "deferred": "보류",
-            }.get(agenda.get("status", "pending"), "")
+            status_str = STATUS_TEXT.get(agenda.get("status", "pending"), "")
 
             # 현재 안건 표시
             marker = " ← 현재 안건" if i == current_idx else ""
-            agenda_lines.append(f"{i+1}. {emoji} {title} ({status_text}){marker}")
+            agenda_lines.append(f"{i+1}. {emoji} {title} ({status_str}){marker}")
 
         agenda_lines.append("")
 

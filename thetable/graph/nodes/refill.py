@@ -5,6 +5,7 @@ from thetable.graph.nodes.base import BaseNode, NodeType
 from thetable.graph.nodes.registry import register_node
 # utils import 제거 - 함수를 private 메서드로 이동
 from thetable.graph.state import MeetingState
+from thetable.graph.constants import HOST_ROLE_NAME
 
 
 @register_node("refill_speakers", category="utility")
@@ -77,11 +78,11 @@ class RefillSpeakersNode(BaseNode):
         if consecutive >= 3:
             # 강제로 Host가 마무리하도록
             return {
-                "pending_speakers": ["Host"],
+                "pending_speakers": [HOST_ROLE_NAME],
                 "consecutive_host_delegations": 0,
             }
 
         return {
-            "pending_speakers": ["Host"],
+            "pending_speakers": [HOST_ROLE_NAME],
             "consecutive_host_delegations": consecutive + 1,
         }

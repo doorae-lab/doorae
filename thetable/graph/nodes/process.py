@@ -7,6 +7,7 @@ from thetable.graph.nodes.base import BaseNode, NodeType
 from thetable.graph.nodes.registry import register_node
 # utils import 제거 - 함수들을 private 메서드로 이동
 from thetable.graph.state import MeetingState
+from thetable.graph.constants import HOST_ROLE_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -225,7 +226,7 @@ class ProcessResponseNode(BaseNode):
         new_agendas = agendas.copy()
         meeting_ended = False
 
-        if speaker_name == "Host" and self._detect_agenda_completion(content):
+        if speaker_name == HOST_ROLE_NAME and self._detect_agenda_completion(content):
             if current_idx < len(new_agendas):
                 new_agendas[current_idx]["status"] = "completed"
                 new_agendas[current_idx]["end_time"] = time.time()
@@ -237,7 +238,7 @@ class ProcessResponseNode(BaseNode):
                 new_pending = []  # 안건 변경 시 pending 초기화
 
         # 6. Host 회의 종료 발언 감지 (안건 상태 무관)
-        if speaker_name == "Host":
+        if speaker_name == HOST_ROLE_NAME:
             # 1단계: 키워드 감지 (최우선, 안건 상태 무관)
             if self._detect_meeting_end_keyword(content):
                 meeting_ended = True

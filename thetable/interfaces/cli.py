@@ -15,6 +15,7 @@ from langchain_core.messages import HumanMessage
 from thetable import __version__
 from thetable.config import Settings, get_settings, setup_tracing
 from thetable.graph.workflow import create_meeting_workflow
+from thetable.graph.constants import STATUS_EMOJI, HOST_ROLE_NAME, AGENT_COLORS
 from thetable.interfaces.logging import setup_logging
 
 
@@ -45,12 +46,7 @@ def format_agenda_panel(
 
     for i, agenda in enumerate(agendas):
         # 상태 이모지
-        status_emoji = {
-            "pending": "⏳",
-            "in_progress": "🔄",
-            "completed": "✅",
-            "deferred": "⏸️"
-        }.get(agenda["status"], "❓")
+        status_emoji = STATUS_EMOJI.get(agenda["status"], "❓")
 
         # owner: required_speakers의 첫 번째
         owner = agenda.get("required_speakers", [""])[0] if agenda.get("required_speakers") else ""
@@ -418,15 +414,12 @@ async def run_meeting(
         console.print("\n[bold]📝 회의 기록[/bold]")
         console.rule(style="yellow")
 
+        # 참가자 목록 추출 및 색상 할당
+        speakers = list(dict.fromkeys(getattr(msg, "name", "System") for msg in result.get("messages", [])))
+        color_map = {speaker: AGENT_COLORS[i % len(AGENT_COLORS)] for i, speaker in enumerate(speakers)}
+
         for msg in result.get("messages", []):
             speaker = getattr(msg, "name", "System")
-            # 에이전트별 색상
-            color_map = {
-                "Host": "green",
-                "Analyst": "blue",
-                "Critic": "red",
-                "Optimizer": "yellow",
-            }
             color = color_map.get(speaker, "white")
 
             console.print(f"\n[bold {color}][{speaker}][/bold {color}]")
