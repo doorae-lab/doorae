@@ -96,3 +96,62 @@ class TestRefillSpeakersNode:
         result = await node.execute(state)
 
         assert result["pending_speakers"] == []
+
+    @pytest.mark.asyncio
+    async def test_filter_invalid_speakers(self):
+        """비활성 에이전트 필터링 테스트"""
+        # 활성 에이전트만 포함된 valid_speakers
+        valid_speakers = {"Host", "PM", "TechLead"}
+        node = RefillSpeakersNode(valid_speakers=valid_speakers)
+
+        state = MeetingState(
+            messages=[],
+            pending_speakers=[],
+            agendas=[
+                {
+                    "title": "안건1",
+                    "status": "in_progress",
+                    # Designer, DevOps는 비활성 에이전트
+                    "required_speakers": ["PM", "Designer", "DevOps", "TechLead"],
+                }
+            ],
+            current_agenda_idx=0,
+            speaker_counts={},
+        )
+
+        result = await node.execute(state)
+
+        # 비활성 에이전트(Designer, DevOps)는 제외되고 활성 에이전트만 반환
+        assert "Designer" not in result["pending_speakers"]
+        assert "DevOps" not in result["pending_speakers"]
+        assert all(speaker in valid_speakers for speaker in result["pending_speakers"])
+        # PM과 TechLead 중 최대 2명
+        assert len(result["pending_speakers"]) <= 2
+
+    @pytest.mark.asyncio
+    async def test_filter_all_invalid_speakers_delegates_to_host(self):
+        """모든 required_speakers가 비활성이면 Host 위임"""
+        valid_speakers = {"Host", "PM"}
+        node = RefillSpeakersNode(valid_speakers=valid_speakers)
+
+        state = MeetingState(
+            messages=[],
+            pending_speakers=[],
+            agendas=[
+                {
+                    "title": "안건1",
+                    "status": "in_progress",
+                    # 모두 비활성 에이전트
+                    "required_speakers": ["Designer", "DevOps"],
+                }
+            ],
+            current_agenda_idx=0,
+            speaker_counts={},
+            consecutive_host_delegations=0,
+        )
+
+        result = await node.execute(state)
+
+        # 필터링 후 남은 게 없으므로 Host에 위임
+        assert result["pending_speakers"] == ["Host"]
+        assert result["consecutive_host_delegations"] == 1

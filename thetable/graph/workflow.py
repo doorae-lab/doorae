@@ -57,7 +57,7 @@ def create_meeting_workflow(
     workflow = StateGraph(MeetingState)
 
     # 3. refill_speakers 노드 추가
-    refill_node = RefillSpeakersNode(model=main_model)
+    refill_node = RefillSpeakersNode(model=main_model, valid_speakers=set(profiles.keys()))
     workflow.add_node("refill_speakers", refill_node)
 
     # 4. summarize 노드 추가

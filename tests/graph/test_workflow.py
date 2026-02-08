@@ -18,7 +18,7 @@ def test_condition_router_with_pending():
         "messages": [],
         "agendas": [{"title": "Test", "status": "pending", "required_speakers": []}],
         "current_agenda_idx": 0,
-        "pending_speakers": ["PM", "Designer"],
+        "pending_speakers": ["PM", "TechLead"],
         "speaker_counts": {},
         "consecutive_host_delegations": 0,
         "start_time": 0.0,
@@ -88,7 +88,7 @@ async def test_process_response_basic():
         "start_time": 0.0,
     }
 
-    valid_speakers = ["Host", "PM", "Designer", "TechLead", "DevOps"]
+    valid_speakers = ["Host", "PM", "TechLead"]
     result = await process_response(state, model, valid_speakers)
 
     # Host가 pending에서 제거됨
@@ -121,7 +121,7 @@ async def test_process_response_agenda_completion():
         "start_time": 0.0,
     }
 
-    valid_speakers = ["Host", "PM", "Designer", "TechLead", "DevOps"]
+    valid_speakers = ["Host", "PM", "TechLead"]
     result = await process_response(state, model, valid_speakers)
 
     # 안건 완료 및 인덱스 증가

@@ -18,17 +18,20 @@ class RefillSpeakersNode(BaseNode):
 
     Attributes:
         model: LLM 모델 (현재 사용하지 않음, 향후 확장용)
+        valid_speakers: 유효한 에이전트 이름 집합 (라우팅 가능한 노드만 포함)
     """
 
     node_type = NodeType.UTILITY
 
-    def __init__(self, model=None):
+    def __init__(self, model=None, valid_speakers: set[str] | None = None):
         """초기화
 
         Args:
             model: LLM 모델 인스턴스 (향후 확장용, 현재는 사용 안 함)
+            valid_speakers: 유효한 에이전트 이름 집합 (None이면 필터링 안 함)
         """
         self.model = model
+        self.valid_speakers = valid_speakers or set()
 
     def _get_remaining_speakers(
         self, required_speakers: list[str], already_spoken: set
@@ -67,6 +70,10 @@ class RefillSpeakersNode(BaseNode):
         # 1차: 안건의 required_speakers 중 미발언자
         already_spoken = set(speaker_counts.keys())
         remaining = self._get_remaining_speakers(required, already_spoken)
+
+        # valid_speakers로 필터링 (비활성 에이전트 제거)
+        if self.valid_speakers:
+            remaining = [s for s in remaining if s in self.valid_speakers]
 
         if remaining:
             return {
