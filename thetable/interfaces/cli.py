@@ -354,7 +354,8 @@ def _build_initial_state(
     settings: Settings,
     profiles_path: Path,
     initial_message: str,
-    human_names: list[str]
+    human_names: list[str],
+    agendas: list[dict]
 ) -> dict:
     """초기 상태 구성
 
@@ -363,40 +364,25 @@ def _build_initial_state(
         profiles_path: 프로필 경로
         initial_message: 초기 메시지
         human_names: Human 참여자 이름 리스트
+        agendas: YAML에서 로드한 안건 목록
 
     Returns:
         초기 상태 딕셔너리
     """
     import time
+    import copy
 
-    # 기본 안건 정의
-    base_agendas = [
-        {
-            "title": "회의 시작 및 현황 공유",
-            "description": "회의를 시작하고 주간 현황을 공유합니다",
-            "status": "in_progress",
-            "required_speakers": ["Host", "PM"],
-            "start_time": time.time()
-        },
-        {
-            "title": "주요 이슈 논의",
-            "description": "당면한 문제들을 논의하고 해결 방안을 모색합니다",
-            "status": "pending",
-            "required_speakers": ["TechLead", "Designer", "DevOps"]
-        },
-        {
-            "title": "향후 일정 및 계획",
-            "description": "다음 단계 일정과 계획을 수립합니다",
-            "status": "pending",
-            "required_speakers": ["PM", "TechLead"]
-        },
-        {
-            "title": "회의 마무리",
-            "description": "논의 내용을 정리하고 액션 아이템을 확정합니다",
-            "status": "pending",
-            "required_speakers": ["Host"]
-        },
-    ]
+    # 안건 복사 및 상태 설정
+    base_agendas = copy.deepcopy(agendas)
+
+    # 첫 번째 안건에 in_progress 상태 및 start_time 설정
+    if base_agendas:
+        base_agendas[0]["status"] = "in_progress"
+        base_agendas[0]["start_time"] = time.time()
+
+        # 나머지 안건은 pending 상태
+        for agenda in base_agendas[1:]:
+            agenda["status"] = "pending"
 
     # Human 참여자를 모든 안건에 추가
     for agenda in base_agendas:
@@ -548,8 +534,12 @@ async def run_meeting(
     human_names = [name for name, p in profiles.items() if p.is_human]
     logger.debug(f"Human participants: {human_names}")
 
+    # 안건 로드
+    from thetable.core.agenda import load_agendas
+    agendas = load_agendas(str(settings.agendas_path))
+
     # 초기 상태 구성
-    initial_state = _build_initial_state(settings, profiles_path, initial_message, human_names)
+    initial_state = _build_initial_state(settings, profiles_path, initial_message, human_names, agendas)
     logger.debug(f"Initial state: {initial_state}")
 
     # 실행
