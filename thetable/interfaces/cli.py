@@ -352,43 +352,46 @@ async def _initialize_mcp(settings: Settings) -> dict[str, list] | None:
 
 def _build_initial_state(
     settings: Settings,
-    profiles_path: Path,
     initial_message: str,
-    human_names: list[str]
+    human_names: list[str],
+    agent_names: list[str]
 ) -> dict:
     """초기 상태 구성
 
     Args:
         settings: Settings 인스턴스
-        profiles_path: 프로필 경로
         initial_message: 초기 메시지
         human_names: Human 참여자 이름 리스트
+        agent_names: 활성 에이전트 이름 리스트
 
     Returns:
         초기 상태 딕셔너리
     """
     import time
 
-    # 기본 안건 정의
+    # Host 제외한 활성 에이전트
+    non_host_agents = [name for name in agent_names if name != "Host"]
+
+    # 기본 안건 정의 (활성 에이전트 기반)
     base_agendas = [
         {
             "title": "회의 시작 및 현황 공유",
             "description": "회의를 시작하고 주간 현황을 공유합니다",
             "status": "in_progress",
-            "required_speakers": ["Host", "PM"],
+            "required_speakers": ["Host"] + (non_host_agents[:1] if non_host_agents else []),
             "start_time": time.time()
         },
         {
             "title": "주요 이슈 논의",
             "description": "당면한 문제들을 논의하고 해결 방안을 모색합니다",
             "status": "pending",
-            "required_speakers": ["TechLead", "Designer", "DevOps"]
+            "required_speakers": non_host_agents.copy()
         },
         {
             "title": "향후 일정 및 계획",
             "description": "다음 단계 일정과 계획을 수립합니다",
             "status": "pending",
-            "required_speakers": ["PM", "TechLead"]
+            "required_speakers": non_host_agents.copy()
         },
         {
             "title": "회의 마무리",
@@ -546,10 +549,11 @@ async def run_meeting(
     from thetable.core.profile import load_agent_profiles
     profiles = load_agent_profiles(str(profiles_path))
     human_names = [name for name, p in profiles.items() if p.is_human]
+    agent_names = list(profiles.keys())
     logger.debug(f"Human participants: {human_names}")
 
     # 초기 상태 구성
-    initial_state = _build_initial_state(settings, profiles_path, initial_message, human_names)
+    initial_state = _build_initial_state(settings, initial_message, human_names, agent_names)
     logger.debug(f"Initial state: {initial_state}")
 
     # 실행

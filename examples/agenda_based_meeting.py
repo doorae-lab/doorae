@@ -2,12 +2,18 @@
 import asyncio
 import time
 from thetable.graph.workflow import create_meeting_workflow
+from thetable.core.profile import load_agent_profiles
 
 
 async def main():
     """안건 기반 회의 실행"""
-    
-    # 초기 상태 설정
+
+    # 활성 에이전트 로드
+    profiles = load_agent_profiles()
+    agent_names = list(profiles.keys())
+    non_host_agents = [name for name in agent_names if name != "Host"]
+
+    # 초기 상태 설정 (활성 에이전트 기반)
     initial_state = {
         "messages": [],
         "agendas": [
@@ -15,19 +21,19 @@ async def main():
                 "title": "회의 시작 및 현황 공유",
                 "description": "오늘 회의를 시작하고 주간 현황을 공유합니다",
                 "status": "pending",
-                "required_speakers": ["Host", "PM"]
+                "required_speakers": ["Host"] + (non_host_agents[:1] if non_host_agents else [])
             },
             {
                 "title": "결제 시스템 오류 대응",
                 "description": "지난주 발생한 결제 실패 이슈의 원인 분석 및 해결 방안 논의",
                 "status": "pending",
-                "required_speakers": ["TechLead", "Designer", "DevOps"]
+                "required_speakers": non_host_agents.copy()
             },
             {
                 "title": "신규 기능 배포 일정",
                 "description": "다음 스프린트에 배포할 기능들의 우선순위와 일정 조율",
                 "status": "pending",
-                "required_speakers": ["PM", "TechLead"]
+                "required_speakers": non_host_agents.copy()
             },
             {
                 "title": "회의 마무리",
