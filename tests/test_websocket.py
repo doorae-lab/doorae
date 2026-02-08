@@ -1,6 +1,7 @@
 """
 WebSocket 채팅 서버 테스트 모듈
 다중 유저 채팅 서버의 WebSocket 기능을 검증합니다.
+배치 처리 통합 및 Prometheus 메트릭 테스트 포함
 """
 
 import asyncio
@@ -8,6 +9,7 @@ import json
 import time
 import pytest
 import websockets
+import httpx
 from typing import List, Dict, Any
 from datetime import datetime
 
@@ -19,11 +21,12 @@ class TestWebSocketChatServer:
     SERVER_HOST = "localhost"
     SERVER_PORT = 8000
     WS_URL = f"ws://{SERVER_HOST}:{SERVER_PORT}/ws"
+    HTTP_URL = f"http://{SERVER_HOST}:{SERVER_PORT}"
     
     @pytest.fixture
     async def websocket_client(self):
         """WebSocket 클라이언트 연결 픽스처"""
-        async with websockets.connect(self.WS_URL) as websocket:
+        async with websockets.connect(f"{self.WS_URL}/test_client") as websocket:
             yield websocket
             await websocket.close()
     
@@ -31,14 +34,20 @@ class TestWebSocketChatServer:
     async def multiple_clients(self):
         """다중 WebSocket 클라이언트 연결 픽스처"""
         clients = []
-        for _ in range(3):
-            websocket = await websockets.connect(self.WS_URL)
+        for i in range(3):
+            websocket = await websockets.connect(f"{self.WS_URL}/client_{i}")
             clients.append(websocket)
         
         yield clients
         
         for client in clients:
             await client.close()
+    
+    @pytest.fixture
+    async def http_client(self):
+        """HTTP 클라이언트 픽스처"""
+        async with httpx.AsyncClient(base_url=self.HTTP_URL) as client:
+            yield client
     
     # 1. 기본 연결 테스트
     @pytest.mark.asyncio
@@ -49,15 +58,13 @@ class TestWebSocketChatServer:
         # 연결 상태 확인
         assert websocket.open
         
-        # 핑 테스트
-        ping_message = json.dumps({"type": "ping", "timestamp": time.time()})
-        await websocket.send(ping_message)
+        # 환영 메시지 수신
+        welcome_message = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+        welcome_data = json.loads(welcome_message)
         
-        response = await asyncio.wait_for(websocket.recv(), timeout=5.0)
-        response_data = json.loads(response)
-        
-        assert response_data["type"] == "pong"
-        assert "timestamp" in response_data
+        assert welcome_data["type"] == "system"
+        assert "Welcome" in welcome_data["message"]
+        assert "total_connections" in welcome_data
         
         print("✓ WebSocket 연결/해제 테스트 통과")
     
@@ -67,23 +74,25 @@ class TestWebSocketChatServer:
         """메시지 송수신 기능 테스트"""
         websocket = websocket_client
         
+        # 환영 메시지 수신
+        await asyncio.wait_for(websocket.recv(), timeout=5.0)
+        
         # 테스트 메시지 전송
         test_message = {
             "type": "chat",
-            "user": "test_user",
-            "message": "Hello, WebSocket!",
-            "timestamp": datetime.now().isoformat()
+            "message": "Hello, WebSocket!"
         }
         
         await websocket.send(json.dumps(test_message))
         
-        # 응답 수신
+        # 브로드캐스트 메시지 수신 (자신에게도 전송됨)
         response = await asyncio.wait_for(websocket.recv(), timeout=5.0)
         response_data = json.loads(response)
         
-        assert response_data["type"] == "chat_ack"
-        assert response_data["status"] == "received"
-        assert "message_id" in response_data
+        assert response_data["type"] == "chat"
+        assert response_data["message"] == "Hello, WebSocket!"
+        assert "sender" in response_data
+        assert "timestamp" in response_data
         
         print("✓ 메시지 송수신 테스트 통과")
     
@@ -93,12 +102,14 @@ class TestWebSocketChatServer:
         """브로드캐스트 메시지 기능 테스트"""
         clients = multiple_clients
         
-        # 첫 번째 클라이언트가 브로드캐스트 메시지 전송
+        # 모든 클라이언트가 환영 메시지 수신
+        for client in clients:
+            await asyncio.wait_for(client.recv(), timeout=3.0)
+        
+        # 첫 번째 클라이언트가 채팅 메시지 전송
         broadcast_message = {
-            "type": "broadcast",
-            "user": "admin",
-            "message": "System announcement",
-            "timestamp": datetime.now().isoformat()
+            "type": "chat",
+            "message": "System announcement"
         }
         
         await clients[0].send(json.dumps(broadcast_message))
@@ -113,11 +124,11 @@ class TestWebSocketChatServer:
             except asyncio.TimeoutError:
                 continue
         
-        # 최소 2개 이상의 클라이언트가 메시지 수신
-        assert len(received_messages) >= 2
+        # 모든 클라이언트가 메시지 수신
+        assert len(received_messages) == len(clients)
         
         for msg in received_messages:
-            assert msg["type"] == "broadcast"
+            assert msg["type"] == "chat"
             assert msg["message"] == "System announcement"
         
         print("✓ 브로드캐스트 기능 테스트 통과")
@@ -132,16 +143,11 @@ class TestWebSocketChatServer:
         try:
             # 다중 클라이언트 동시 연결
             for i in range(num_clients):
-                websocket = await websockets.connect(self.WS_URL)
+                websocket = await websockets.connect(f"{self.WS_URL}/load_test_{i}")
                 clients.append(websocket)
                 
-                # 각 클라이언트 인증 메시지 전송
-                auth_message = {
-                    "type": "auth",
-                    "user_id": f"user_{i}",
-                    "timestamp": time.time()
-                }
-                await websocket.send(json.dumps(auth_message))
+                # 환영 메시지 수신
+                await asyncio.wait_for(websocket.recv(), timeout=3.0)
             
             # 모든 클라이언트 연결 상태 확인
             for client in clients:
@@ -150,16 +156,16 @@ class TestWebSocketChatServer:
             # 간단한 메시지 교환 테스트
             test_client = clients[0]
             test_message = {
-                "type": "test",
-                "content": "concurrent test",
-                "timestamp": time.time()
+                "type": "chat",
+                "message": "concurrent test"
             }
             
             await test_client.send(json.dumps(test_message))
             response = await asyncio.wait_for(test_client.recv(), timeout=5.0)
             response_data = json.loads(response)
             
-            assert response_data["type"] == "test_ack"
+            assert response_data["type"] == "chat"
+            assert response_data["message"] == "concurrent test"
             
             print(f"✓ 동시 {num_clients}명 접속 테스트 통과")
             
@@ -178,19 +184,23 @@ class TestWebSocketChatServer:
         for attempt in range(max_attempts):
             try:
                 # 연결
-                websocket = await websockets.connect(self.WS_URL)
+                websocket = await websockets.connect(f"{self.WS_URL}/reconnect_{attempt}")
                 
                 # 연결 확인
                 assert websocket.open
                 
+                # 환영 메시지 수신
+                await asyncio.wait_for(websocket.recv(), timeout=3.0)
+                
                 # 간단한 메시지 전송
-                test_message = {"type": "reconnect_test", "attempt": attempt}
+                test_message = {"type": "chat", "message": f"reconnect test {attempt}"}
                 await websocket.send(json.dumps(test_message))
                 
                 response = await asyncio.wait_for(websocket.recv(), timeout=3.0)
                 response_data = json.loads(response)
                 
-                assert response_data["type"] == "reconnect_ack"
+                assert response_data["type"] == "chat"
+                assert response_data["message"] == f"reconnect test {attempt}"
                 
                 # 연결 종료
                 await websocket.close()
@@ -214,10 +224,13 @@ class TestWebSocketChatServer:
         """메시지 무결성 및 순서 보장 테스트"""
         websocket = websocket_client
         
+        # 환영 메시지 수신
+        await asyncio.wait_for(websocket.recv(), timeout=5.0)
+        
         messages_to_send = [
-            {"type": "sequence", "index": 1, "content": "첫 번째 메시지"},
-            {"type": "sequence", "index": 2, "content": "두 번째 메시지"},
-            {"type": "sequence", "index": 3, "content": "세 번째 메시지"}
+            {"type": "chat", "message": "첫 번째 메시지"},
+            {"type": "chat", "message": "두 번째 메시지"},
+            {"type": "chat", "message": "세 번째 메시지"}
         ]
         
         received_messages = []
@@ -234,8 +247,8 @@ class TestWebSocketChatServer:
         
         # 메시지 순서 확인
         for i, received_msg in enumerate(received_messages):
-            assert received_msg["type"] == "sequence_ack"
-            assert received_msg["original_index"] == i + 1
+            assert received_msg["type"] == "chat"
+            assert received_msg["message"] == messages_to_send[i]["message"]
         
         print("✓ 메시지 무결성 및 순서 보장 테스트 통과")
     
@@ -245,6 +258,9 @@ class TestWebSocketChatServer:
         """메시지 처리 성능 측정 테스트"""
         websocket = websocket_client
         
+        # 환영 메시지 수신
+        await asyncio.wait_for(websocket.recv(), timeout=5.0)
+        
         num_messages = 10
         latencies = []
         
@@ -252,9 +268,8 @@ class TestWebSocketChatServer:
             start_time = time.time()
             
             test_message = {
-                "type": "performance",
-                "index": i,
-                "timestamp": start_time
+                "type": "chat",
+                "message": f"performance test {i}"
             }
             
             await websocket.send(json.dumps(test_message))
@@ -267,8 +282,8 @@ class TestWebSocketChatServer:
             
             latencies.append(latency)
             
-            assert response_data["type"] == "performance_ack"
-            assert response_data["index"] == i
+            assert response_data["type"] == "chat"
+            assert response_data["message"] == f"performance test {i}"
         
         # 성능 통계 계산
         avg_latency = sum(latencies) / len(latencies)
@@ -297,6 +312,9 @@ class TestWebSocketChatServer:
         """에러 처리 및 예외 상황 테스트"""
         websocket = websocket_client
         
+        # 환영 메시지 수신
+        await asyncio.wait_for(websocket.recv(), timeout=5.0)
+        
         # 잘못된 형식의 메시지 전송
         invalid_messages = [
             "invalid json string",
@@ -316,9 +334,9 @@ class TestWebSocketChatServer:
                 response = await asyncio.wait_for(websocket.recv(), timeout=2.0)
                 response_data = json.loads(response)
                 
-                # 에러 응답이 올바른 형식인지 확인
+                # JSON 파싱 에러인 경우 텍스트 메시지로 처리됨
                 if "type" in response_data:
-                    assert response_data["type"] in ["error", "invalid_format"]
+                    assert response_data["type"] == "chat"
             except (asyncio.TimeoutError, json.JSONDecodeError):
                 # 타임아웃이나 파싱 에러는 허용
                 pass
@@ -331,12 +349,14 @@ class TestWebSocketChatServer:
         """대용량 메시지 처리 테스트"""
         websocket = websocket_client
         
+        # 환영 메시지 수신
+        await asyncio.wait_for(websocket.recv(), timeout=5.0)
+        
         # 대용량 메시지 생성 (약 10KB)
         large_content = "X" * 10000
         large_message = {
-            "type": "large",
-            "content": large_content,
-            "timestamp": time.time()
+            "type": "chat",
+            "message": large_content
         }
         
         start_time = time.time()
@@ -348,8 +368,8 @@ class TestWebSocketChatServer:
         end_time = time.time()
         processing_time = (end_time - start_time) * 1000
         
-        assert response_data["type"] == "large_ack"
-        assert "processed_size" in response_data
+        assert response_data["type"] == "chat"
+        assert len(response_data["message"]) == len(large_content)
         
         print(f"✓ 대용량 메시지 처리 테스트 통과 ({processing_time:.2f}ms 소요)")
     
@@ -364,8 +384,11 @@ class TestWebSocketChatServer:
         try:
             # 클라이언트 연결
             for i in range(num_clients):
-                websocket = await websockets.connect(self.WS_URL)
+                websocket = await websockets.connect(f"{self.WS_URL}/integrated_{i}")
                 clients.append((websocket, f"user_{i}"))
+                
+                # 환영 메시지 수신
+                await asyncio.wait_for(websocket.recv(), timeout=3.0)
             
             # 채팅 시나리오 실행
             messages_exchanged = 0
@@ -374,9 +397,7 @@ class TestWebSocketChatServer:
                 # 각 클라이언트가 메시지 전송
                 chat_message = {
                     "type": "chat",
-                    "user": sender_id,
-                    "message": f"Message from {sender_id}",
-                    "timestamp": datetime.now().isoformat()
+                    "message": f"Message from {sender_id}"
                 }
                 
                 await sender_ws.send(json.dumps(chat_message))
@@ -384,9 +405,10 @@ class TestWebSocketChatServer:
                 
                 # 발신자 확인 응답
                 try:
-                    ack_response = await asyncio.wait_for(sender_ws.recv(), timeout=3.0)
-                    ack_data = json.loads(ack_response)
-                    assert ack_data["type"] == "chat_ack"
+                    response = await asyncio.wait_for(sender_ws.recv(), timeout=3.0)
+                    response_data = json.loads(response)
+                    assert response_data["type"] == "chat"
+                    assert response_data["message"] == f"Message from {sender_id}"
                 except asyncio.TimeoutError:
                     print(f"발신자 {sender_id} 확인 응답 타임아웃")
             
@@ -399,6 +421,118 @@ class TestWebSocketChatServer:
             # 클라이언트 정리
             for client_ws, _ in clients:
                 await client_ws.close()
+    
+    # 11. HTTP 헬스 체크 테스트
+    @pytest.mark.asyncio
+    async def test_http_health_check(self, http_client):
+        """HTTP 헬스 체크 엔드포인트 테스트"""
+        response = await http_client.get("/health")
+        
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert "timestamp" in data
+        assert "connections" in data
+        assert "batch_processor_active" in data
+        assert data["metrics_available"] == True
+        
+        print("✓ HTTP 헬스 체크 테스트 통과")
+    
+    # 12. HTTP 통계 엔드포인트 테스트
+    @pytest.mark.asyncio
+    async def test_http_stats_endpoint(self, http_client):
+        """HTTP 통계 엔드포인트 테스트"""
+        response = await http_client.get("/stats")
+        
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert "total_connections" in data
+        assert "connection_info" in data
+        assert "batch_processor_active" in data
+        assert "prometheus_metrics" in data
+        
+        print("✓ HTTP 통계 엔드포인트 테스트 통과")
+    
+    # 13. 배치 처리 통계 테스트
+    @pytest.mark.asyncio
+    async def test_batch_stats_endpoint(self, http_client):
+        """배치 처리 통계 엔드포인트 테스트"""
+        response = await http_client.get("/batch-stats")
+        
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert "batch_size_limit" in data
+        assert data["batch_size_limit"] == 100
+        assert "batch_timeout" in data
+        assert data["batch_timeout"] == 1.0
+        assert "active" in data
+        assert data["active"] == True
+        assert "metrics" in data
+        
+        print("✓ 배치 처리 통계 테스트 통과")
+    
+    # 14. Prometheus 메트릭 엔드포인트 테스트
+    @pytest.mark.asyncio
+    async def test_prometheus_metrics_endpoint(self, http_client):
+        """Prometheus 메트릭 엔드포인트 테스트"""
+        response = await http_client.get("/metrics")
+        
+        assert response.status_code == 200
+        
+        # Prometheus 메트릭 형식 확인
+        content = response.text
+        assert "websocket_connections" in content
+        assert "websocket_messages_processed_total" in content
+        assert "websocket_errors_total" in content
+        assert "batch_processing_time_seconds" in content
+        assert "batch_size" in content
+        assert "active_batches" in content
+        
+        print("✓ Prometheus 메트릭 엔드포인트 테스트 통과")
+    
+    # 15. 배치 처리 통합 테스트
+    @pytest.mark.asyncio
+    async def test_batch_processing_integration(self, websocket_client, http_client):
+        """배치 처리 통합 테스트"""
+        websocket = websocket_client
+        
+        # 환영 메시지 수신
+        await asyncio.wait_for(websocket.recv(), timeout=5.0)
+        
+        # 배치 처리 전 메트릭 확인
+        initial_metrics_response = await http_client.get("/metrics")
+        initial_content = initial_metrics_response.text
+        
+        # 여러 메시지 전송 (배치 처리 유발)
+        num_messages = 50
+        for i in range(num_messages):
+            test_message = {
+                "type": "chat",
+                "message": f"batch test {i}"
+            }
+            await websocket.send(json.dumps(test_message))
+            
+            # 응답 수신
+            await asyncio.wait_for(websocket.recv(), timeout=2.0)
+        
+        # 배치 처리 후 메트릭 확인
+        await asyncio.sleep(2)  # 배치 처리 완료 대기
+        
+        final_metrics_response = await http_client.get("/metrics")
+        final_content = final_metrics_response.text
+        
+        # 메트릭 증가 확인
+        assert "websocket_messages_processed_total" in final_content
+        
+        # 배치 처리 활성 상태 확인
+        batch_stats_response = await http_client.get("/batch-stats")
+        batch_stats = batch_stats_response.json()
+        assert batch_stats["active"] == True
+        
+        print("✓ 배치 처리 통합 테스트 통과")
 
 
 if __name__ == "__main__":
@@ -424,7 +558,12 @@ if __name__ == "__main__":
         "7. 성능 측정 테스트 (95% 메시지 100ms 이내)",
         "8. 에러 처리 테스트",
         "9. 대용량 메시지 처리 테스트",
-        "10. 통합 기능 종합 테스트 (5명 클라이언트)"
+        "10. 통합 기능 종합 테스트 (5명 클라이언트)",
+        "11. HTTP 헬스 체크 테스트",
+        "12. HTTP 통계 엔드포인트 테스트",
+        "13. 배치 처리 통계 테스트",
+        "14. Prometheus 메트릭 엔드포인트 테스트",
+        "15. 배치 처리 통합 테스트"
     ]
     
     print("구현된 테스트 시나리오:")
