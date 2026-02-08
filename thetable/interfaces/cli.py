@@ -354,7 +354,7 @@ def _build_initial_state(
     settings: Settings,
     initial_message: str,
     human_names: list[str],
-    agent_names: list[str]
+    agendas: list[dict]
 ) -> dict:
     """초기 상태 구성
 
@@ -362,48 +362,25 @@ def _build_initial_state(
         settings: Settings 인스턴스
         initial_message: 초기 메시지
         human_names: Human 참여자 이름 리스트
-        agent_names: 활성 에이전트 이름 리스트
+        agendas: YAML에서 로드한 안건 목록
 
     Returns:
         초기 상태 딕셔너리
     """
     import time
+    import copy
 
-    # Host 제외한 활성 에이전트
-    non_host_agents = [name for name in agent_names if name != "Host"]
+    # 안건 복사 및 상태 설정
+    base_agendas = copy.deepcopy(agendas)
 
-    # 안건별 핵심 담당자 선정 (없으면 첫 번째 non-Host 에이전트로 fallback)
-    tech_lead = ["TechLead"] if "TechLead" in agent_names else (non_host_agents[:1] if non_host_agents else [])
-    pm = ["PM"] if "PM" in agent_names else (non_host_agents[:1] if non_host_agents else [])
+    # 첫 번째 안건에 in_progress 상태 및 start_time 설정
+    if base_agendas:
+        base_agendas[0]["status"] = "in_progress"
+        base_agendas[0]["start_time"] = time.time()
 
-    # 기본 안건 정의 (핵심 담당자만 required, 나머지는 멘션으로 발언 가능)
-    base_agendas = [
-        {
-            "title": "회의 시작 및 현황 공유",
-            "description": "회의를 시작하고 주간 현황을 공유합니다",
-            "status": "in_progress",
-            "required_speakers": ["Host"] + (pm if pm else non_host_agents[:1]),
-            "start_time": time.time()
-        },
-        {
-            "title": "주요 이슈 논의",
-            "description": "당면한 문제들을 논의하고 해결 방안을 모색합니다",
-            "status": "pending",
-            "required_speakers": tech_lead  # TechLead만 필수, 나머지는 멘션으로 참여
-        },
-        {
-            "title": "향후 일정 및 계획",
-            "description": "다음 단계 일정과 계획을 수립합니다",
-            "status": "pending",
-            "required_speakers": pm  # PM만 필수, 나머지는 멘션으로 참여
-        },
-        {
-            "title": "회의 마무리",
-            "description": "논의 내용을 정리하고 액션 아이템을 확정합니다",
-            "status": "pending",
-            "required_speakers": ["Host"]
-        },
-    ]
+        # 나머지 안건은 pending 상태
+        for agenda in base_agendas[1:]:
+            agenda["status"] = "pending"
 
     # Human 참여자를 모든 안건에 추가
     for agenda in base_agendas:
@@ -553,11 +530,14 @@ async def run_meeting(
     from thetable.core.profile import load_agent_profiles
     profiles = load_agent_profiles(str(profiles_path))
     human_names = [name for name, p in profiles.items() if p.is_human]
-    agent_names = list(profiles.keys())
     logger.debug(f"Human participants: {human_names}")
 
+    # 안건 로드
+    from thetable.core.agenda import load_agendas
+    agendas = load_agendas(str(settings.agendas_path))
+
     # 초기 상태 구성
-    initial_state = _build_initial_state(settings, initial_message, human_names, agent_names)
+    initial_state = _build_initial_state(settings, initial_message, human_names, agendas)
     logger.debug(f"Initial state: {initial_state}")
 
     # 실행

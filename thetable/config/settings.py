@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     max_turns: int = 1000  # 회의 최대 턴 수 (무한루프 방지)
     
     agent_profiles_path: str = "config/agent_profiles.yaml"
+    agendas_path: str = "config/agendas.yaml"
 
     # 대화 요약 설정
     max_messages_before_summary: int = 5  # 이 개수 초과 시 요약

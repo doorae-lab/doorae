@@ -1,0 +1,13 @@
+agendas:
+  - title: "회의 시작 및 현황 공유"
+    description: "회의를 시작하고 주간 현황을 공유합니다"
+    required_speakers: ["Host", "PM"]
+  - title: "주요 이슈 논의"
+    description: "당면한 문제들을 논의하고 해결 방안을 모색합니다"
+    required_speakers: ["TechLead"]
+  - title: "향후 일정 및 계획"
+    description: "다음 단계 일정과 계획을 수립합니다"
+    required_speakers: ["PM"]
+  - title: "회의 마무리"
+    description: "논의 내용을 정리하고 액션 아이템을 확정합니다"
+    required_speakers: ["Host"]
