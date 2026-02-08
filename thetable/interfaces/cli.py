@@ -372,26 +372,30 @@ def _build_initial_state(
     # Host 제외한 활성 에이전트
     non_host_agents = [name for name in agent_names if name != "Host"]
 
-    # 기본 안건 정의 (활성 에이전트 기반)
+    # 안건별 핵심 담당자 선정 (없으면 첫 번째 non-Host 에이전트로 fallback)
+    tech_lead = ["TechLead"] if "TechLead" in agent_names else (non_host_agents[:1] if non_host_agents else [])
+    pm = ["PM"] if "PM" in agent_names else (non_host_agents[:1] if non_host_agents else [])
+
+    # 기본 안건 정의 (핵심 담당자만 required, 나머지는 멘션으로 발언 가능)
     base_agendas = [
         {
             "title": "회의 시작 및 현황 공유",
             "description": "회의를 시작하고 주간 현황을 공유합니다",
             "status": "in_progress",
-            "required_speakers": ["Host"] + (non_host_agents[:1] if non_host_agents else []),
+            "required_speakers": ["Host"] + (pm if pm else non_host_agents[:1]),
             "start_time": time.time()
         },
         {
             "title": "주요 이슈 논의",
             "description": "당면한 문제들을 논의하고 해결 방안을 모색합니다",
             "status": "pending",
-            "required_speakers": non_host_agents.copy()
+            "required_speakers": tech_lead  # TechLead만 필수, 나머지는 멘션으로 참여
         },
         {
             "title": "향후 일정 및 계획",
             "description": "다음 단계 일정과 계획을 수립합니다",
             "status": "pending",
-            "required_speakers": non_host_agents.copy()
+            "required_speakers": pm  # PM만 필수, 나머지는 멘션으로 참여
         },
         {
             "title": "회의 마무리",

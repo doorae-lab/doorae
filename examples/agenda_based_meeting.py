@@ -13,7 +13,11 @@ async def main():
     agent_names = list(profiles.keys())
     non_host_agents = [name for name in agent_names if name != "Host"]
 
-    # 초기 상태 설정 (활성 에이전트 기반)
+    # 안건별 핵심 담당자 선정
+    tech_lead = ["TechLead"] if "TechLead" in agent_names else (non_host_agents[:1] if non_host_agents else [])
+    pm = ["PM"] if "PM" in agent_names else (non_host_agents[:1] if non_host_agents else [])
+
+    # 초기 상태 설정 (핵심 담당자만 required, 나머지는 멘션으로 발언 가능)
     initial_state = {
         "messages": [],
         "agendas": [
@@ -21,19 +25,19 @@ async def main():
                 "title": "회의 시작 및 현황 공유",
                 "description": "오늘 회의를 시작하고 주간 현황을 공유합니다",
                 "status": "pending",
-                "required_speakers": ["Host"] + (non_host_agents[:1] if non_host_agents else [])
+                "required_speakers": ["Host"] + (pm if pm else non_host_agents[:1])
             },
             {
                 "title": "결제 시스템 오류 대응",
                 "description": "지난주 발생한 결제 실패 이슈의 원인 분석 및 해결 방안 논의",
                 "status": "pending",
-                "required_speakers": non_host_agents.copy()
+                "required_speakers": tech_lead  # 기술 이슈이므로 TechLead만 필수
             },
             {
                 "title": "신규 기능 배포 일정",
                 "description": "다음 스프린트에 배포할 기능들의 우선순위와 일정 조율",
                 "status": "pending",
-                "required_speakers": non_host_agents.copy()
+                "required_speakers": pm  # 일정 관리이므로 PM만 필수
             },
             {
                 "title": "회의 마무리",
