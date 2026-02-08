@@ -352,7 +352,6 @@ async def _initialize_mcp(settings: Settings) -> dict[str, list] | None:
 
 def _build_initial_state(
     settings: Settings,
-    profiles_path: Path,
     initial_message: str,
     human_names: list[str],
     agendas: list[dict]
@@ -361,7 +360,6 @@ def _build_initial_state(
 
     Args:
         settings: Settings 인스턴스
-        profiles_path: 프로필 경로
         initial_message: 초기 메시지
         human_names: Human 참여자 이름 리스트
         agendas: YAML에서 로드한 안건 목록
@@ -539,7 +537,7 @@ async def run_meeting(
     agendas = load_agendas(str(settings.agendas_path))
 
     # 초기 상태 구성
-    initial_state = _build_initial_state(settings, profiles_path, initial_message, human_names, agendas)
+    initial_state = _build_initial_state(settings, initial_message, human_names, agendas)
     logger.debug(f"Initial state: {initial_state}")
 
     # 실행
