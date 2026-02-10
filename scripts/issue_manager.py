@@ -186,6 +186,28 @@ async def delete_issue(issue_number: int):
             print(f"❌ Failed to execute GraphQL mutation: {e}")
             print(f"Response: {e.response.text}")
 
+async def create_pr(title: str, body: str, head: str, base: str):
+    """Create a new Pull Request."""
+    async with httpx.AsyncClient(headers=HEADERS) as client:
+        payload = {
+            "title": title,
+            "body": body,
+            "head": head,
+            "base": base
+        }
+        try:
+            response = await client.post(
+                f"{BASE_URL}/repos/{REPO_OWNER}/{REPO_NAME}/pulls",
+                json=payload
+            )
+            response.raise_for_status()
+            pr = response.json()
+            print(f"✅ PR Created: #{pr['number']} {pr['title']}")
+            print(f"🔗 URL: {pr['html_url']}")
+        except httpx.HTTPStatusError as e:
+            print(f"❌ Failed to create PR: {e}")
+            print(f"Response: {e.response.text}")
+
 async def add_sub_issue(epic_number: int, sub_issue_id: int):
     """Add a sub-issue to an Epic using GitHub Sub-issues API."""
     async with httpx.AsyncClient(headers=HEADERS) as client:
@@ -460,6 +482,13 @@ if __name__ == "__main__":
     delete_parser = subparsers.add_parser("delete", help="Delete an issue (Requires Admin/GraphQL)")
     delete_parser.add_argument("--number", required=True, type=int, help="Issue number")
 
+    # PR command
+    pr_parser = subparsers.add_parser("create-pr", help="Create a Pull Request")
+    pr_parser.add_argument("--title", required=True, help="PR title")
+    pr_parser.add_argument("--body", required=False, default="", help="PR body")
+    pr_parser.add_argument("--head", required=True, help="Source branch (e.g., develop)")
+    pr_parser.add_argument("--base", required=True, help="Target branch (e.g., main)")
+
     # Push command
     push_parser = subparsers.add_parser("push", help="Push local spec file to GitHub")
     push_parser.add_argument("file", nargs="?", help="Path to the local spec file (optional if push-all)") # Modified logic implicitly? No, separate command better
@@ -479,6 +508,8 @@ if __name__ == "__main__":
         asyncio.run(update_issue(args.number, args.body, args.state))
     elif args.command == "delete":
         asyncio.run(delete_issue(args.number))
+    elif args.command == "create-pr":
+        asyncio.run(create_pr(args.title, args.body, args.head, args.base))
     elif args.command == "push":
         if args.file:
              asyncio.run(push_issue(args.file))
