@@ -54,13 +54,35 @@ python scripts/issue_manager.py sync --overwrite
 
 - **Logic**:
     - The script fetches all open issues.
-    - It attempts to map issues to existing Epic directories (based on `Epic: #ID` in the body or existing directory names).
+    - **Epics**: If an issue has the `epic` label, it ensures a **directory** exists (e.g., `107-프로젝트-기능`) and skips file creation. content is NOT synced to a file.
+    - **Specs (Sub-issues)**: If an issue refers to an Epic (e.g., `Epic: #107` in body), it is saved as a **markdown file** inside that Epic's directory.
+    - **File Naming**: Local filenames are automatically renamed to match the GitHub issue title (prioritizing GitHub).
     - If a matching file exists (by issue number):
-        - Default: **Skips** overwriting to preserve local changes.
-        - With `--overwrite`: **Overwrites** the file content with the GitHub issue body.
+        - Default: **Skips** overwriting.
+        - With `--overwrite`: **Overwrites** content with GitHub issue body.
     - If a file does not exist, it creates a new one with the issue content.
 
-## Example Workflow
+### 4. Push Specs to GitHub
+
+Update existing GitHub issues with the current content of local spec files.
+
+**Single File:**
+```bash
+python scripts/issue_manager.py push .specs/project/131-프로젝트-관리.md
+```
+
+**Sync All (Local -> GitHub):**
+```bash
+python scripts/issue_manager.py push-all
+```
+
+- **Logic**:
+    - **`push <file>`**: Updates the body of the corresponding GitHub issue (based on filename ID) with the file content.
+    - **`push-all`**:
+        - Scans all directories in `.specs`:
+            - Ensures the corresponding Epic issue exists and has the `epic` label.
+            - **Links sub-issues** using GitHub's native Sub-issues API (`POST /issues/{id}/sub_issues`).
+        - Scans all `.md` files: Pushes their content to the corresponding GitHub issues.
 
 1.  **User Request**: "Add a login screen feature."
 2.  **Check**: `python scripts/issue_manager.py check --title "Login Screen"`

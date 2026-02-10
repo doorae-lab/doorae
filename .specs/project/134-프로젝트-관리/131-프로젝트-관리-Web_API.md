@@ -1,13 +1,13 @@
-# 프로젝트 생성
+# 프로젝트 관리 (Web/API)
 
 - 이슈: #131
-- Epic: #107 프로젝트 기능
+- Epic: #134 프로젝트 관리
 - 상태: draft
 - 작성일: 2026-02-10
 
 ## 개요
 
-프로젝트(미팅 그룹)를 생성하는 기능. 프로젝트는 여러 미팅을 묶는 상위 단위로, 참여 에이전트, 기본 안건, 설정 등을 포함한다.
+프로젝트(미팅 그룹)를 생성하고 조회하는 관리 기능 (Web/API). CLI 기능은 별도 이슈(#135)로 분리됨.
 
 ## 스키마
 
@@ -54,23 +54,19 @@ class AgentConfig(BaseModel):
     mcp_tools: List[str] = []     # 프로젝트별 MCP 도구 오버라이드
 ```
 
-### 기존 모델과의 관계
-
-```
-Project (1) ──→ (N) Meeting
-    │
-    ├── agent_profile_path → config/agent_profiles.yaml
-    ├── default_agendas    → Agenda (graph/state.py)
-    └── agents             → AgentConfig → AgentProfile (core/profile.py)
-```
-
 ## 요구사항
 
 - [ ] Project 모델 정의
 - [ ] AgentConfig 모델 정의
-- [ ] 프로젝트 생성 API/CLI
+- [ ] 프로젝트 생성 API
+- [ ] **프로젝트 목록 조회 API**
 - [ ] agent_profiles.yaml 경로 검증
 - [ ] 기본값 적용 로직 (미팅 생성 시 project 설정 상속)
+- [ ] **Frontend**: 프로젝트 목록 화면 구현
+- [ ] **Frontend**: 프로젝트 생성 마법사 (Wizard) 구현
+  - [ ] 기본 정보 입력 (Step 1)
+  - [ ] 에이전트 설정 (Step 2)
+  - [ ] 안건 설정 (Step 3)
 
 ## 인터페이스
 
@@ -123,52 +119,96 @@ POST /api/projects
 | 코드 | 상황 |
 |---|---|
 | `400` | name 누락, agent_profile_path 유효하지 않음 |
-| `401` | 인증 실패 |
-| `409` | 동일 이름 프로젝트 존재 |
+@ -120,6 +120,38 @@
+ | `401` | 인증 실패 |
+ | `409` | 동일 이름 프로젝트 존재 |
+ 
++### REST API - 목록 조회
++
++```
++GET /api/projects
++```
++
++**Query Parameters:**
++- `page`: 페이지 번호 (default: 1)
++- `limit`: 페이지 당 개수 (default: 20)
++- `status`: 상태 필터 (active, archived)
++
++**Response (200 OK):**
++
++```json
++{
++  "total": 12,
++  "page": 1,
++  "limit": 20,
++  "items": [
++    {
++      "id": "550e8400-e29b-41d4-a716-446655440000",
++      "name": "주간 개발 회의",
++      "description": "매주 월요일 개발팀 정기 회의",
++      "owner_id": "user-123",
++      "status": "active",
++      "agent_count": 3,
++      "created_at": "2026-02-10T21:00:00Z"
++    },
++    ...
++  ]
++}
++```
++
+ ### REST API - 목록 조회
 
-### CLI
-
-```bash
-# 대화형 생성
-thetable project create
-
-# 옵션 지정 생성
-thetable project create \
-  --name "주간 개발 회의" \
-  --profile config/agent_profiles.yaml \
-  --agenda config/agendas.yaml \
-  --mcp github
+```
+GET /api/projects
 ```
 
-**대화형 플로우:**
+**Query Parameters:**
+- `page`: 페이지 번호 (default: 1)
+- `limit`: 페이지 당 개수 (default: 20)
+- `status`: 상태 필터 (active, archived)
 
+**Response (200 OK):**
+
+```json
+{
+  "total": 12,
+  "page": 1,
+  "limit": 20,
+  "items": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "주간 개발 회의",
+      "description": "매주 월요일 개발팀 정기 회의",
+      "owner_id": "user-123",
+      "status": "active",
+      "agent_count": 3,
+      "created_at": "2026-02-10T21:00:00Z"
+    },
+    ...
+  ]
+}
 ```
-$ thetable project create
-프로젝트 이름: 주간 개발 회의
-설명 (선택): 매주 월요일 개발팀 정기 회의
-에이전트 프로필 경로 [config/agent_profiles.yaml]:
-안건 경로 [config/agendas.yaml]:
-MCP 서버 (콤마 구분) [github]:
 
-✅ 프로젝트 '주간 개발 회의' 생성 완료 (id: 550e8400...)
-```
+### Frontend (Web UI)
+ 
+ **프로젝트 생성 마법사 (Wizard)**
 
-## 기술 설계
+*   **Step 1: 기본 정보**
+    - [ ] 프로젝트 이름 (필수)
+    - [ ] 설명 (선택)
+    - [ ] 템플릿 선택 (빈 프로젝트, 주간 회의, 브레인스토밍 등)
 
-### 저장 방식 (결정 필요)
+*   **Step 2: 에이전트 설정**
+    - [ ] **에이전트 목록**: 시스템에 등록된 에이전트(Host, PM, etc.) 목록 표시.
+    - [ ] **활성화 토글**: 각 에이전트의 참여 여부 선택.
+    - [ ] **상세 설정**: 에이전트 클릭 시 '추가 지시사항(Custom Instructions)' 입력 필드 노출.
+    - [ ] **MCP 도구 선택**: 각 에이전트가 사용할 도구 오버라이드 설정 (고급).
 
-| 옵션 | 장점 | 단점 |
-|---|---|---|
-| YAML 파일 | 기존 패턴 일관성, 간단 | 동시 수정 어려움 |
-| SQLite | CRUD 용이, 쿼리 가능 | 새로운 의존성 |
-| JSON 파일 | 간단, 읽기 쉬움 | 스케일 제한 |
+*   **Step 3: 안건(Agenda) 설정**
+    - [ ] **기본 안건 목록**: 템플릿에 따른 초기 안건 표시.
+    - [ ] **안건 추가/수정/삭제**: 제목, 필수 발언자, 시간 제한 설정.
+    - [ ] **Drag & Drop**: 안건 순서 변경.
 
-> 현재 시스템이 YAML 기반(agent_profiles, agendas)이므로 초기에는 YAML/JSON 파일 기반으로 시작하고, #106 유저 관리 이후 DB 마이그레이션 고려
-
-## 관련 코드
-
-- `thetable/graph/state.py` — Agenda, MeetingState 모델
-- `thetable/core/profile.py` — AgentProfile 모델
-- `thetable/config/settings.py` — 글로벌 설정
-- `config/agent_profiles.yaml` — 에이전트 프로필
-- `config/agendas.yaml` — 안건 템플릿
+*   **Step 4: 검토 및 생성**
+    - [ ] 전체 설정 요약 표시.
+    - [ ] **'프로젝트 생성' 버튼**: 클릭 시 API 호출 (`POST /api/projects`).
