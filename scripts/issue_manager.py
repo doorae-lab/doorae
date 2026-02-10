@@ -237,8 +237,42 @@ async def add_sub_issue(epic_number: int, sub_issue_id: int):
             print(f"❌ Failed to add sub-issue: {e}")
             print(f"Response: {e.response.text}")
 
+async def ensure_repo_label(name: str, color: str = "cfd3d7"):
+    """Ensure a label exists in the repo with a specific color."""
+    async with httpx.AsyncClient(headers=HEADERS) as client:
+        try:
+            response = await client.get(f"{BASE_URL}/repos/{REPO_OWNER}/{REPO_NAME}/labels/{name}")
+            if response.status_code == 200:
+                label_data = response.json()
+                if label_data.get("color").lower() != color.lower():
+                    await client.patch(
+                        f"{BASE_URL}/repos/{REPO_OWNER}/{REPO_NAME}/labels/{name}",
+                        json={"color": color}
+                    )
+                    print(f"🎨 Updated global label '{name}' color to #{color}")
+                return
+            
+            if response.status_code == 404:
+                await client.post(
+                    f"{BASE_URL}/repos/{REPO_OWNER}/{REPO_NAME}/labels",
+                    json={"name": name, "color": color}
+                )
+                print(f"🆕 Created global label '{name}' with color #{color}")
+        except httpx.HTTPStatusError as e:
+            print(f"❌ Failed to manage repo label '{name}': {e}")
+
 async def ensure_label(number: int, label: str):
-    """Ensure an issue has a specific label."""
+    """Ensure an issue has a specific label (Epic=Purple, Others=Gray)."""
+    # Define colors
+    COLOR_PURPLE = "7057ff"
+    COLOR_GRAY = "cfd3d7"
+    
+    # Use purple for epic, gray for everything else
+    color = COLOR_PURPLE if label.lower() == "epic" else COLOR_GRAY
+    
+    # Ensure the label exists in the repo with the correct color
+    await ensure_repo_label(label, color)
+    
     async with httpx.AsyncClient(headers=HEADERS) as client:
         # Get current labels first
         try:
@@ -423,31 +457,35 @@ async def push_all():
     print("🚀 Pushing ALL specs to GitHub...")
     
     # 1. Scan Directories (Epics)
-    search_paths = [SPECS_DIR / "project", SPECS_DIR / "user"]
-    for base_path in search_paths:
-        if not base_path.exists():
-            continue
-        for path in base_path.iterdir():
-            if path.is_dir():
-                # Check if it follows NNN-Title format
-                match = re.match(r"^(\d+)-", path.name)
-                if match:
-                    epic_number = int(match.group(1))
-                    # Ensure Epic Label
-                    await ensure_label(epic_number, "epic")
-                    
-                    # Link Sub-issues
-                    # Scan directory for child specs
-                    for sub_path in path.glob("*.md"):
-                         sub_match = re.match(r"^(\d+)-", sub_path.name)
-                         if sub_match:
-                             sub_number = int(sub_match.group(1))
-                             # Get Sub-issue Details (to get internal ID)
-                             sub_issue = await get_issue_details(sub_number)
-                             if sub_issue:
-                                 await add_sub_issue(epic_number, sub_issue["id"])
-                             else:
-                                 print(f"⚠️ Could not fetch details for sub-issue #{sub_number}")
+    # Search all top-level directories under .specs (e.g., project, user, agent, infra, meeting, interface)
+    for path in SPECS_DIR.iterdir():
+        if path.is_dir():
+             base_path = path
+             for sub_path in base_path.iterdir():
+                 if sub_path.is_dir():
+                     # Check if it follows NNN-Title format
+                     match = re.match(r"^(\d+)-", sub_path.name)
+                     if match:
+                         epic_number = int(match.group(1))
+                         # Ensure Epic Label
+                         await ensure_label(epic_number, "epic")
+                         
+                         # Ensure Category Label (e.g., "project", "user", "agent")
+                         category_label = base_path.name
+                         await ensure_label(epic_number, category_label)
+                         
+                         # Link Sub-issues
+                         # Scan directory for child specs
+                         for spec_path in sub_path.glob("*.md"):
+                              spec_match = re.match(r"^(\d+)-", spec_path.name)
+                              if spec_match:
+                                  sub_number = int(spec_match.group(1))
+                                  # Get Sub-issue Details (to get internal ID)
+                                  sub_issue = await get_issue_details(sub_number)
+                                  if sub_issue:
+                                      await add_sub_issue(epic_number, sub_issue["id"])
+                                  else:
+                                      print(f"⚠️ Could not fetch details for sub-issue #{sub_number}")
     
     # 2. Scan Files (Specs)
     for path in SPECS_DIR.rglob("*.md"):
