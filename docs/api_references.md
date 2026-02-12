@@ -85,7 +85,7 @@ Base URL: `/api`
 ### 접속
 
 ```
-WS /ws/{room_id}?token={access_token}
+WS /ws/{meeting_id}?token={access_token}
 ```
 
 ### 이벤트

@@ -1,560 +1,419 @@
-# MCP (Model Context Protocol) 통합
+# 외부 도구 사용하기
 
-## MCP 개요
-
-**정의**: Anthropic이 제안한 LLM과 외부 시스템 통합을 위한 표준 프로토콜
-
-**목적**: LLM이 실시간 데이터 접근 및 외부 도구 사용을 위한 통일된 인터페이스 제공
-
-**TheTable에서의 역할**:
-- AI 에이전트가 GitHub 이슈/PR 실시간 조회
-- 추측이 아닌 실제 데이터 기반 회의 진행
-- 에이전트별 도구 선택 (Host, PM, TechLead만 GitHub 도구 사용)
+> AI가 GitHub 같은 외부 도구를 어떻게 사용할까요?
 
 ---
 
-## 설정 로드 흐름
+## MCP가 뭔가요?
+
+**MCP (Model Context Protocol)**: AI가 외부 도구를 사용할 수 있게 해주는 규칙이에요.
+
+### 🛠️ 비유: 도구함
+
+**역할**
+- AI에게 "이런 도구들을 쓸 수 있어"라고 알려줘요
+- 도구 사용 방법을 설명해줘요
+- 도구를 꺼내 쓸 수 있게 연결해줘요
+
+**목적**
+- AI가 실시간으로 정보를 가져와요
+- 추측이 아닌 실제 데이터로 발언해요
+- 외부 서비스와 연동돼요
+
+> 💡 **쉽게 말하면...**
+> MCP는 AI가 GitHub, Jira, Slack 같은 도구를 쓸 수 있게 해주는 사용 설명서예요. "이슈 목록 보여줘"라고 하면 실제로 GitHub에서 가져와요.
+
+---
+
+## 도구 연결 과정
+
+TheTable이 외부 도구를 사용할 수 있게 되는 과정을 봐요.
+
+### 과정 4단계
 
 ```mermaid
 graph TB
-    JSON[config/mcp_servers.json] --> LoadFunc[load_mcp_config]
-    LoadFunc --> EnvSub[환경변수 치환]
-    EnvSub --> Transport[Transport 자동 추론]
-    Transport --> Client[MultiServerMCPClient 생성]
-
-    Client --> Tools[collect_tools_by_server]
-    Tools --> ByServer{서버별 도구 수집}
-    ByServer --> GitHub[github: list_issues, ...]
-    ByServer --> Future[향후: jira, slack, ...]
-
-    style JSON fill:#e1f5ff
-    style LoadFunc fill:#d4edda
-    style Client fill:#fff3cd
-    style ByServer fill:#f8d7da
-```
-
-### 1. mcp_servers.json 파일
-
-**위치**: `config/mcp_servers.json`
-
-**구조**:
-```json
-{
-  "mcpServers": {
-    "github": {
-      "command": "go",
-      "args": ["run", "github.com/github/github-mcp-server/cmd/github-mcp-server@latest", "stdio"],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
-      }
-    }
-  }
-}
-```
-
-**필드**:
-- `command` - 실행 명령 (stdio transport)
-- `args` - 명령 인자
-- `env` - 환경변수 (`${VAR}` 패턴으로 .env 값 치환)
-- `url` - 서버 URL (streamable_http transport)
-- `headers` - HTTP 헤더 (streamable_http transport)
-
----
-
-### 2. 환경변수 치환
-
-**패턴**: `${VARIABLE_NAME}`
-
-**로직** (`_resolve_env_vars()`):
-```python
-_ENV_VAR_PATTERN = re.compile(r'\$\{(\w+)\}')
-
-def _resolve_env_vars(obj: Any) -> Any:
-    if isinstance(obj, str):
-        return _ENV_VAR_PATTERN.sub(
-            lambda m: os.environ.get(m.group(1), ""), obj
-        )
-    # 재귀적으로 dict, list 처리
-```
-
-**예시**:
-```json
-"env": {
-  "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
-}
-```
-→ .env 파일의 `GITHUB_PERSONAL_ACCESS_TOKEN` 값으로 치환
-
-**필수 환경변수 미설정 시**:
-- Authorization 헤더가 비어있으면 서버 건너뛰기
-- 경고 로그 출력: `⚠️ 'github' MCP 서버 건너뜀: 인증 토큰 환경변수가 설정되지 않음`
-
-**파일**: `thetable/mcp/__init__.py:10-62`
-
----
-
-### 3. Transport 자동 추론
-
-**로직** (`_infer_transport()`):
-```python
-if "transport" not in entry:
-    if "url" in entry:
-        entry["transport"] = "streamable_http"
-    elif "command" in entry:
-        entry["transport"] = "stdio"
-```
-
-**Transport 타입**:
-- **stdio**: 로컬 프로세스 (command + args)
-- **streamable_http**: HTTP 서버 (url + headers)
-
-**현재 사용**: stdio (GitHub MCP Server)
-
-**파일**: `thetable/mcp/__init__.py:64-78`
-
----
-
-### 4. MultiServerMCPClient 생성
-
-**라이브러리**: `langchain-mcp-adapters`
-
-**클라이언트 생성**:
-```python
-from langchain_mcp_adapters import MultiServerMCPClient
-
-config = load_mcp_config("config/mcp_servers.json")
-client = MultiServerMCPClient(config)
-```
-
-**설정 포맷**:
-```python
-{
-  "github": {
-    "command": "go",
-    "args": ["run", "..."],
-    "env": {...},
-    "transport": "stdio"
-  }
-}
-```
-
-**파일**: `thetable/mcp/__init__.py:13-49`
-
----
-
-## 에이전트-도구 바인딩
-
-### 1. Agent Profile 설정
-
-**파일**: `config/agent_profiles.yaml`
-
-```yaml
-agents:
-  - name: Host
-    role: meeting_host
-    mcp_tools:
-      - github  # GitHub MCP 도구 사용
-    metadata:
-      target_repository: "yaklevel/thetable"
-
-  - name: PM
-    role: project_manager
-    mcp_tools:
-      - github
-
-  - name: TechLead
-    role: tech_lead
-    mcp_tools:
-      - github
-```
-
-**필드**:
-- `mcp_tools` - 사용할 MCP 서버 목록 (서버 이름)
-- `metadata.target_repository` - 도구 사용 시 필요한 컨텍스트 정보
-
----
-
-### 2. 서버별 도구 수집
-
-**함수**: `collect_tools_by_server()`
-
-**로직**:
-```python
-async def collect_tools_by_server(
-    client: MultiServerMCPClient,
-    server_names: set[str]
-) -> dict[str, list]:
-    tools_by_server = {}
-    for name in server_names:
-        tools_by_server[name] = await client.get_tools(server_name=name)
-    return tools_by_server
-```
-
-**반환 예시**:
-```python
-{
-  "github": [
-    Tool(name="list_issues", ...),
-    Tool(name="create_issue", ...),
-    Tool(name="list_pull_requests", ...),
-    # ...
-  ]
-}
-```
-
-**에러 처리**:
-- 존재하지 않는 서버: `ValueError` → 경고 로그 + 건너뛰기
-- 도구 로드 실패: `Exception` → 에러 로그 + 건너뛰기
-
-**파일**: `thetable/mcp/__init__.py:152-177`
-
----
-
-### 3. bind_mcp_tools() - 에이전트에 도구 바인딩
-
-**클래스**: `BaseAgent`
-
-**메서드**:
-```python
-def bind_mcp_tools(self, tools: list) -> None:
-    self._mcp_tools = tools
-
-    if tools:
-        tool_names = [t.name for t in tools]
-        tools_instruction = f"""
-**AVAILABLE TOOLS:**
-You have access to MCP tools: {', '.join(sorted(tool_names))}
-
-When relevant to the discussion, use these tools to:
-- Check actual repository status, open PRs, recent issues
-- Fetch real data before making statements about code or project status
-- Verify facts rather than making assumptions
-"""
-        self._system_prompt = self._build_system_prompt() + tools_instruction
-```
-
-**효과**:
-- 도구 목록을 에이전트 내부 필드에 저장
-- 시스템 프롬프트에 도구 사용 지침 추가
-- LLM이 도구 사용 컨텍스트 인지
-
-**파일**: `thetable/agents/base_agent.py:65-92`
-
----
-
-### 4. AgentNode 생성 시 도구 필터링
-
-**노드**: `AgentNode`
-
-**생성 로직** (`workflow.py`):
-```python
-for name, profile in profiles.items():
-    node = NodeRegistry.create(
-        "agent",
-        profile=profile,
-        model=main_model,
-        all_agent_names=list(profiles.keys()),
-        all_profiles=profiles,
-        mcp_tools=mcp_tools,  # {서버명: [도구]} 전달
-    )
-    workflow.add_node(name.lower(), node)
-```
-
-**AgentNode 초기화** (`agent.py`):
-```python
-class AgentNode(BaseNode):
-    def __init__(self, profile, model, mcp_tools, ...):
-        # 프로필의 mcp_tools에 지정된 서버의 도구만 필터링
-        selected_tools = []
-        for server_name in profile.mcp_tools:
-            selected_tools.extend(mcp_tools.get(server_name, []))
-
-        self.agent = BaseAgent(profile.name, profile, model)
-        self.agent.bind_mcp_tools(selected_tools)
-```
-
-**효과**:
-- 에이전트별로 필요한 도구만 바인딩 (토큰 절약)
-- Host, PM, TechLead만 GitHub 도구 사용
-
-**파일**:
-- `thetable/graph/workflow.py:74-85`
-- `thetable/graph/nodes/agent.py`
-
----
-
-## Tool-Calling 루프
-
-### invoke_with_tools() 상세
-
-**클래스**: `BaseAgent`
-
-**메서드**:
-```python
-async def invoke_with_tools(
-    self,
-    messages: list,
-    config: Optional[Dict[str, Any]] = None
-) -> AIMessage:
-    if not self._mcp_tools:
-        # 도구 없으면 단순 호출
-        return await self._llm.ainvoke(messages, config=config)
-
-    # Tool-calling 루프
-    tool_messages = list(messages)
-    iteration = 0
-    max_iterations = 50
-
-    while iteration < max_iterations:
-        iteration += 1
-
-        # LLM 호출 (도구 바인딩)
-        response = await self._llm.bind_tools(self._mcp_tools).ainvoke(
-            tool_messages, config=config
-        )
-        tool_messages.append(response)
-
-        if not response.tool_calls:
-            # 최종 응답 (도구 호출 없음)
-            return response
-
-        # 도구 실행
-        for tc in response.tool_calls:
-            tool_fn = {t.name: t for t in self._mcp_tools}.get(tc["name"])
-            if tool_fn:
-                result = await tool_fn.ainvoke(tc.get("args", {}))
-                tool_messages.append(ToolMessage(
-                    content=str(result),
-                    tool_call_id=tc["id"]
-                ))
-
-    # 최대 반복 도달
-    return AIMessage(content=f"({self.name}: 응답 생성 중 문제가 발생했습니다.)")
-```
-
-**파일**: `thetable/agents/base_agent.py:94-174`
-
----
-
-### 최대 50회 반복
-
-**목적**: 무한루프 방지
-
-**시나리오**:
-1. LLM이 도구 호출 요청 (`response.tool_calls`)
-2. 도구 실행 및 결과를 메시지에 추가 (`ToolMessage`)
-3. LLM 재호출 (도구 결과 포함)
-4. 1-3 반복 (최대 50회)
-
-**종료 조건**:
-- `response.tool_calls`가 비어있을 때 (최종 응답)
-- 50회 반복 도달 (안전장치)
-
----
-
-### 에러 핸들링
-
-**LLM 호출 실패**:
-```python
-try:
-    response = await self._llm.bind_tools(self._mcp_tools).ainvoke(...)
-except LengthFinishReasonError as e:
-    logger.error(f"[{self.name}] ❌ 토큰 길이 제한 도달: {e}")
-    return AIMessage(content="(응답이 너무 길어 생성을 중단했습니다.)")
-```
-
-**도구 실행 실패**:
-```python
-try:
-    result = await tool_fn.ainvoke(tool_args)
-    tool_messages.append(ToolMessage(content=str(result), ...))
-except Exception as e:
-    logger.error(f"[{self.name}] ❌ 도구 실행 실패: {tool_name}, 오류: {e}")
-    tool_messages.append(ToolMessage(
-        content=f"Error executing {tool_name}: {e}",
-        tool_call_id=tc["id"]
-    ))
-```
-
-**효과**:
-- 도구 실패 시에도 LLM에게 에러 정보 전달
-- LLM이 에러 메시지 보고 재시도 가능 (50회 한도 내)
-
----
-
-## 현재 통합: GitHub MCP Server
-
-### 서버 정보
-
-**프로젝트**: https://github.com/github/github-mcp-server
-
-**설치**:
-```bash
-go install github.com/github/github-mcp-server/cmd/github-mcp-server@latest
-```
-
-**실행 방식**: stdio transport (로컬 프로세스)
-
----
-
-### 제공 도구
-
-**이슈 관리**:
-- `list_issues` - 이슈 목록 조회
-- `create_issue` - 이슈 생성
-- `get_issue` - 이슈 상세 조회
-- `update_issue` - 이슈 수정
-
-**PR 관리**:
-- `list_pull_requests` - PR 목록 조회
-- `create_pull_request` - PR 생성
-- `get_pull_request` - PR 상세 조회
-- `merge_pull_request` - PR 병합
-
-**브랜치/커밋**:
-- `list_branches` - 브랜치 목록 조회
-- `get_commit` - 커밋 상세 조회
-- `list_commits` - 커밋 목록 조회
-
----
-
-### 사용 예시
-
-**Host의 발언**:
-> "현재 열려있는 이슈를 확인해주세요."
-
-**LLM Tool-Calling**:
-```json
-{
-  "tool_calls": [
-    {
-      "name": "list_issues",
-      "args": {
-        "repo": "yaklevel/thetable",
-        "state": "open"
-      }
-    }
-  ]
-}
-```
-
-**도구 실행 결과**:
-```json
-[
-  {
-    "number": 103,
-    "title": "기술 문서 작성",
-    "state": "open",
-    "labels": ["documentation"]
-  }
-]
-```
-
-**LLM 최종 응답**:
-> "현재 열려있는 이슈는 #103 '기술 문서 작성'입니다. documentation 라벨이 붙어있네요."
-
----
-
-## 새 MCP 서버 추가 가이드
-
-### 1단계: mcp_servers.json 수정
-
-**Stdio Transport 서버** (로컬 프로세스):
-```json
-{
-  "mcpServers": {
-    "github": {...},
-    "jira": {
-      "command": "npx",
-      "args": ["-y", "jira-mcp-server"],
-      "env": {
-        "JIRA_API_TOKEN": "${JIRA_API_TOKEN}",
-        "JIRA_DOMAIN": "${JIRA_DOMAIN}"
-      }
-    }
-  }
-}
-```
-
-**Streamable HTTP Transport 서버** (HTTP API):
-```json
-{
-  "mcpServers": {
-    "github": {...},
-    "slack": {
-      "url": "https://slack-mcp-server.example.com",
-      "transport": "streamable_http",
-      "headers": {
-        "Authorization": "Bearer ${SLACK_BOT_TOKEN}"
-      }
-    }
-  }
-}
+    A[1단계: 설정 파일 읽기] --> B[2단계: 환경변수 치환]
+    B --> C[3단계: 도구 수집]
+    C --> D[4단계: 참여자에게 배정]
+
+    A1[mcp_servers.json] --> A
+    B1[.env 파일] --> B
+    C1[GitHub 도구 목록] --> C
+    D1[Host, PM, TechLead] --> D
+
+    style A fill:#e1f5ff
+    style B fill:#d4edda
+    style C fill:#fff3cd
+    style D fill:#f8d7da
 ```
 
 ---
 
-### 2단계: .env 파일에 환경변수 추가
+### 1단계: 설정 파일 읽기
 
-```bash
-# GitHub (기존)
-GITHUB_PERSONAL_ACCESS_TOKEN=ghp_...
+**파일**: `config/mcp_servers.json`
 
-# Jira (신규)
-JIRA_API_TOKEN=your-jira-token
+**내용**
+- 어떤 도구를 사용할지 적혀 있어요
+- 도구에 접속하는 방법이 있어요
+- 필요한 비밀번호 위치를 알려줘요
+
+**예시**
+```
+서버 이름: github
+실행 명령: go run github-mcp-server
+필요한 비밀번호: GITHUB_PERSONAL_ACCESS_TOKEN
+```
+
+---
+
+### 2단계: 환경변수 치환
+
+**역할**: 비밀번호를 실제 값으로 바꿔요
+
+**비유**: 비밀번호 메모장에서 찾기
+
+**과정**
+1. 설정 파일에 `${GITHUB_PERSONAL_ACCESS_TOKEN}` 같은 표시를 찾아요
+2. 환경변수 파일(.env)에서 실제 비밀번호를 가져와요
+3. 표시를 실제 비밀번호로 바꿔요
+
+**왜 이렇게 하나요?**
+- 비밀번호를 설정 파일에 직접 쓰면 위험해요
+- 다른 사람이 볼 수도 있어요
+- 환경변수 파일은 비공개로 관리해요
+
+> 🤔 **이해했나요?**
+> Q: 환경변수 치환이 왜 필요한가요?
+> A: 비밀번호를 안전하게 보관하려고요. 설정 파일은 공개해도 되지만, 비밀번호는 숨겨야 해요.
+
+---
+
+### 3단계: 도구 수집
+
+**역할**: 사용할 수 있는 도구 목록을 가져와요
+
+**과정**
+1. GitHub MCP 서버에 접속해요
+2. "무슨 도구가 있어?"라고 물어봐요
+3. 도구 목록을 받아와요
+
+**GitHub 도구 예시**
+- 이슈 목록 보기 (list_issues)
+- 이슈 만들기 (create_issue)
+- PR 목록 보기 (list_pull_requests)
+- PR 상태 확인하기 (get_pull_request)
+- 브랜치 목록 보기 (list_branches)
+
+---
+
+### 4단계: 참여자에게 배정
+
+**역할**: 각 참여자가 쓸 도구를 선택해요
+
+**설정 위치**: `config/agent_profiles.yaml`
+
+**예시**
+```
+Host:
+- 사용 도구: github
+- 저장소: yaklevel/thetable
+
+PM:
+- 사용 도구: github
+
+TechLead:
+- 사용 도구: github
+```
+
+**왜 나눠서 배정하나요?**
+- 모든 참여자가 모든 도구를 쓸 필요는 없어요
+- 필요한 도구만 주면 헷갈리지 않아요
+- 비용도 절약돼요
+
+> 💡 **쉽게 말하면...**
+> 도구함에서 필요한 도구만 골라서 각 참여자에게 나눠줘요. Host, PM, TechLead는 GitHub 도구를 받아요.
+
+---
+
+## GitHub로 할 수 있는 일
+
+TheTable에서 GitHub MCP 서버를 사용하면 이런 일들을 할 수 있어요.
+
+### 이슈 관리
+
+**할 수 있는 일**
+- 📋 이슈 목록 보기: 열려있는 이슈가 뭐가 있는지 확인
+- ➕ 이슈 만들기: 새로운 문제를 등록
+- 🔍 이슈 상세 보기: 특정 이슈의 자세한 내용 확인
+- ✏️ 이슈 수정하기: 이슈 내용을 변경
+
+### PR (Pull Request) 관리
+
+**할 수 있는 일**
+- 📋 PR 목록 보기: 리뷰 대기 중인 PR 확인
+- ➕ PR 만들기: 코드 변경사항 제출
+- 🔍 PR 상세 보기: PR 내용과 리뷰 확인
+- ✅ PR 병합하기: 코드를 메인 브랜치에 합치기
+
+### 브랜치와 커밋
+
+**할 수 있는 일**
+- 🌿 브랜치 목록 보기: 어떤 브랜치가 있는지 확인
+- 📝 커밋 상세 보기: 특정 커밋의 변경사항 확인
+- 📋 커밋 목록 보기: 최근 커밋들 확인
+
+---
+
+## 실제 사용 시나리오
+
+### 시나리오 1: 이슈 확인
+
+**상황**: Host가 현재 이슈 상황을 확인하고 싶어요
+
+**진행 과정**
+1. **Host 발언**: "현재 열려있는 이슈를 확인해주세요."
+2. **AI가 도구 요청**: list_issues 도구를 사용하고 싶다고 해요
+3. **도구 실행**: GitHub에서 실제 이슈 목록을 가져와요
+4. **결과 전달**: AI에게 이슈 목록을 알려줘요
+5. **Host 최종 발언**: "현재 이슈는 #103 '기술 문서 작성'이 있네요."
+
+> 💡 **쉽게 말하면...**
+> AI가 "GitHub에서 이슈 목록 좀 가져와줘"라고 하면, 실제로 GitHub에 접속해서 데이터를 가져와서 AI에게 전달해요.
+
+---
+
+### 시나리오 2: PR 상태 보고
+
+**상황**: PM이 PR 상태를 보고해야 해요
+
+**진행 과정**
+1. **PM 발언**: "리뷰 대기 중인 PR 상태를 확인하겠습니다."
+2. **AI가 도구 요청**: list_pull_requests 도구 사용
+3. **도구 실행**: GitHub에서 PR 목록 가져오기
+4. **결과 확인**: PR #52, #53이 리뷰 대기 중
+5. **PM 최종 발언**: "PR #52와 #53이 리뷰를 기다리고 있습니다."
+
+---
+
+## 누가 어떤 도구를 쓰나요?
+
+| 참여자 | 사용 도구 | 주로 하는 일 |
+|--------|----------|-------------|
+| 🎤 **Host** | GitHub | 전체 프로젝트 상황 확인, 회의 진행 |
+| 📋 **PM** | GitHub | 이슈와 PR 상태 보고, 일정 관리 |
+| 🔧 **TechLead** | GitHub | 기술적 이슈 검토, 코드 리뷰 |
+
+> 🤔 **이해했나요?**
+> Q: 모든 참여자가 같은 도구를 쓰나요?
+> A: 지금은 그래요. 하지만 나중에 PM은 Jira, Host는 Slack처럼 다른 도구를 줄 수도 있어요.
+
+---
+
+## Tool-Calling (도구 사용 요청)
+
+**비유**: 도구 꺼내 쓰기
+
+AI가 도구를 사용하는 과정을 자세히 봐요.
+
+### 과정
+
+```mermaid
+graph TB
+    A[AI가 발언 시작] --> B{도구가 필요한가?}
+    B -->|아니오| C[바로 발언 완성]
+    B -->|예| D[도구 사용 요청]
+    D --> E[도구 실행]
+    E --> F[결과 전달]
+    F --> B
+
+    G[50번 반복 제한]
+    G -.제한.-> B
+
+    style A fill:#e1f5ff
+    style D fill:#fff3cd
+    style E fill:#d4edda
+    style C fill:#f8d7da
+```
+
+### 단계별 설명
+
+1. **AI가 발언 시작**: 역할에 맞게 무슨 말을 할지 생각해요
+2. **도구 필요 판단**: "GitHub에서 정보를 가져와야겠다"고 결정
+3. **도구 사용 요청**: "list_issues 도구를 써줘"라고 요청
+4. **도구 실행**: 실제로 GitHub API를 호출해요
+5. **결과 전달**: 이슈 목록을 AI에게 줘요
+6. **다시 판단**: 더 필요한 도구가 있는지 확인
+7. **최종 발언**: 모든 정보를 바탕으로 발언 완성
+
+### 안전장치
+
+**최대 50번 반복**
+- 도구를 계속 쓰면 끝나지 않을 수 있어요
+- 50번 넘으면 자동으로 멈춰요
+- 대부분 2-3번이면 충분해요
+
+---
+
+## 새 도구 추가하기
+
+나중에 Jira, Slack 같은 다른 도구를 추가하려면 어떻게 할까요?
+
+### 추가 과정 4단계
+
+**1단계: 도구 서버 설정 추가**
+- `config/mcp_servers.json` 파일을 열어요
+- 새 도구 정보를 추가해요
+
+**예시**
+```
+서버 이름: jira
+실행 명령: npx jira-mcp-server
+필요한 비밀번호: JIRA_API_TOKEN, JIRA_DOMAIN
+```
+
+**2단계: 환경변수 추가**
+- `.env` 파일에 비밀번호를 추가해요
+
+**예시**
+```
+JIRA_API_TOKEN=your-token
 JIRA_DOMAIN=your-company.atlassian.net
+```
 
-# Slack (신규)
-SLACK_BOT_TOKEN=xoxb-...
+**3단계: 참여자에게 배정**
+- `config/agent_profiles.yaml` 파일을 열어요
+- 어떤 참여자가 Jira를 쓸지 정해요
+
+**예시**
+```
+PM:
+- 사용 도구: github, jira
+```
+
+**4단계: 코드 변경 없이 실행**
+- 설정만 바꾸면 돼요
+- 코드는 수정할 필요가 없어요
+- 바로 새 도구를 사용할 수 있어요
+
+> 💡 **쉽게 말하면...**
+> 새 도구를 추가하려면 3개 설정 파일만 수정하면 돼요. 코드는 건드리지 않아도 자동으로 새 도구를 인식해요.
+
+---
+
+## GitHub 사용 과정 다이어그램
+
+```mermaid
+graph TB
+    subgraph "회의 중"
+        A[Host 발언 차례]
+    end
+
+    subgraph "AI 판단"
+        B[정보 확인 필요]
+        C[list_issues 도구 사용 요청]
+    end
+
+    subgraph "도구 실행"
+        D[MCP가 GitHub 접속]
+        E[이슈 목록 가져오기]
+        F[결과 반환]
+    end
+
+    subgraph "최종 발언"
+        G[데이터 기반 발언]
+        H[회의록에 기록]
+    end
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+
+    style A fill:#e1f5ff
+    style C fill:#fff3cd
+    style D fill:#d4edda
+    style G fill:#f8d7da
 ```
 
 ---
 
-### 3단계: agent_profiles.yaml 수정
+## 에러가 나면 어떻게 하나요?
 
-```yaml
-agents:
-  - name: PM
-    role: project_manager
-    mcp_tools:
-      - github
-      - jira  # 추가
-    metadata:
-      target_repository: "yaklevel/thetable"
-      jira_project: "PROJ"
+### 도구 실행 실패
 
-  - name: Designer
-    role: designer
-    mcp_tools:
-      - slack  # 추가
-    metadata:
-      slack_channel: "#design"
-```
+**상황**: GitHub API가 응답하지 않아요
 
----
+**처리**
+1. 에러 메시지를 기록해요
+2. AI에게 "도구 실행이 실패했어"라고 알려줘요
+3. AI가 다시 시도하거나 다른 방법을 찾아요
 
-### 4단계: 코드 변경 없이 사용
+**예시**
+> AI: "GitHub 이슈를 확인하려고 했으나 연결이 실패했습니다. 나중에 다시 확인하겠습니다."
 
-**워크플로우 자동 처리**:
-1. `load_mcp_config()` → 새 서버 설정 로드
-2. `MultiServerMCPClient` → 서버 연결
-3. `collect_tools_by_server()` → 도구 수집
-4. `AgentNode` 생성 시 도구 필터링 및 바인딩
-5. `BaseAgent.invoke_with_tools()` → 도구 사용 가능
+### 비밀번호 없음
 
-**에이전트 발언 예시**:
-> "Jira에서 PROJ 프로젝트의 이슈를 확인해주세요."
+**상황**: 환경변수에 GitHub 토큰이 설정되지 않았어요
 
-**자동 Tool-Calling**:
-- LLM이 `jira` 서버의 `list_issues` 도구 호출
-- 결과를 바탕으로 회의 진행
+**처리**
+1. 경고 메시지를 출력해요: "⚠️ github 서버 건너뜀: 인증 토큰 없음"
+2. 해당 도구를 사용할 수 없게 만들어요
+3. 회의는 계속 진행돼요 (도구 없이)
+
+> 🤔 **이해했나요?**
+> Q: 도구가 실패하면 회의가 멈추나요?
+> A: 아니요. 에러를 기록하고 AI에게 알려준 뒤, 회의는 계속 진행돼요.
 
 ---
 
-## 참고 파일
+## 장점과 특징
 
-- `thetable/mcp/__init__.py` - load_mcp_config, collect_tools_by_server
-- `thetable/agents/base_agent.py` - bind_mcp_tools, invoke_with_tools
-- `thetable/graph/nodes/agent.py` - AgentNode (도구 필터링)
-- `config/mcp_servers.json` - MCP 서버 설정
-- `config/agent_profiles.yaml` - 에이전트별 도구 선택
+### ✅ 장점
+
+**실시간 정보**
+- 추측이 아닌 실제 데이터로 발언해요
+- GitHub 상태를 정확히 알 수 있어요
+
+**확장 가능**
+- 새 도구를 쉽게 추가할 수 있어요
+- 코드 변경 없이 설정만 바꿔요
+
+**안전**
+- 비밀번호를 안전하게 관리해요
+- 각 참여자가 필요한 도구만 사용해요
+
+### ⚡ 특징
+
+**선택적 사용**
+- 모든 참여자가 도구를 쓸 필요는 없어요
+- 필요한 참여자에게만 배정해요
+
+**자동 연결**
+- 설정 파일을 읽고 자동으로 연결해요
+- 수동으로 연결할 필요가 없어요
+
+**에러 처리**
+- 도구 실패 시 회의는 계속 진행돼요
+- 에러 메시지를 명확히 알려줘요
+
+---
+
+> 💡 **핵심 정리**
+>
+> - MCP는 AI가 외부 도구를 쓸 수 있게 하는 규칙이에요
+> - 도구 연결은 4단계로 진행돼요: 설정 읽기 → 비밀번호 치환 → 도구 수집 → 참여자 배정
+> - GitHub로 이슈, PR, 브랜치 등을 관리할 수 있어요
+> - Tool-Calling으로 AI가 필요할 때 도구를 꺼내 써요
+> - 새 도구 추가는 설정 파일만 수정하면 돼요
+
+---
+
+## 다음 문서
+
+- [configuration.md](./configuration.md): 설정 파일을 어떻게 수정하는지 자세히 배워요
+- [future-direction.md](./future-direction.md): 앞으로 추가될 도구들을 살펴봐요
