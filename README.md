@@ -147,14 +147,12 @@ uv add --dev <package_name>
 ```
 thetable/
 ├── config/              # 설정 파일 (에이전트 프로필 등)
-├── examples/            # 예제 코드
 ├── scripts/             # 유틸리티 스크립트
 ├── tests/              # 테스트 코드
 ├── thetable/           # 메인 패키지
 │   ├── agents/         # 에이전트 구현
 │   ├── core/           # 핵심 로직
-│   ├── interfaces/     # CLI 등 인터페이스
-│   └── utils/          # 유틸리티
+│   └── interfaces/     # CLI 등 인터페이스
 └── pyproject.toml      # 프로젝트 설정
 ```
 
