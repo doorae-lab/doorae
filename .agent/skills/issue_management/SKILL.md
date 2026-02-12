@@ -13,6 +13,15 @@ This skill allows the agent to manage GitHub issues directly from the command li
 2.  **Create Issue**: Create a new issue on GitHub.
 3.  **Sync Issues**: Fetch all open issues and sync them to the local `.specs` directory.
 
+## Workflow Rules (Critical)
+
+When adding a new feature or specification:
+
+1.  **ALWAYS Check GitHub First**: Before creating a local spec file, check if a relevant GitHub issue already exists.
+    -   If exists: Use the existing **Issue Number** for the spec filename (e.g., `151-meeting-persistence.md`).
+    -   If NOT exists: **Create the GitHub Issue FIRST**. Use the generated Issue Number for the spec filename.
+2.  **Never create a spec without an issue**: Every spec file must correspond to a GitHub issue.
+
 ## Prerequisites
 
 - `GITHUB_TOKEN` or `GITHUB_PERSONAL_ACCESS_TOKEN` must be set in `.env`.
