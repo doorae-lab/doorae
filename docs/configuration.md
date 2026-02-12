@@ -1,491 +1,522 @@
-# TheTable 설정 가이드
+# 설정 파일 가이드
 
-> 작성일: 2026-02-10
-> 버전: 1.0
-
----
-
-## 목차
-
-- [환경변수 설정 (.env)](#환경변수-설정-env)
-- [에이전트 프로필 (agent_profiles.yaml)](#에이전트-프로필-agent_profilesyaml)
-- [회의 안건 (agendas.yaml)](#회의-안건-agendasmcpyaml)
-- [MCP 서버 설정 (mcp_servers.json)](#mcp-서버-설정-mcp_serversjson)
-- [Settings 클래스](#settings-클래스)
+> TheTable을 내 입맛에 맞게 설정하는 방법을 알아봐요.
 
 ---
 
-## 환경변수 설정 (.env)
+## 설정 파일이 뭔가요?
 
-TheTable은 `.env` 파일을 통해 런타임 환경을 설정합니다.
+TheTable은 **4개의 설정 파일**로 동작 방식을 조정해요.
 
-### 전체 환경변수 목록
+### 📁 설정 파일 목록
 
-#### LLM 설정
-
-**공통 설정 (Fallback)**
-
-| 변수 | 설명 | 기본값 | 필수 |
-|------|------|--------|------|
-| `OPENAI_API_KEY` | Main/Task 공통 fallback API 키 | - | ✅ |
-| `OPENAI_BASE_URL` | API base URL | OpenAI 공식 엔드포인트 | ❌ |
-
-**Main LLM (회의 에이전트 응답 생성)**
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `LLM_MAIN_API_KEY` | Main LLM 전용 API 키 (None이면 `OPENAI_API_KEY` 사용) | `None` |
-| `LLM_MAIN_BASE_URL` | Main LLM 전용 base URL | `None` |
-| `LLM_MAIN_MODEL` | Main LLM 모델명 | `gpt-4o-mini` |
-| `LLM_MAIN_TEMPERATURE` | Main LLM temperature | `0.7` |
-| `LLM_MAIN_MAX_TOKENS` | Main LLM 최대 토큰 | `4096` |
-
-**Task LLM (멘션 추출, 종료 감지, 안건 분석)**
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `LLM_TASK_API_KEY` | Task LLM 전용 API 키 (None이면 `OPENAI_API_KEY` 사용) | `None` |
-| `LLM_TASK_BASE_URL` | Task LLM 전용 base URL | `None` |
-| `LLM_TASK_MODEL` | Task LLM 모델명 | `gpt-4o-mini` |
-| `LLM_TASK_TEMPERATURE` | Task LLM temperature | `0.0` |
-| `LLM_TASK_MAX_TOKENS` | Task LLM 최대 토큰 | `2048` |
-
-**연결 설정**
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `LLM_TIMEOUT` | LLM 호출 타임아웃 (초) | `60.0` |
-| `LLM_MAX_RETRIES` | LLM 호출 재시도 횟수 | `3` |
-
-#### LangGraph 설정
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `RECURSION_LIMIT` | LangGraph 재귀 깊이 제한 | `1000` |
-| `MAX_TURNS` | 회의 최대 턴 수 (무한루프 방지) | `1000` |
-
-#### 대화 요약 설정
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `MAX_MESSAGES_BEFORE_SUMMARY` | 요약 트리거 메시지 개수 | `5` |
-| `KEEP_RECENT_MESSAGES` | 요약 후 유지할 최근 메시지 개수 | `3` |
-| `SUMMARY_MAX_TOKENS` | 요약 최대 토큰 수 | `3000` |
-
-#### 파일 경로
-
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `AGENT_PROFILES_PATH` | 에이전트 프로필 YAML 경로 | `config/agent_profiles.yaml` |
-| `AGENDAS_PATH` | 안건 YAML 경로 | `config/agendas.yaml` |
-
-#### MCP Tools
-
-| 변수 | 설명 | 필수 |
+| 파일 | 역할 | 비유 |
 |------|------|------|
-| `GITHUB_PERSONAL_ACCESS_TOKEN` | GitHub MCP 서버용 PAT | MCP 사용 시 ✅ |
+| `.env` | 비밀번호와 API 키 관리 | 비밀번호 메모장 |
+| `agent_profiles.yaml` | 참여자 정보 설정 | 참여자 명단 |
+| `agendas.yaml` | 회의 안건 목록 | 회의 주제 목록 |
+| `mcp_servers.json` | 외부 도구 연결 설정 | 도구함 목록 |
 
-#### LangSmith Tracing (Optional)
+> 💡 **쉽게 말하면...**
+> 설정 파일은 TheTable의 조정 손잡이예요. 코드를 수정하지 않고도 참여자, 안건, 도구를 바꿀 수 있어요.
 
-| 변수 | 설명 | 기본값 |
-|------|------|--------|
-| `LANGCHAIN_TRACING_V2` | LangSmith 추적 활성화 | `false` |
-| `LANGCHAIN_API_KEY` | LangSmith API 키 | `None` |
-| `LANGCHAIN_PROJECT` | LangSmith 프로젝트명 | `thetable` |
-| `LANGCHAIN_ENDPOINT` | LangSmith 커스텀 엔드포인트 | `None` |
+---
 
-### 예시 설정
+## .env 파일 (비밀번호 메모장)
 
-**OpenRouter 사용 (권장)**
+### 🔐 역할
 
-```bash
-# 공통 설정
-OPENAI_API_KEY=your-openrouter-api-key
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
+**비유**: 비밀번호 메모장
 
-# Main LLM (가성비 우수)
-LLM_MAIN_MODEL=deepseek/deepseek-v3.2
+**저장하는 내용**
+- AI 서비스 API 키 (출입증)
+- GitHub 접근 토큰
+- 회의 설정값
+- 비밀로 유지해야 하는 정보
+
+### 주요 설정 항목
+
+#### AI 기본 설정
+
+**공통 API 키 (필수)**
+```
+OPENAI_API_KEY=sk-your-key-here
+```
+- 대화용 AI와 분석용 AI가 공통으로 사용해요
+- 없으면 TheTable이 실행되지 않아요
+
+**서비스 주소 (선택)**
+```
+OPENAI_BASE_URL=https://api.openai.com/v1
+```
+- OpenAI가 아닌 다른 서비스를 쓸 때 필요해요
+- 예: OpenRouter, Azure OpenAI
+
+#### 대화용 AI 설정
+
+**전용 API 키 (선택)**
+```
+LLM_MAIN_API_KEY=sk-main-key
+```
+- 없으면 OPENAI_API_KEY를 사용해요
+
+**모델 이름**
+```
+LLM_MAIN_MODEL=gpt-4o-mini
+```
+- 기본값: gpt-4o-mini
+- 다른 모델: deepseek-v3.2, gpt-4o 등
+
+**창의성 조절**
+```
 LLM_MAIN_TEMPERATURE=0.7
+```
+- 0.7: 창의적 (기본값)
+- 0.0: 일관적
+- 1.0: 매우 창의적
 
-# Task LLM (빠른 처리)
-LLM_TASK_MODEL=google/gemini-2.5-flash
+**최대 글자 수**
+```
+LLM_MAIN_MAX_TOKENS=4096
+```
+- 발언 길이 제한
+- 기본값: 4096 (충분함)
+
+#### 분석용 AI 설정
+
+**전용 API 키 (선택)**
+```
+LLM_TASK_API_KEY=sk-task-key
+```
+
+**모델 이름**
+```
+LLM_TASK_MODEL=gpt-4o-mini
+```
+- 기본값: gpt-4o-mini
+- 저렴한 모델: gemini-2.5-flash
+
+**창의성 조절**
+```
 LLM_TASK_TEMPERATURE=0.0
+```
+- 항상 0.0으로 설정 (일관성 중요)
 
-# MCP
+**최대 글자 수**
+```
+LLM_TASK_MAX_TOKENS=2048
+```
+- 짧은 답변만 필요
+- 기본값: 2048
+
+#### 회의 안전 설정
+
+**최대 턴 수**
+```
+MAX_TURNS=1000
+```
+- 회의가 너무 길어지면 자동 종료
+- 기본값: 1000번
+
+**대화 요약 시점**
+```
+MAX_MESSAGES_BEFORE_SUMMARY=5
+```
+- 메시지 몇 개부터 요약할지
+- 기본값: 5개
+
+#### GitHub 도구 설정
+
+**접근 토큰 (MCP 사용 시 필수)**
+```
 GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your_token
 ```
+- GitHub 도구를 쓰려면 필요해요
+- GitHub 설정에서 만들 수 있어요
 
-**OpenAI 직접 사용**
+> 🤔 **이해했나요?**
+> Q: API 키를 2개 설정하면 뭐가 좋아요?
+> A: 대화용은 좋은 AI, 분석용은 저렴한 AI를 써서 비용을 70% 절약할 수 있어요.
 
-```bash
-# 공통 설정
-OPENAI_API_KEY=sk-your-openai-key
-# OPENAI_BASE_URL은 생략 (기본값 사용)
+---
 
-# Main LLM
-LLM_MAIN_MODEL=gpt-5-mini
+## agent_profiles.yaml (참여자 명단)
 
-# Task LLM
-LLM_TASK_MODEL=gpt-5-nano
+### 👥 역할
+
+**비유**: 참여자 명단
+
+**정의하는 내용**
+- 참여자 이름
+- 역할과 책임
+- 전문 분야
+- 사용할 도구
+- 추가 지시사항
+
+### 기본 구조
+
+```
+참여자:
+  이름: Host
+  역할: 회의 진행자
+  책임:
+    - 회의 시작
+    - 안건 소개
+    - 발언 기회 조정
+    - 회의 마무리
+  전문성:
+    - 회의 진행
+    - 시간 관리
+  사용 도구:
+    - github
+  추가 정보:
+    저장소: yaklevel/thetable
 ```
 
-**혼합 provider 사용**
+### 필수 항목
 
-```bash
-# Main LLM: OpenRouter
+**이름 (name)**
+- 참여자를 부르는 이름이에요
+- 유일해야 해요 (중복 불가)
+- 예: Host, PM, TechLead
+
+**역할 (role)**
+- 참여자의 직책이나 역할이에요
+- 예: host, project_manager, tech_lead
+
+**책임 (responsibilities)**
+- 참여자가 해야 할 일 목록이에요
+- 최소 1개 이상 필요해요
+
+**전문성 (expertise)**
+- 참여자가 잘하는 분야예요
+- 최소 1개 이상 필요해요
+
+### 선택 항목
+
+**사용 도구 (mcp_tools)**
+- 이 참여자가 쓸 외부 도구예요
+- 예: github, jira, slack
+
+**추가 정보 (metadata)**
+- 도구 사용에 필요한 정보예요
+- 예: GitHub 저장소 이름
+
+**추가 지시사항 (additional_instructions)**
+- 참여자에게 특별히 시킬 일이에요
+- 예: "GitHub 도구를 적극 사용하세요"
+
+### 예시: Host 참여자
+
+```
+이름: Host
+역할: host
+책임:
+  - 회의 시작 인사
+  - 안건 소개
+  - 발언자 지정
+  - 회의 정리
+전문성:
+  - 회의 진행
+  - 의견 조율
+사용 도구:
+  - github
+추가 정보:
+  저장소: yaklevel/thetable
+  추가 지시사항: |
+    GitHub 이슈와 PR 상태를 자주 확인하세요.
+    데이터 기반으로 발언하세요.
+```
+
+> 💡 **쉽게 말하면...**
+> 참여자 명단은 "누가, 무슨 역할을, 어떤 도구로 하는지" 정리한 목록이에요. 여기에 새 참여자를 추가하면 회의에 바로 참여할 수 있어요.
+
+---
+
+## agendas.yaml (회의 주제 목록)
+
+### 📝 역할
+
+**비유**: 회의 주제 목록
+
+**정의하는 내용**
+- 안건 제목
+- 안건 설명
+- 필수 발언자
+
+### 기본 구조
+
+```
+안건:
+  - 제목: 프로젝트 현황 공유
+    설명: 현재 진행 상황과 이슈를 공유합니다
+    필수 발언자:
+      - PM
+      - TechLead
+
+  - 제목: 다음 주 계획
+    설명: 다음 주 일정을 수립합니다
+    필수 발언자:
+      - PM
+```
+
+### 필수 항목
+
+**제목 (title)**
+- 안건의 제목이에요
+- 짧고 명확하게 써요
+- 예: "프로젝트 현황 공유"
+
+**설명 (description)**
+- 안건의 자세한 내용이에요
+- 무엇을 논의할지 설명해요
+
+### 선택 항목
+
+**필수 발언자 (required_speakers)**
+- 이 안건에서 꼭 말해야 하는 사람이에요
+- 없으면 모든 참여자에게 기회가 가요
+- 예: PM, TechLead
+
+### 안건 추가 방법
+
+1. `config/agendas.yaml` 파일을 열어요
+2. 제일 아래에 새 안건을 추가해요
+3. 제목, 설명, 필수 발언자를 적어요
+4. 저장하고 TheTable을 실행해요
+
+> 🤔 **이해했나요?**
+> Q: 필수 발언자를 안 정하면 어떻게 되나요?
+> A: 모든 참여자가 발언 기회를 가져요. Host가 누구에게 물어볼지 자유롭게 정해요.
+
+---
+
+## mcp_servers.json (도구함 목록)
+
+### 🛠️ 역할
+
+**비유**: 도구함 목록
+
+**정의하는 내용**
+- 어떤 외부 도구를 사용할지
+- 도구에 어떻게 접속할지
+- 필요한 비밀번호는 무엇인지
+
+### GitHub 설정 예시
+
+```
+도구 서버:
+  github:
+    실행 명령: go
+    명령 인자:
+      - run
+      - github.com/github/github-mcp-server/cmd/github-mcp-server@latest
+      - stdio
+    환경 변수:
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN}
+```
+
+### 구성 요소
+
+**서버 이름**
+- 도구의 이름이에요
+- 예: github, jira, slack
+
+**실행 명령 (command)**
+- 도구를 실행하는 명령어예요
+- 예: go, python, npx
+
+**명령 인자 (args)**
+- 명령어 뒤에 붙는 옵션이에요
+
+**환경 변수 (env)**
+- 도구가 필요로 하는 비밀번호예요
+- `${변수명}` 형식으로 .env에서 가져와요
+
+### 새 도구 추가 예시
+
+**Jira 추가**
+```
+도구 서버:
+  github: (기존)
+  jira:
+    실행 명령: npx
+    명령 인자:
+      - jira-mcp-server
+    환경 변수:
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN}
+      JIRA_DOMAIN: ${JIRA_DOMAIN}
+```
+
+**Slack 추가 (HTTP 방식)**
+```
+도구 서버:
+  slack:
+    주소: https://slack-mcp.example.com
+    전송 방식: streamable_http
+    헤더:
+      Authorization: Bearer ${SLACK_BOT_TOKEN}
+```
+
+> 💡 **쉽게 말하면...**
+> 도구함 목록은 "어떤 도구를 어떻게 연결할지" 정리한 파일이에요. 새 도구를 추가하려면 이 파일에 정보를 적으면 돼요.
+
+---
+
+## 추천 설정
+
+### 초보자용 (간단함)
+
+**목표**: 빠르게 시작하기
+
+**.env 파일**
+```
+OPENAI_API_KEY=sk-your-key
+GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your-token
+```
+
+**특징**
+- 최소한의 설정만 해요
+- OpenAI 하나로 모든 AI 사용
+- 빠르게 테스트할 수 있어요
+
+---
+
+### 중급자용 (비용 절약)
+
+**목표**: 비용 70% 절약하기
+
+**.env 파일**
+```
+OPENAI_API_KEY=your-openrouter-key
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+
+LLM_MAIN_MODEL=deepseek/deepseek-v3.2
+LLM_TASK_MODEL=google/gemini-2.5-flash
+
+GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your-token
+```
+
+**특징**
+- OpenRouter로 저렴한 모델 사용
+- 대화용은 품질 좋은 모델
+- 분석용은 빠르고 저렴한 모델
+
+---
+
+### 고급자용 (최대 절약)
+
+**목표**: 여러 서비스 조합으로 최저 비용
+
+**.env 파일**
+```
+# 대화용: OpenRouter
 LLM_MAIN_API_KEY=your-openrouter-key
 LLM_MAIN_BASE_URL=https://openrouter.ai/api/v1
 LLM_MAIN_MODEL=deepseek/deepseek-v3.2
 
-# Task LLM: Azure OpenAI
+# 분석용: Azure OpenAI
 LLM_TASK_API_KEY=your-azure-key
-LLM_TASK_BASE_URL=https://your-resource.openai.azure.com/openai/deployments/gpt-35-turbo
+LLM_TASK_BASE_URL=https://your-azure.openai.azure.com
 LLM_TASK_MODEL=gpt-35-turbo
+
+GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your-token
 ```
+
+**특징**
+- 각 AI를 다른 서비스로 사용
+- 최저 비용 조합
+- 복잡하지만 비용 최소화
 
 ---
 
-## 에이전트 프로필 (agent_profiles.yaml)
+## 설정 변경 시 주의사항
 
-에이전트의 역할, 책임, 전문성, MCP 도구를 정의합니다.
+### ⚠️ 주의할 점
 
-### 스키마
+**API 키는 비밀로**
+- .env 파일을 다른 사람과 공유하지 마세요
+- GitHub에 올리지 마세요
+- `.gitignore`에 추가되어 있는지 확인하세요
 
-```yaml
-agents:
-  - name: string              # 에이전트 이름 (필수, 고유해야 함)
-    role: string              # 역할 (필수)
-    is_human: boolean         # 사람 참여자 여부 (기본값: false)
-    responsibilities:         # 책임 목록 (필수)
-      - string
-      - string
-    expertise:                # 전문 분야 (필수)
-      - string
-      - string
-    phase_triggers:           # 단계별 트리거 (선택)
-      trigger_key: "trigger message"
-    mcp_tools:                # MCP 도구 서버 목록 (선택)
-      - server_name
-    metadata:                 # 메타데이터 (선택)
-      key: value
-      additional_instructions: |
-        에이전트별 추가 지시사항
-    agents:                   # 하위 에이전트 (계층 구조, 선택)
-      - name: string
-        ...
-```
+**설정 파일 형식**
+- YAML 파일은 들여쓰기가 중요해요
+- 공백 2개 또는 4개로 일관성 있게 써요
+- 탭 대신 공백을 사용해요
 
-### 필드 설명
+**변경 후 재시작**
+- 설정을 바꾸면 TheTable을 다시 실행해야 해요
+- 실행 중에는 반영되지 않아요
 
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| `name` | string | ✅ | 에이전트 이름 (고유해야 함) |
-| `role` | string | ✅ | 에이전트 역할 (예: `host`, `project_manager`) |
-| `is_human` | boolean | ❌ | 사람 참여자 여부 (기본값: `false`) |
-| `responsibilities` | list[string] | ✅ | 에이전트 책임 목록 |
-| `expertise` | list[string] | ✅ | 전문 분야 목록 |
-| `phase_triggers` | dict | ❌ | 단계별 트리거 메시지 |
-| `mcp_tools` | list[string] | ❌ | 사용할 MCP 서버 목록 |
-| `metadata` | dict | ❌ | 추가 메타데이터 (도구 사용 컨텍스트) |
-| `agents` | list[AgentProfile] | ❌ | 하위 에이전트 (계층 구조) |
+**참여자 이름 일치**
+- agendas.yaml의 필수 발언자 이름
+- agent_profiles.yaml의 참여자 이름
+- 정확히 같아야 해요 (대소문자 구분)
 
-### 예시
-
-```yaml
-agents:
-  - name: Host
-    role: host
-    responsibilities:
-      - 회의 시작 인사 및 안건 소개
-      - 안건 진행 상황 관리
-      - 토론 중재 및 의견 요청
-      - 회의 요약 및 마무리
-    expertise:
-      - 회의 퍼실리테이션
-      - 시간 관리
-    mcp_tools:
-      - github
-    metadata:
-      target_repository: "yaklevel/thetable"
-      additional_instructions: |
-        GitHub 도구를 적극적으로 사용하여
-        프로젝트 상태를 확인하고 발언하세요.
-
-  - name: PM
-    role: project_manager
-    responsibilities:
-      - 프로젝트 일정 관리
-      - 진행 상황 보고
-      - 리스크 식별
-    expertise:
-      - 일정 계획
-      - 자원 관리
-    phase_triggers:
-      status_check: "프로젝트 현황을 보고하세요"
-    mcp_tools:
-      - github
-    metadata:
-      target_repository: "yaklevel/thetable"
-
-  # 사람 참여자 예시
-  - name: chulsoo
-    role: backend_engineer
-    is_human: true
-    responsibilities:
-      - 백엔드 아키텍처 의견 제시
-      - 기술적 리스크 검토
-    expertise:
-      - Python
-      - FastAPI
-```
-
-### 에이전트 추가 방법
-
-1. `config/agent_profiles.yaml` 파일 편집
-2. `agents` 리스트에 새 에이전트 추가
-3. 필수 필드 작성: `name`, `role`, `responsibilities`, `expertise`
-4. MCP 도구 필요 시 `mcp_tools` 및 `metadata` 추가
-5. 저장 후 재실행
+> 🤔 **이해했나요?**
+> Q: 설정을 바꾸면 바로 적용되나요?
+> A: 아니요. TheTable을 종료하고 다시 실행해야 새 설정이 적용돼요.
 
 ---
 
-## 회의 안건 (agendas.yaml)
+## 문제 해결
 
-회의 안건을 정의합니다.
+### API 키 오류
 
-### 스키마
+**증상**: "API key is required" 에러
 
-```yaml
-agendas:
-  - title: string             # 안건 제목 (필수)
-    description: string       # 안건 설명 (필수)
-    required_speakers:        # 필수 발언자 목록 (선택)
-      - agent_name
-      - agent_name
-```
-
-### 필드 설명
-
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| `title` | string | ✅ | 안건 제목 |
-| `description` | string | ✅ | 안건 상세 설명 |
-| `required_speakers` | list[string] | ❌ | 안건별 필수 발언자 (에이전트 이름) |
-
-### 예시
-
-```yaml
-agendas:
-  - title: "회의 시작 및 현황 공유"
-    description: "회의를 시작하고 주간 현황을 공유합니다"
-    required_speakers: ["Host", "PM"]
-
-  - title: "주요 이슈 논의"
-    description: "당면한 문제들을 논의하고 해결 방안을 모색합니다"
-    required_speakers: ["TechLead"]
-
-  - title: "향후 일정 및 계획"
-    description: "다음 단계 일정과 계획을 수립합니다"
-    required_speakers: ["PM"]
-
-  - title: "회의 마무리"
-    description: "논의 내용을 정리하고 액션 아이템을 확정합니다"
-    required_speakers: ["Host"]
-```
-
-### 커스텀 안건 작성법
-
-1. `config/agendas.yaml` 파일 편집
-2. `agendas` 리스트에 새 안건 추가
-3. `title`, `description` 작성
-4. `required_speakers`에 해당 안건에서 발언해야 할 에이전트 이름 나열
-   - `agent_profiles.yaml`의 `name` 필드와 일치해야 함
-5. 저장 후 재실행
-
-**참고**:
-- `required_speakers`가 비어있으면 모든 에이전트가 발언 기회를 가짐
-- 안건은 순서대로 진행되며, Host 발언에서 완료 키워드 감지 시 다음 안건으로 전환
+**해결**
+1. .env 파일이 프로젝트 루트에 있는지 확인
+2. OPENAI_API_KEY가 설정되어 있는지 확인
+3. API 키 앞뒤에 공백이 없는지 확인
 
 ---
 
-## MCP 서버 설정 (mcp_servers.json)
+### GitHub 도구 오류
 
-MCP (Model Context Protocol) 서버 연결 설정을 정의합니다.
+**증상**: "github 서버 건너뜀" 경고
 
-### 스키마
-
-```json
-{
-  "mcpServers": {
-    "server_name": {
-      "command": "string",           // stdio transport용 실행 명령
-      "args": ["string"],            // 명령 인자
-      "env": {                       // 환경변수 (${VAR} 형식 치환 지원)
-        "KEY": "${ENV_VAR_NAME}"
-      },
-
-      // 또는 streamable_http transport
-      "url": "https://...",
-      "transport": "streamable_http",
-      "headers": {
-        "Authorization": "Bearer ${API_TOKEN}"
-      }
-    }
-  }
-}
-```
-
-### 필드 설명
-
-**stdio transport**
-
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| `command` | string | ✅ | 실행 명령 (예: `go`, `python`) |
-| `args` | list[string] | ✅ | 명령 인자 |
-| `env` | dict | ❌ | 환경변수 (`${VAR}` 형식으로 `.env` 값 치환) |
-
-**streamable_http transport**
-
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| `url` | string | ✅ | MCP 서버 URL |
-| `transport` | string | ✅ | `"streamable_http"` |
-| `headers` | dict | ❌ | HTTP 헤더 (`${VAR}` 형식 치환 지원) |
-
-### 예시
-
-**GitHub MCP Server (stdio)**
-
-```json
-{
-  "mcpServers": {
-    "github": {
-      "command": "go",
-      "args": [
-        "run",
-        "github.com/github/github-mcp-server/cmd/github-mcp-server@latest",
-        "stdio"
-      ],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
-      }
-    }
-  }
-}
-```
-
-**Jira MCP Server (streamable_http)**
-
-```json
-{
-  "mcpServers": {
-    "github": { ... },
-    "jira": {
-      "url": "https://jira-mcp-server.example.com",
-      "transport": "streamable_http",
-      "headers": {
-        "Authorization": "Bearer ${JIRA_API_TOKEN}"
-      }
-    }
-  }
-}
-```
-
-### 환경변수 치환
-
-- `${VAR}` 형식의 환경변수는 `.env` 파일의 값으로 치환됨
-- 환경변수가 설정되지 않은 경우 해당 서버는 건너뜀 (경고 로그 출력)
-
-### Transport 자동 추론
-
-- `command` 필드가 있으면 **stdio** transport
-- `url` 필드가 있으면 **streamable_http** transport
+**해결**
+1. .env에 GITHUB_PERSONAL_ACCESS_TOKEN 확인
+2. GitHub에서 토큰을 만들었는지 확인
+3. 토큰 권한(repo, issues)이 있는지 확인
 
 ---
 
-## Settings 클래스
+### 참여자 없음 오류
 
-TheTable의 중앙 집중식 설정 관리 클래스입니다.
+**증상**: "Agent not found" 에러
 
-### 위치
-
-`thetable/config/settings.py`
-
-### 특징
-
-- **pydantic-settings 기반**: 환경변수 자동 로드 및 타입 검증
-- **lru_cache 싱글턴**: `get_settings()` 호출 시 캐싱된 인스턴스 반환
-- **Fallback 메커니즘**: Main/Task LLM 전용 설정이 없으면 공통 설정 사용
-
-### 주요 속성
-
-| 속성 | 타입 | 설명 |
-|------|------|------|
-| `openai_api_key` | Optional[str] | 공통 API 키 (fallback) |
-| `openai_base_url` | Optional[str] | 공통 base URL (fallback) |
-| `llm_main_model` | str | Main LLM 모델명 |
-| `llm_task_model` | str | Task LLM 모델명 |
-| `recursion_limit` | int | LangGraph 재귀 제한 |
-| `max_turns` | int | 회의 최대 턴 수 |
-
-### Property 메서드
-
-| Property | 반환 타입 | 설명 |
-|----------|----------|------|
-| `main_api_key` | str | Main LLM API 키 (`llm_main_api_key` 또는 `openai_api_key`) |
-| `main_base_url` | Optional[str] | Main LLM base URL (`llm_main_base_url` 또는 `openai_base_url`) |
-| `task_api_key` | str | Task LLM API 키 (`llm_task_api_key` 또는 `openai_api_key`) |
-| `task_base_url` | Optional[str] | Task LLM base URL (`llm_task_base_url` 또는 `openai_base_url`) |
-
-### 사용 예시
-
-```python
-from thetable.config.settings import get_settings
-
-settings = get_settings()
-
-# Main LLM 설정
-main_api_key = settings.main_api_key  # fallback 자동 처리
-main_model = settings.llm_main_model
-
-# Task LLM 설정
-task_api_key = settings.task_api_key
-task_model = settings.llm_task_model
-
-# 회의 설정
-max_turns = settings.max_turns
-```
-
-### Fallback 로직
-
-```python
-# Main LLM API 키 결정
-main_api_key = settings.llm_main_api_key or settings.openai_api_key
-# LLM_MAIN_API_KEY가 None이면 OPENAI_API_KEY 사용
-
-# Task LLM base URL 결정
-task_base_url = settings.llm_task_base_url or settings.openai_base_url
-# LLM_TASK_BASE_URL이 None이면 OPENAI_BASE_URL 사용
-```
-
-### 커스텀 설정 로드
-
-```python
-from pathlib import Path
-from thetable.config.settings import get_settings
-
-# 커스텀 .env 파일 사용 (캐시 우회)
-custom_settings = get_settings(config_path=Path("custom/.env"))
-```
+**해결**
+1. agent_profiles.yaml에 참여자가 있는지 확인
+2. 이름 철자가 정확한지 확인
+3. YAML 형식이 올바른지 확인
 
 ---
 
-## 설정 파일 위치 요약
+### 안건 진행 안 됨
 
-| 파일 | 경로 | 용도 |
-|------|------|------|
-| `.env` | 프로젝트 루트 | 환경변수 (API 키, 모델 설정) |
-| `agent_profiles.yaml` | `config/` | 에이전트 프로필 정의 |
-| `agendas.yaml` | `config/` | 회의 안건 정의 |
-| `mcp_servers.json` | `config/` | MCP 서버 설정 |
+**증상**: 안건이 시작되지 않음
+
+**해결**
+1. agendas.yaml에 안건이 있는지 확인
+2. 필수 발언자 이름이 정확한지 확인
+3. YAML 형식이 올바른지 확인
+
+---
+
+> 💡 **핵심 정리**
+>
+> - 4개 설정 파일: .env, agent_profiles.yaml, agendas.yaml, mcp_servers.json
+> - .env는 비밀번호 메모장 (API 키 저장)
+> - agent_profiles.yaml은 참여자 명단
+> - agendas.yaml은 회의 주제 목록
+> - mcp_servers.json은 도구함 목록
+> - 설정 변경 후에는 반드시 재시작
+
+---
+
+## 다음 문서
+
+- [future-direction.md](./future-direction.md): 앞으로 추가될 기능을 알아봐요
+- [roadmap.md](./roadmap.md): 개발 일정과 계획을 확인해요

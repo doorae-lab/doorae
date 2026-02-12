@@ -1,352 +1,393 @@
-# 2-Tier LLM 아키텍처
+# AI 두뇌의 비밀
 
-## Main LLM vs Task LLM 비교
-
-| 항목 | Main LLM | Task LLM |
-|------|----------|----------|
-| **용도** | 에이전트 응답 생성 | 유틸리티 작업 (멘션 추출, 안건 분석, 종료 감지) |
-| **기본 모델** | gpt-4o-mini (또는 deepseek-v3.2) | gpt-4o-mini (또는 gemini-2.5-flash) |
-| **Temperature** | 0.7 (창의성, 맥락 이해) | 0.0 (일관성, 결정성) |
-| **최대 토큰** | 4096 | 2048 |
-| **스트리밍** | 지원 (`streaming=True`) | 미지원 |
-| **사용 노드** | AgentNode, (RefillSpeakersNode - 미사용) | ProcessResponseNode, SummarizationNode, AgendaManager |
-| **API 키** | `LLM_MAIN_API_KEY` (fallback: `OPENAI_API_KEY`) | `LLM_TASK_API_KEY` (fallback: `OPENAI_API_KEY`) |
-| **Base URL** | `LLM_MAIN_BASE_URL` (fallback: `OPENAI_BASE_URL`) | `LLM_TASK_BASE_URL` (fallback: `OPENAI_BASE_URL`) |
+> TheTable은 왜 2개의 AI 두뇌를 사용할까요?
 
 ---
 
-## LLM 호출 지점 맵
+## 왜 AI가 2개 필요한가요?
 
-### Main LLM 호출
+회의에서 하는 일을 크게 **2가지**로 나눌 수 있어요.
 
-```mermaid
-graph LR
-    AgentNode[AgentNode] --> BaseAgent[BaseAgent.invoke_with_tools]
-    BaseAgent --> MainLLM[Main LLM]
-    MainLLM --> ToolCalling[Tool-Calling 루프]
-    ToolCalling --> Response[AIMessage]
-```
+### 🧠 창의적인 일
+- 회의 발언 만들기
+- 상황에 맞게 다양하게 표현하기
+- 문맥을 이해하고 적절히 반응하기
 
-**노드**: `AgentNode` (Host, PM, TechLead 등)
+### 🤖 단순한 일
+- 대화 요약하기
+- 누구를 언급했는지 찾기
+- 안건이 끝났는지 판단하기
 
-**용도**: 회의 발언 생성
-
-**특징**:
-- 역할에 맞는 창의적 응답 필요
-- MCP 도구 바인딩 (tool-calling 지원)
-- 스트리밍 응답 (실시간 표시 가능)
-
-**파일**: `thetable/graph/nodes/agent.py`, `thetable/agents/base_agent.py`
+> 💡 **쉽게 말하면...**
+> 창의적인 일은 실력 좋은 AI가 해야 하지만, 단순한 일은 빠르고 저렴한 AI로도 충분해요. 그래서 2개를 나눠서 사용하면 비용이 약 70% 절약돼요!
 
 ---
 
-### Task LLM 호출
+## 대화용 AI (Main LLM)
+
+### 🧠 역할
+
+**비유**: 발표 전문가
+
+**하는 일**
+- Host, PM, TechLead의 회의 발언을 만들어요
+- 역할에 맞게 창의적으로 표현해요
+- 상황을 파악하고 적절히 반응해요
+- 외부 도구를 사용해서 정보를 가져와요
+
+### 특징
+
+**창의성 조절 손잡이 (Temperature)**
+- 값: 0.7 (중간보다 조금 높음)
+- 의미: 다양하고 창의적인 표현을 사용해요
+- 결과: 같은 상황에서도 조금씩 다르게 말해요
+
+**최대 글자 수**
+- 값: 4096 단어 조각 (토큰)
+- 의미: 충분히 긴 발언을 만들 수 있어요
+- 도구 결과도 포함할 수 있어요
+
+**실시간 출력**
+- 발언을 만들면서 바로바로 보여줘요
+- 기다리지 않아도 돼요
+
+> 🤔 **이해했나요?**
+> Q: Temperature가 뭔가요?
+> A: 창의성 조절 손잡이예요. 높으면 다양한 표현을 쓰고, 낮으면 비슷한 표현을 반복해요.
+
+---
+
+## 분석용 AI (Task LLM)
+
+### 🤖 역할
+
+**비유**: 문서 정리 담당
+
+**하는 일**
+- 대화를 요약해요
+- 발언에서 멘션을 찾아요
+- 회의 종료 의도를 파악해요
+- 새로운 안건을 찾아서 추가해요
+
+### 특징
+
+**창의성 조절 손잡이 (Temperature)**
+- 값: 0.0 (최소)
+- 의미: 일관되고 예측 가능한 결과를 내놔요
+- 결과: 같은 입력이면 항상 같은 결과가 나와요
+
+**최대 글자 수**
+- 값: 2048 단어 조각 (토큰)
+- 의미: 짧은 답변만 필요해요
+- 예: "PM, TechLead", "예/아니오"
+
+**실시간 출력**
+- 필요 없어요 (빠르게 결과만 받으면 돼요)
+
+> 💡 **쉽게 말하면...**
+> 분석용 AI는 창의성이 필요 없어요. "PM을 언급했나?"라는 질문에는 "예" 또는 "아니오"만 정확하게 답하면 돼요.
+
+---
+
+## 두 AI 비교
 
 ```mermaid
 graph TB
-    Process[ProcessResponseNode] --> Mention[멘션 추출]
-    Process --> End[회의 종료 감지]
-    Process --> Agenda[안건 동적 업데이트]
+    subgraph "🧠 대화용 AI (Main LLM)"
+        A1[창의성: 높음<br/>Temperature 0.7]
+        A2[용도: 회의 발언]
+        A3[모델: gpt-4o-mini<br/>또는 deepseek-v3.2]
+        A4[최대 글자: 4096]
+        A5[실시간: 있음]
+    end
 
-    Summarize[SummarizationNode] --> Summary[대화 요약]
+    subgraph "🤖 분석용 AI (Task LLM)"
+        B1[창의성: 없음<br/>Temperature 0.0]
+        B2[용도: 요약/분석]
+        B3[모델: gpt-4o-mini<br/>또는 gemini-2.5-flash]
+        B4[최대 글자: 2048]
+        B5[실시간: 없음]
+    end
 
-    Mention --> TaskLLM[Task LLM]
-    End --> TaskLLM
-    Agenda --> TaskLLM
-    Summary --> TaskLLM
+    style A1 fill:#f8d7da
+    style A2 fill:#f8d7da
+    style A3 fill:#f8d7da
+    style A4 fill:#f8d7da
+    style A5 fill:#f8d7da
 
-    TaskLLM --> Result[구조화된 결과]
+    style B1 fill:#d1ecf1
+    style B2 fill:#d1ecf1
+    style B3 fill:#d1ecf1
+    style B4 fill:#d1ecf1
+    style B5 fill:#d1ecf1
 ```
 
-**노드 및 용도**:
+### 비교표
 
-1. **ProcessResponseNode**
-   - 멘션 추출: 발언에서 언급된 참여자 찾기
-   - 회의 종료 감지: Host 발언의 종료 의도 분석
-   - 안건 동적 업데이트: 최근 대화에서 안건 추출
-
-2. **SummarizationNode**
-   - 대화 요약: 메시지 개수 초과 시 요약 생성
-
-3. **AgendaManager**
-   - 안건 분석: `extract_agenda_updates()` 함수
-
-**특징**:
-- `temperature=0.0` (일관된 결과 보장)
-- 짧은 응답 (최대 2048 토큰)
-- Structured Output 사용 (JSON 파싱 오류 최소화)
-
-**파일**:
-- `thetable/graph/nodes/process.py`
-- `thetable/graph/nodes/summarize.py`
-- `thetable/graph/agenda_manager.py`
+| 항목 | 🧠 대화용 AI | 🤖 분석용 AI |
+|------|------------|------------|
+| **비유** | 발표 전문가 | 문서 정리 담당 |
+| **용도** | 회의 발언 생성 | 요약, 멘션 찾기, 안건 분석 |
+| **Temperature** | 0.7 (창의적) | 0.0 (일관적) |
+| **최대 글자** | 4096 토큰 | 2048 토큰 |
+| **실시간 출력** | 있음 | 없음 |
+| **속도** | 보통 | 빠름 |
+| **비용** | 높음 | 낮음 |
 
 ---
 
-## 팩토리 패턴
+## 비용 절약 원리
 
-### create_main_llm()
+### 📊 왜 70% 절약될까요?
 
-**역할**: Main LLM 인스턴스 생성
+**분석**
+- 회의에서 분석용 AI는 대화용 AI보다 2~3배 더 자주 호출돼요
+- 매 발언마다: 멘션 찾기, 안건 업데이트 확인
+- 메시지 5개마다: 대화 요약
 
-```python
-from thetable.config import create_main_llm
+**계산**
+- 분석용 AI를 저렴한 모델로 바꾸면
+- 호출 횟수가 많은 작업의 비용이 크게 줄어요
+- 전체 비용의 약 70%가 절약돼요
 
-main_llm = create_main_llm(streaming=True)
+### 비용 절약 흐름
+
+```mermaid
+graph LR
+    A[회의 시작] --> B[대화용 AI<br/>발언 1번]
+    B --> C[분석용 AI<br/>멘션 찾기]
+    B --> D[분석용 AI<br/>안건 확인]
+    B --> E[분석용 AI<br/>종료 감지]
+
+    C --> F[대화용 AI<br/>발언 1번]
+    D --> F
+    E --> F
+
+    F --> G[분석용 AI<br/>3가지 작업]
+
+    style B fill:#f8d7da
+    style F fill:#f8d7da
+    style C fill:#d1ecf1
+    style D fill:#d1ecf1
+    style E fill:#d1ecf1
+    style G fill:#d1ecf1
 ```
 
-**설정**:
-- 모델: `settings.llm_main_model` (기본값 `gpt-4o-mini`)
-- Temperature: `settings.llm_main_temperature` (기본값 `0.7`)
-- 최대 토큰: `settings.llm_main_max_tokens` (기본값 `4096`)
-- API 키: `settings.main_api_key` (fallback: `openai_api_key`)
-- Base URL: `settings.main_base_url` (fallback: `openai_base_url`)
-- 타임아웃: `settings.llm_timeout` (기본값 `60.0`초)
-- 재시도: `settings.llm_max_retries` (기본값 `3`)
-
-**파일**: `thetable/config/llm_factory.py:8-30`
+> 💡 **쉽게 말하면...**
+> 대화용 AI는 1번 호출될 때, 분석용 AI는 3번 호출돼요. 분석용 AI를 저렴한 것으로 쓰면 비용이 크게 줄어요!
 
 ---
 
-### create_task_llm()
+## API 키는 출입증이에요
 
-**역할**: Task LLM 인스턴스 생성
+AI를 사용하려면 **API 키 (출입증)**가 필요해요.
 
-```python
-from thetable.config import create_task_llm
+### 🔑 API 키란?
 
-task_llm = create_task_llm()
+**비유**: 출입증
+
+**역할**
+- AI 서비스에 접속할 수 있는 비밀번호예요
+- 사용한 만큼 요금이 청구돼요
+- 다른 사람에게 절대 알려주면 안 돼요
+
+### 설정 방법
+
+**환경변수 파일 (.env)**
+- 비밀번호 메모장처럼 API 키를 저장해요
+- 여러 AI 서비스를 동시에 사용할 수 있어요
+
+**예시**
+```
+공통 API 키: OPENAI_API_KEY=sk-...
+대화용 전용 키: LLM_MAIN_API_KEY=sk-...
+분석용 전용 키: LLM_TASK_API_KEY=sk-...
 ```
 
-**설정**:
-- 모델: `settings.llm_task_model` (기본값 `gpt-4o-mini`)
-- Temperature: `settings.llm_task_temperature` (기본값 `0.0`)
-- 최대 토큰: `settings.llm_task_max_tokens` (기본값 `2048`)
-- API 키: `settings.task_api_key` (fallback: `openai_api_key`)
-- Base URL: `settings.task_base_url` (fallback: `openai_base_url`)
-- 타임아웃: `settings.llm_timeout` (기본값 `60.0`초)
-- 재시도: `settings.llm_max_retries` (기본값 `3`)
-
-**파일**: `thetable/config/llm_factory.py:33-50`
+> 🤔 **이해했나요?**
+> Q: 왜 API 키를 나눠서 관리하나요?
+> A: 대화용 AI와 분석용 AI를 다른 서비스로 쓸 수 있어서 비용을 더 절약할 수 있어요.
 
 ---
 
-## 독립 API 키/Base URL + Fallback 체인
+## 어디서 호출되나요?
 
-### Fallback 메커니즘
+### 🧠 대화용 AI 호출 위치
 
-**Main LLM API 키** (`Settings.main_api_key` property):
-```python
-@property
-def main_api_key(self) -> str:
-    key = self.llm_main_api_key or self.openai_api_key
-    if not key:
-        raise ValueError("Main LLM API key is required.")
-    return key
+```mermaid
+graph LR
+    A[Host 발언 차례] --> B[대화용 AI 호출]
+    C[PM 발언 차례] --> B
+    D[TechLead 발언 차례] --> B
+
+    B --> E[도구 사용 필요?]
+    E -->|예| F[도구 실행]
+    F --> B
+    E -->|아니오| G[발언 완성]
+
+    style A fill:#e1f5ff
+    style C fill:#d4edda
+    style D fill:#fff3cd
+    style B fill:#f8d7da
 ```
-- `LLM_MAIN_API_KEY` 우선
-- 없으면 `OPENAI_API_KEY` 사용
-- 둘 다 없으면 예외 발생
 
-**Task LLM API 키** (`Settings.task_api_key` property):
-```python
-@property
-def task_api_key(self) -> str:
-    key = self.llm_task_api_key or self.openai_api_key
-    if not key:
-        raise ValueError("Task LLM API key is required.")
-    return key
+**호출 시점**
+- Host, PM, TechLead가 발언할 때
+- 도구를 사용할 때마다 (최대 50번 반복)
+
+**특징**
+- 회의 참여자의 역할 정보를 함께 전달해요
+- 지금까지의 대화 요약을 포함해요
+- 사용 가능한 도구 목록을 알려줘요
+
+---
+
+### 🤖 분석용 AI 호출 위치
+
+```mermaid
+graph TB
+    A[누군가 발언 완료] --> B[분석용 AI<br/>멘션 찾기]
+    A --> C[분석용 AI<br/>안건 업데이트]
+    A --> D[분석용 AI<br/>회의 종료 감지]
+
+    E[메시지 5개 초과] --> F[분석용 AI<br/>대화 요약]
+
+    style B fill:#d1ecf1
+    style C fill:#d1ecf1
+    style D fill:#d1ecf1
+    style F fill:#d1ecf1
 ```
-- `LLM_TASK_API_KEY` 우선
-- 없으면 `OPENAI_API_KEY` 사용
-- 둘 다 없으면 예외 발생
 
-**Base URL** (`Settings.main_base_url`, `Settings.task_base_url` property):
-```python
-@property
-def main_base_url(self) -> Optional[str]:
-    return self.llm_main_base_url or self.openai_base_url
+**호출 시점**
+1. 매 발언 후: 멘션 찾기, 안건 업데이트
+2. Host 발언 후 (필요시): 회의 종료 감지
+3. 메시지 5개 초과: 대화 요약
 
-@property
-def task_base_url(self) -> Optional[str]:
-    return self.llm_task_base_url or self.openai_base_url
-```
-- 전용 Base URL 우선
-- 없으면 공통 Base URL 사용
-- 둘 다 없으면 OpenAI 공식 엔드포인트 (ChatOpenAI 기본값)
-
-**파일**: `thetable/config/settings.py:56-91`
+**특징**
+- Temperature 0.0으로 일관된 결과
+- 짧은 답변만 요구 (2048 토큰)
+- 빠르게 처리해야 해요
 
 ---
 
 ## 모델 선택 전략
 
-### Main LLM - 창의성 우선
+### 대화용 AI - 품질 우선
 
-**Temperature 0.7**:
-- 다양한 표현 생성
-- 역할에 맞는 자연스러운 대화
-- 안건 맥락 이해 및 반영
+**권장 모델**
+- **OpenAI**: gpt-4o-mini (품질과 비용의 균형)
+- **OpenRouter**: deepseek-v3.2 (고품질, 저렴함)
+- **로컬**: llama3.1:8b (인터넷 없이 사용)
 
-**권장 모델**:
-- **OpenAI**: gpt-4o-mini (품질/비용 균형)
-- **OpenRouter**: deepseek-v3.2 (고품질, 저비용)
-- **Ollama**: llama3.1:8b (로컬 실행)
-
-**사용 예시**:
-```bash
-# .env 파일
-LLM_MAIN_API_KEY=sk-...
-LLM_MAIN_BASE_URL=https://api.openai.com/v1
-LLM_MAIN_MODEL=gpt-4o-mini
-LLM_MAIN_TEMPERATURE=0.7
-```
+**선택 기준**
+- 다양한 표현을 만들 수 있나요?
+- 역할에 맞게 발언할 수 있나요?
+- 문맥을 잘 이해하나요?
 
 ---
 
-### Task LLM - 결정성 우선
+### 분석용 AI - 속도와 비용 우선
 
-**Temperature 0.0**:
-- 일관된 결과 (동일 입력 → 동일 출력)
-- 구조화된 데이터 추출 (멘션, 안건, 종료 의도)
-- 예측 가능한 동작
+**권장 모델**
+- **OpenAI**: gpt-4o-mini (안정적)
+- **OpenRouter**: gemini-2.5-flash (빠르고 저렴)
+- **로컬**: llama3.1:8b (인터넷 없이 사용)
 
-**권장 모델**:
-- **OpenAI**: gpt-4o-mini (안정성)
-- **OpenRouter**: gemini-2.5-flash (빠른 속도, 저비용)
-- **Ollama**: llama3.1:8b (로컬 실행)
+**선택 기준**
+- 빠르게 답변하나요?
+- 비용이 저렴한가요?
+- 일관된 결과를 내나요?
 
-**사용 예시**:
-```bash
-# .env 파일
-LLM_TASK_API_KEY=sk-...
-LLM_TASK_BASE_URL=https://openrouter.ai/api/v1
-LLM_TASK_MODEL=google/gemini-2.5-flash
-LLM_TASK_TEMPERATURE=0.0
-```
+> 💡 **쉽게 말하면...**
+> 대화용은 품질이 중요하고, 분석용은 속도와 비용이 중요해요. 그래서 다른 기준으로 모델을 골라요.
 
 ---
 
-## 비용 최적화 전략
+## 비용 최적화 팁
 
-### 모델 차별화 (약 70% 비용 절감)
+### 1. 모델 차별화
 
-**OpenRouter 사용 예시**:
-- **Main LLM**: `deepseek-v3.2` ($0.14/M tokens)
-- **Task LLM**: `gemini-2.5-flash` ($0.075/M tokens)
+대화용 AI와 분석용 AI를 다른 서비스로 사용해요.
 
-**비용 절감 근거** (LangSmith trace 기반 분석):
-- Task LLM 호출 빈도가 Main LLM보다 2-3배 높음
-- Task LLM을 저렴한 모델로 대체 시 전체 비용 약 70% 절감
-- Main LLM 품질 유지하면서 Task LLM만 최적화
+**예시**
+- 대화용: deepseek-v3.2 (품질 좋음, $0.14/M 토큰)
+- 분석용: gemini-2.5-flash (빠름, $0.075/M 토큰)
+- 절약: 약 70%
 
----
+### 2. 글자 수 제한
 
-### 토큰 제한
+필요한 만큼만 생성해요.
 
-**Main LLM**: 4096 토큰
-- 충분한 발언 생성 여유
-- MCP 도구 결과 포함 가능
+- 대화용: 4096 토큰 (충분한 발언)
+- 분석용: 2048 토큰 (짧은 답변)
 
-**Task LLM**: 2048 토큰
-- 짧은 응답만 필요 (멘션: "PM, TechLead", 종료: "예/아니오")
-- 불필요한 장문 응답 방지
-- 비용 절감
+### 3. 대화 요약
 
----
+메시지가 쌓이면 자동으로 요약해요.
 
-### 캐싱 (대화 요약)
-
-**SummarizationNode**:
-- 메시지 개수 초과 시 (`max_messages_before_summary=5`) 자동 요약
+- 5개 초과 시 자동 요약
 - 최근 3개 메시지만 유지
-- 요약문을 시스템 프롬프트에 포함 → 컨텍스트 윈도우 절약
+- 긴 회의에서도 비용 일정
 
-**효과**:
-- 긴 회의에서도 토큰 사용량 일정 유지
-- 컨텍스트 윈도우 한계 회피
+### 4. 조건부 호출
 
----
+꼭 필요할 때만 AI를 호출해요.
 
-### 조건부 호출
+- 회의 종료: 키워드로 먼저 확인 (AI 안 씀)
+- 안건 80% 완료 시에만 AI로 재확인
+- 매번 AI 쓰지 않아서 절약
 
-**회의 종료 감지**:
-1. 키워드 감지 (LLM 호출 없음)
-2. 안건 80% 이상 완료 시에만 LLM 분석 (토큰 절약)
-
-**안건 동적 업데이트**:
-- 매 발언마다 최근 10개 메시지만 분석 (전체 대화 분석 불필요)
+> 🤔 **이해했나요?**
+> Q: 대화 요약을 하면 정보가 없어지지 않나요?
+> A: 중요한 내용은 요약문에 남아있고, 최근 메시지도 유지되어서 맥락을 잃지 않아요.
 
 ---
 
-## 설정 유연성
+## 설정 예시
 
-### 단일 Provider 운영
+### OpenRouter 사용 (권장)
 
-**최소 설정** (.env):
-```bash
-OPENAI_API_KEY=sk-...
 ```
-- Main/Task LLM 모두 동일 API 키 사용
-- 모델만 다르게 설정 가능
+공통 설정:
+- API 키: 하나로 통일
+- 주소: https://openrouter.ai/api/v1
 
----
+대화용 AI:
+- 모델: deepseek-v3.2
+- Temperature: 0.7
 
-### 다중 Provider 조합
-
-**OpenAI (Main) + OpenRouter (Task)**:
-```bash
-# Main LLM - OpenAI
-LLM_MAIN_API_KEY=sk-...
-LLM_MAIN_MODEL=gpt-4o-mini
-
-# Task LLM - OpenRouter
-LLM_TASK_API_KEY=sk-or-v1-...
-LLM_TASK_BASE_URL=https://openrouter.ai/api/v1
-LLM_TASK_MODEL=google/gemini-2.5-flash
+분석용 AI:
+- 모델: gemini-2.5-flash
+- Temperature: 0.0
 ```
 
----
+### 여러 서비스 혼합
 
-### 로컬 LLM (Ollama)
+```
+대화용 AI:
+- API 키: OpenRouter 키
+- 주소: https://openrouter.ai/api/v1
+- 모델: deepseek-v3.2
 
-**Main + Task 모두 로컬**:
-```bash
-OPENAI_BASE_URL=http://localhost:11434/v1
-LLM_MAIN_MODEL=llama3.1:8b
-LLM_TASK_MODEL=llama3.1:8b
-LLM_TASK_TEMPERATURE=0.0
+분석용 AI:
+- API 키: Azure OpenAI 키
+- 주소: Azure OpenAI 주소
+- 모델: gpt-35-turbo
 ```
 
 ---
 
-## 환경변수 목록
-
-| 변수 | 기본값 | 설명 |
-|------|--------|------|
-| `OPENAI_API_KEY` | - | 공통 fallback API 키 |
-| `OPENAI_BASE_URL` | - | 공통 fallback Base URL (기본: OpenAI 공식) |
-| `LLM_MAIN_API_KEY` | - | Main LLM 전용 API 키 (fallback: `OPENAI_API_KEY`) |
-| `LLM_MAIN_BASE_URL` | - | Main LLM 전용 Base URL (fallback: `OPENAI_BASE_URL`) |
-| `LLM_MAIN_MODEL` | `gpt-4o-mini` | Main LLM 모델 |
-| `LLM_MAIN_TEMPERATURE` | `0.7` | Main LLM temperature |
-| `LLM_MAIN_MAX_TOKENS` | `4096` | Main LLM 최대 토큰 |
-| `LLM_TASK_API_KEY` | - | Task LLM 전용 API 키 (fallback: `OPENAI_API_KEY`) |
-| `LLM_TASK_BASE_URL` | - | Task LLM 전용 Base URL (fallback: `OPENAI_BASE_URL`) |
-| `LLM_TASK_MODEL` | `gpt-4o-mini` | Task LLM 모델 |
-| `LLM_TASK_TEMPERATURE` | `0.0` | Task LLM temperature |
-| `LLM_TASK_MAX_TOKENS` | `2048` | Task LLM 최대 토큰 |
-| `LLM_TIMEOUT` | `60.0` | LLM 호출 타임아웃 (초) |
-| `LLM_MAX_RETRIES` | `3` | LLM 호출 재시도 횟수 |
+> 💡 **핵심 정리**
+>
+> - 2개의 AI를 사용해서 비용을 약 70% 절약해요
+> - 대화용 AI는 창의적인 발언을 만들어요 (Temperature 0.7)
+> - 분석용 AI는 단순 작업을 빠르게 해요 (Temperature 0.0)
+> - API 키는 출입증처럼 AI 서비스에 접속할 때 필요해요
+> - 대화 요약과 조건부 호출로 비용을 더 줄여요
 
 ---
 
-## 참고 파일
+## 다음 문서
 
-- `thetable/config/llm_factory.py` - create_main_llm, create_task_llm
-- `thetable/config/settings.py` - Settings 클래스, fallback property
-- `thetable/graph/workflow.py` - 워크플로우 생성 시 LLM 주입
-- `thetable/graph/nodes/agent.py` - Main LLM 사용
-- `thetable/graph/nodes/process.py` - Task LLM 사용
-- `thetable/graph/nodes/summarize.py` - Task LLM 사용
-- `thetable/graph/agenda_manager.py` - Task LLM 사용
+- [mcp-integration.md](./mcp-integration.md): 외부 도구를 어떻게 사용하는지 알아봐요
+- [configuration.md](./configuration.md): 설정 파일을 어떻게 수정하는지 배워요

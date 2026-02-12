@@ -123,40 +123,7 @@ POST /api/projects
  | `401` | 인증 실패 |
  | `409` | 동일 이름 프로젝트 존재 |
  
-+### REST API - 목록 조회
-+
-+```
-+GET /api/projects
-+```
-+
-+**Query Parameters:**
-+- `page`: 페이지 번호 (default: 1)
-+- `limit`: 페이지 당 개수 (default: 20)
-+- `status`: 상태 필터 (active, archived)
-+
-+**Response (200 OK):**
-+
-+```json
-+{
-+  "total": 12,
-+  "page": 1,
-+  "limit": 20,
-+  "items": [
-+    {
-+      "id": "550e8400-e29b-41d4-a716-446655440000",
-+      "name": "주간 개발 회의",
-+      "description": "매주 월요일 개발팀 정기 회의",
-+      "owner_id": "user-123",
-+      "status": "active",
-+      "agent_count": 3,
-+      "created_at": "2026-02-10T21:00:00Z"
-+    },
-+    ...
-+  ]
-+}
-+```
-+
- ### REST API - 목록 조회
+### REST API - 목록 조회
 
 ```
 GET /api/projects
@@ -189,6 +156,72 @@ GET /api/projects
 }
 ```
 
+### REST API - 상세 조회
+
+```
+GET /api/projects/{id}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "주간 개발 회의",
+  "description": "매주 월요일 개발팀 정기 회의",
+  "owner_id": "user-123",
+  "status": "active",
+  "agents": [...],
+  "default_agendas": [...],
+  "main_model": null,
+  "task_model": null,
+  "mcp_servers": ["github"],
+  "created_at": "2026-02-10T21:00:00Z",
+  "updated_at": "2026-02-10T21:00:00Z"
+}
+```
+
+### REST API - 프로젝트 수정
+
+```
+PATCH /api/projects/{id}
+```
+
+**Request Body (부분 업데이트):**
+
+```json
+{
+  "name": "수정된 프로젝트 이름",
+  "description": "수정된 설명",
+  "status": "archived"
+}
+```
+
+**Response (200 OK):** 수정된 Project 객체
+
+**에러 응답:**
+
+| 코드 | 상황 |
+|------|------|
+| `400` | 유효하지 않은 필드 |
+| `401` | 인증 실패 |
+| `404` | 프로젝트가 존재하지 않음 |
+
+### REST API - 프로젝트 삭제
+
+```
+DELETE /api/projects/{id}
+```
+
+**Response (204 No Content)**
+
+**에러 응답:**
+
+| 코드 | 상황 |
+|------|------|
+| `401` | 인증 실패 |
+| `404` | 프로젝트가 존재하지 않음 |
+
 ### Frontend (Web UI)
  
  **프로젝트 생성 마법사 (Wizard)**
@@ -212,3 +245,4 @@ GET /api/projects
 *   **Step 4: 검토 및 생성**
     - [ ] 전체 설정 요약 표시.
     - [ ] **'프로젝트 생성' 버튼**: 클릭 시 API 호출 (`POST /api/projects`).
+
