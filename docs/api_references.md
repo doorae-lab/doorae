@@ -1,12 +1,14 @@
 # API Reference
 
+> ⚠️ **중요**: 이 문서는 향후 구현 예정인 API 설계 스펙입니다. 현재 대부분의 엔드포인트는 미구현 상태입니다.
+
 > 전체 API 엔드포인트 목록. 각 기능별 상세 스펙은 `.specs/` 디렉토리의 개별 문서를 참고한다.
 
 Base URL: `/api`
 
 ---
 
-## 1. 인증 (Auth)
+## 1. 인증 (Auth) (미구현)
 
 > 스펙: `.specs/user/106-유저-관리/113-회원가입로그인.md`, `133-회원가입로그인-화면.md`
 
@@ -17,7 +19,7 @@ Base URL: `/api`
 
 ---
 
-## 2. 프로젝트 관리 (Project)
+## 2. 프로젝트 관리 (Project) (미구현)
 
 > 스펙: `.specs/project/134-프로젝트-관리/131-프로젝트-관리-Web_API.md`
 
@@ -39,7 +41,7 @@ Base URL: `/api`
 
 ---
 
-## 3. 에이전트 프로필 (Profile)
+## 3. 에이전트 프로필 (Profile) (미구현)
 
 > 스펙: `.specs/agent/105-에이전트-기능/`
 
@@ -50,7 +52,7 @@ Base URL: `/api`
 
 ---
 
-## 4. 미팅 (Meeting)
+## 4. 미팅 (Meeting) (미구현)
 
 > 스펙: `.specs/project/107-프로젝트-기능-미팅/`
 
@@ -64,7 +66,7 @@ Base URL: `/api`
 
 ---
 
-## 5. 안건 (Agenda)
+## 5. 안건 (Agenda) (미구현)
 
 > 스펙: `.specs/project/107-프로젝트-기능-미팅/110-미팅-안건-crud.md`
 
@@ -78,7 +80,7 @@ Base URL: `/api`
 
 ---
 
-## 6. WebSocket
+## 6. WebSocket (미구현)
 
 > 스펙: `.specs/meeting/115-회의-시스템-기본-구현/`
 
