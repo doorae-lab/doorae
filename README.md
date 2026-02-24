@@ -117,11 +117,38 @@ uv run thetable
 uv run python -m thetable.interfaces.cli
 ```
 
+### 채팅 서버 실행
+
+WebSocket 기반 채팅 서버를 실행합니다:
+
+```bash
+# 서버 의존성 설치
+uv sync --extra server
+
+# 서버 실행
+uv run thetable-server
+```
+
+서버 설정은 환경 변수로 제어할 수 있습니다:
+
+```bash
+# .env 파일에 추가
+SERVER_HOST=0.0.0.0
+SERVER_PORT=8000
+SERVER_MAX_ROOMS=100
+SERVER_MAX_CONNECTIONS_PER_ROOM=50
+```
+
+서버 실행 후 브라우저에서 `http://localhost:8000/static/index.html`로 접속하여 채팅을 시작할 수 있습니다.
+
 ### 개발 모드 실행
 
 ```bash
 # 테스트 실행
 uv run pytest
+
+# 서버 테스트만 실행
+uv run pytest tests/server/
 
 # 특정 테스트 실행
 uv run pytest tests/test_specific.py

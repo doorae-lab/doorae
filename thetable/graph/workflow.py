@@ -7,13 +7,18 @@
 - Host 명시적 안건 완료 선언
 - AI 자동 안건 관리 (추가/수정/제거)
 """
+import copy
+import time
+from typing import Optional
+
+from langchain_core.messages import HumanMessage
 from langchain_core.language_models import BaseChatModel
 from langgraph.graph import StateGraph, END
-from loguru import logger
 
 from thetable.config import create_main_llm, create_task_llm
 from thetable.graph.state import MeetingState
-from thetable.core.profile import load_agent_profiles
+from thetable.core.profile import AgentProfile, load_agent_profiles
+from thetable.graph.input_provider import CliInputProvider, InputProvider
 from thetable.graph.nodes import (
     NodeRegistry,
     ProcessResponseNode,
@@ -28,7 +33,9 @@ def create_meeting_workflow(
     profiles_path: str = "config/agent_profiles.yaml",
     main_model: BaseChatModel = None,
     task_model: BaseChatModel = None,
-    mcp_tools: dict[str, list] = None
+    mcp_tools: dict[str, list] = None,
+    input_provider: Optional[InputProvider] = None,
+    profiles_override: Optional[dict[str, AgentProfile]] = None,
 ):
     """안건 기반 회의 워크플로우 생성
 
@@ -37,6 +44,8 @@ def create_meeting_workflow(
         main_model: 회의 에이전트 응답 생성용 LLM (None이면 기본 모델 생성)
         task_model: 작은 작업용 LLM (None이면 기본 모델 생성)
         mcp_tools: 서버별 MCP tools 딕셔너리 {server_name: [tools]}
+        input_provider: HumanNode 입력 제공자 (None이면 CLI 기본)
+        profiles_override: 런타임에 추가/덮어쓸 프로필 딕셔너리
 
     Returns:
         CompiledGraph: 실행 가능한 회의 그래프
@@ -50,8 +59,13 @@ def create_meeting_workflow(
     if task_model is None:
         task_model = create_task_llm()
 
-    # 1. 프로필 로드
+    if input_provider is None:
+        input_provider = CliInputProvider()
+
+    # 1. 프로필 로드 (+ 런타임 오버라이드)
     profiles = load_agent_profiles(profiles_path)
+    if profiles_override:
+        profiles.update(profiles_override)
 
     # 2. StateGraph 생성
     workflow = StateGraph(MeetingState)
@@ -81,6 +95,7 @@ def create_meeting_workflow(
             all_agent_names=list(profiles.keys()),
             all_profiles=profiles,
             mcp_tools=mcp_tools,
+            input_provider=input_provider,
         )
         workflow.add_node(name.lower(), node)
 
@@ -113,3 +128,39 @@ def create_meeting_workflow(
 
     # 11. 컴파일
     return workflow.compile()
+
+
+def build_initial_state(
+    settings,
+    initial_message: str,
+    human_names: list[str],
+    agendas: list[dict],
+) -> dict:
+    """회의 초기 상태 구성."""
+    base_agendas = copy.deepcopy(agendas)
+
+    if base_agendas:
+        base_agendas[0]["status"] = "in_progress"
+        base_agendas[0]["start_time"] = time.time()
+        for agenda in base_agendas[1:]:
+            agenda["status"] = "pending"
+
+    for agenda in base_agendas:
+        required_speakers = agenda.setdefault("required_speakers", [])
+        for human_name in human_names:
+            if human_name not in required_speakers:
+                required_speakers.append(human_name)
+
+    return {
+        "messages": [HumanMessage(content=initial_message)],
+        "agendas": base_agendas,
+        "current_agenda_idx": 0,
+        "pending_speakers": [],
+        "speaker_counts": {},
+        "consecutive_host_delegations": 0,
+        "turn_count": 0,
+        "max_turns": settings.max_turns,
+        "meeting_ended": False,
+        "summary": "",
+        "start_time": time.time(),
+    }
