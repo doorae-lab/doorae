@@ -21,7 +21,7 @@ async def test_connect():
 
     await manager.connect("Alice", websocket)
 
-    assert manager.is_connected("Alice")
+    assert "Alice" in manager.connections
     assert manager.get_connection_count() == 1
     websocket.accept.assert_called_once()
 
@@ -34,7 +34,7 @@ def test_disconnect():
 
     manager.disconnect("Alice")
 
-    assert not manager.is_connected("Alice")
+    assert "Alice" not in manager.connections
     assert manager.get_connection_count() == 0
 
 
@@ -85,11 +85,3 @@ async def test_broadcast():
     websocket2.send_text.assert_called_once_with("Hello everyone")
 
 
-def test_is_connected():
-    """연결 확인 테스트."""
-    manager = ConnectionManager()
-    websocket = Mock()
-    manager.connections["Alice"] = websocket
-
-    assert manager.is_connected("Alice")
-    assert not manager.is_connected("Bob")

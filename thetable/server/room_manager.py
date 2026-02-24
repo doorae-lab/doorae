@@ -74,14 +74,6 @@ class RoomManager:
         """
         return [room.get_info() for room in self.rooms.values()]
 
-    def get_room_count(self) -> int:
-        """현재 회의방 수 반환.
-
-        Returns:
-            회의방 수
-        """
-        return len(self.rooms)
-
 
 # 싱글톤 인스턴스
 _room_manager_instance: Optional[RoomManager] = None

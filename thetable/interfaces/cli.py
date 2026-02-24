@@ -10,11 +10,10 @@ from loguru import logger
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from langchain_core.messages import HumanMessage
 
 from thetable import __version__
 from thetable.config import Settings, get_settings, setup_tracing
-from thetable.graph.workflow import create_meeting_workflow
+from thetable.graph.workflow import build_initial_state, create_meeting_workflow
 from thetable.graph.constants import STATUS_EMOJI, HOST_ROLE_NAME, AGENT_COLORS
 from thetable.interfaces.logging import setup_logging
 
@@ -356,48 +355,8 @@ def _build_initial_state(
     human_names: list[str],
     agendas: list[dict]
 ) -> dict:
-    """초기 상태 구성
-
-    Args:
-        settings: Settings 인스턴스
-        initial_message: 초기 메시지
-        human_names: Human 참여자 이름 리스트
-        agendas: YAML에서 로드한 안건 목록
-
-    Returns:
-        초기 상태 딕셔너리
-    """
-    import time
-    import copy
-
-    # 안건 복사 및 상태 설정
-    base_agendas = copy.deepcopy(agendas)
-
-    # 첫 번째 안건에 in_progress 상태 및 start_time 설정
-    if base_agendas:
-        base_agendas[0]["status"] = "in_progress"
-        base_agendas[0]["start_time"] = time.time()
-
-        # 나머지 안건은 pending 상태
-        for agenda in base_agendas[1:]:
-            agenda["status"] = "pending"
-
-    # Human 참여자를 모든 안건에 추가
-    for agenda in base_agendas:
-        for human_name in human_names:
-            if human_name not in agenda["required_speakers"]:
-                agenda["required_speakers"].append(human_name)
-
-    return {
-        "messages": [HumanMessage(content=initial_message)],
-        "agendas": base_agendas,
-        "current_agenda_idx": 0,
-        "pending_speakers": [],
-        "speaker_counts": {},
-        "consecutive_host_delegations": 0,
-        "start_time": time.time(),
-        "max_turns": settings.max_turns,
-    }
+    """초기 상태 구성을 graph 모듈 함수에 위임."""
+    return build_initial_state(settings, initial_message, human_names, agendas)
 
 
 async def _run_streaming(workflow, state: dict, config: dict) -> None:

@@ -1,7 +1,10 @@
 """WebSocket 연결 관리자."""
 
+import logging
 from typing import Dict
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
@@ -42,16 +45,29 @@ class ConnectionManager:
             username: 대상 사용자 이름
         """
         if username in self.connections:
-            await self.connections[username].send_text(message)
+            try:
+                await self.connections[username].send_text(message)
+            except Exception:
+                logger.warning(f"Failed to send message to {username}")
+                self.disconnect(username)
 
     async def broadcast(self, message: str):
         """모든 연결된 사용자에게 메시지 브로드캐스트.
 
+        개별 연결 실패 시 해당 연결만 정리하고 나머지에는 계속 전송.
+
         Args:
             message: 전송할 메시지
         """
-        for connection in self.connections.values():
-            await connection.send_text(message)
+        disconnected = []
+        for username, connection in self.connections.items():
+            try:
+                await connection.send_text(message)
+            except Exception:
+                logger.warning(f"Failed to broadcast to {username}")
+                disconnected.append(username)
+        for username in disconnected:
+            self.disconnect(username)
 
     def get_connection_count(self) -> int:
         """현재 연결된 사용자 수 반환.
@@ -60,14 +76,3 @@ class ConnectionManager:
             연결된 사용자 수
         """
         return len(self.connections)
-
-    def is_connected(self, username: str) -> bool:
-        """사용자가 연결되어 있는지 확인.
-
-        Args:
-            username: 사용자 이름
-
-        Returns:
-            연결 여부
-        """
-        return username in self.connections

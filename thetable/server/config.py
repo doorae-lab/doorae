@@ -20,7 +20,6 @@ class ServerSettings(BaseSettings):
 
     # 회의방 설정
     max_rooms: int = 100
-    max_connections_per_room: int = 50
 
 
 @lru_cache

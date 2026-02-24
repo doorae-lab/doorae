@@ -11,7 +11,6 @@ def test_server_settings_defaults():
     assert settings.host == "0.0.0.0"
     assert settings.port == 8000
     assert settings.max_rooms == 100
-    assert settings.max_connections_per_room == 50
 
 
 def test_server_settings_from_env(monkeypatch):
@@ -19,13 +18,11 @@ def test_server_settings_from_env(monkeypatch):
     monkeypatch.setenv("SERVER_HOST", "127.0.0.1")
     monkeypatch.setenv("SERVER_PORT", "9000")
     monkeypatch.setenv("SERVER_MAX_ROOMS", "50")
-    monkeypatch.setenv("SERVER_MAX_CONNECTIONS_PER_ROOM", "25")
 
     settings = ServerSettings()
     assert settings.host == "127.0.0.1"
     assert settings.port == 9000
     assert settings.max_rooms == 50
-    assert settings.max_connections_per_room == 25
 
 
 def test_server_settings_env_prefix_isolation(monkeypatch):

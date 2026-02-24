@@ -4,6 +4,37 @@ from typing import Any, Dict
 from datetime import datetime
 
 
+def _to_jsonable(value: Any) -> Any:
+    """JSON 직렬화 가능한 형태로 재귀 변환."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+
+    if isinstance(value, dict):
+        return {str(k): _to_jsonable(v) for k, v in value.items()}
+
+    if isinstance(value, (list, tuple, set)):
+        return [_to_jsonable(v) for v in value]
+
+    if hasattr(value, "content"):
+        message = {
+            "content": getattr(value, "content", None),
+            "type": value.__class__.__name__,
+        }
+        if hasattr(value, "name"):
+            message["name"] = getattr(value, "name")
+        if hasattr(value, "id"):
+            message["id"] = getattr(value, "id")
+        return _to_jsonable(message)
+
+    if hasattr(value, "model_dump"):
+        try:
+            return _to_jsonable(value.model_dump())
+        except Exception:
+            return str(value)
+
+    return str(value)
+
+
 def event_to_dict(event: Dict[str, Any]) -> Dict[str, Any]:
     """LangGraph 이벤트를 JSON 직렬화 가능한 딕셔너리로 변환.
 
@@ -21,22 +52,11 @@ def event_to_dict(event: Dict[str, Any]) -> Dict[str, Any]:
 
     # 메타데이터 추가
     if "metadata" in event:
-        result["metadata"] = event["metadata"]
+        result["metadata"] = _to_jsonable(event["metadata"])
 
     # 데이터 추가 (메시지 등)
     if "data" in event:
-        data = event["data"]
-        # LangChain 메시지 객체 처리
-        if hasattr(data, "content"):
-            result["data"] = {
-                "content": data.content,
-                "type": data.__class__.__name__,
-            }
-            # name 속성이 있으면 추가
-            if hasattr(data, "name"):
-                result["data"]["name"] = data.name
-        else:
-            result["data"] = data
+        result["data"] = _to_jsonable(event["data"])
 
     return result
 

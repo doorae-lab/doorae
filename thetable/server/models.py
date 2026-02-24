@@ -1,7 +1,7 @@
 """서버 데이터 모델 정의."""
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
@@ -20,20 +20,3 @@ class RoomInfo(BaseModel):
     agenda: Optional[str] = None
     created_at: datetime
     participants_count: int = 0
-
-
-class WSMessage(BaseModel):
-    """WebSocket 수신 메시지 모델."""
-
-    type: str
-    content: str
-    sender: str
-    timestamp: Optional[datetime] = None
-
-
-class WSResponse(BaseModel):
-    """WebSocket 송신 응답 모델."""
-
-    type: str
-    data: Any
-    timestamp: datetime = Field(default_factory=datetime.now)

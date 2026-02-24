@@ -1,9 +1,20 @@
 """회의방 클래스."""
 
 import asyncio
+import json
+import logging
 from datetime import datetime
 from typing import Optional
+from fastapi import WebSocket
 from thetable.server.connection_manager import ConnectionManager
+from thetable.server.events import (
+    event_to_dict,
+    format_message_event,
+    format_error_event,
+    format_system_event,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class Room:
@@ -17,6 +28,7 @@ class Room:
         connection_manager: WebSocket 연결 관리자
         input_queues: username별 입력 큐 딕셔너리
         workflow: LangGraph 워크플로우 (선택적)
+        _streaming_task: 워크플로우 스트리밍 백그라운드 태스크
     """
 
     def __init__(
@@ -39,6 +51,7 @@ class Room:
         self.connection_manager = ConnectionManager()
         self.input_queues: dict[str, asyncio.Queue] = {}
         self.workflow = None
+        self._streaming_task: Optional[asyncio.Task] = None
 
     def get_info(self) -> dict:
         """회의방 정보 반환.
@@ -86,3 +99,110 @@ class Room:
         """
         if username in self.input_queues:
             del self.input_queues[username]
+
+    async def join(self, username: str, websocket: WebSocket):
+        """사용자 입장 처리.
+
+        연결 수락 후 입장 메시지를 브로드캐스트합니다.
+
+        Args:
+            username: 사용자 이름
+            websocket: WebSocket 연결
+        """
+        await self.connection_manager.connect(username, websocket)
+        join_event = format_system_event(f"{username}님이 입장했습니다.")
+        await self.connection_manager.broadcast(json.dumps(join_event))
+
+    async def leave(self, username: str):
+        """사용자 퇴장 처리.
+
+        연결 해제, 큐 정리 후 퇴장 메시지를 브로드캐스트합니다.
+
+        Args:
+            username: 사용자 이름
+        """
+        self.connection_manager.disconnect(username)
+        self.remove_user_queue(username)
+        leave_event = format_system_event(f"{username}님이 퇴장했습니다.")
+        await self.connection_manager.broadcast(json.dumps(leave_event))
+
+    async def handle_message(self, username: str, data: str):
+        """메시지 처리.
+
+        JSON 파싱 후 사용자 입력 큐에 추가하고 브로드캐스트합니다.
+        파싱 실패 시 발신자에게 에러 메시지를 전송합니다.
+
+        Args:
+            username: 발신자 이름
+            data: 수신한 원본 텍스트 데이터
+        """
+        try:
+            message_data = json.loads(data)
+        except json.JSONDecodeError:
+            error_event = format_error_event("잘못된 JSON 형식입니다.")
+            await self.connection_manager.send_personal_message(
+                json.dumps(error_event), username
+            )
+            return
+
+        content = message_data.get("content", "")
+
+        # 사용자 입력 큐에 추가 (워크플로우가 대기 중이면 전달됨)
+        queue = self.get_user_queue(username)
+        if queue is not None:
+            await queue.put(content)
+
+        # 사용자 메시지를 참가자에게 브로드캐스트
+        message_event = format_message_event(content=content, sender=username)
+        await self.connection_manager.broadcast(json.dumps(message_event))
+
+    async def start_workflow_streaming(self, workflow, initial_state: dict, config: dict):
+        """워크플로우 스트리밍을 백그라운드 태스크로 시작.
+
+        astream_events로 워크플로우를 실행하고, 각 이벤트를 JSON 변환하여
+        Room의 모든 참가자에게 브로드캐스트합니다.
+
+        Args:
+            workflow: 컴파일된 LangGraph 워크플로우
+            initial_state: 워크플로우 초기 상태
+            config: LangGraph 실행 설정
+        """
+        self.workflow = workflow
+        self._streaming_task = asyncio.create_task(
+            self._stream_workflow_events(workflow, initial_state, config)
+        )
+
+    async def _stream_workflow_events(self, workflow, state: dict, config: dict):
+        """워크플로우 이벤트를 스트리밍하여 브로드캐스트.
+
+        Args:
+            workflow: 컴파일된 LangGraph 워크플로우
+            state: 초기 상태
+            config: LangGraph 실행 설정
+        """
+        try:
+            async for event in workflow.astream_events(
+                state, config=config, version="v2"
+            ):
+                ws_event = event_to_dict(event)
+                await self.connection_manager.broadcast(json.dumps(ws_event))
+        except asyncio.CancelledError:
+            logger.info(f"Workflow streaming cancelled for room {self.id}")
+        except Exception as e:
+            logger.error(f"Workflow streaming error in room {self.id}: {e}")
+            error_event = format_error_event(f"워크플로우 오류: {e}")
+            await self.connection_manager.broadcast(json.dumps(error_event))
+
+    async def stop_workflow_streaming(self):
+        """워크플로우 스트리밍 태스크를 중지.
+
+        cancel 후 완료를 대기합니다.
+        """
+        if self._streaming_task is not None and not self._streaming_task.done():
+            self._streaming_task.cancel()
+            try:
+                await self._streaming_task
+            except asyncio.CancelledError:
+                pass
+            self._streaming_task = None
+        self.workflow = None

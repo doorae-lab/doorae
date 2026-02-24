@@ -1,6 +1,7 @@
 """Routes 테스트."""
 
 import pytest
+from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
 from thetable.server.app import create_app
 from thetable.server.room_manager import get_room_manager
@@ -180,3 +181,76 @@ def test_websocket_nonexistent_room(client):
     with pytest.raises(Exception):
         with client.websocket_connect("/ws/nonexistent?username=Alice"):
             pass
+
+
+def test_start_workflow_nonexistent_room(client):
+    """존재하지 않는 회의방에 워크플로우 시작 테스트."""
+    response = client.post("/api/rooms/nonexistent/start")
+    assert response.status_code == 404
+
+
+def test_start_workflow_no_participants(client):
+    """참가자 없는 회의방에 워크플로우 시작 테스트."""
+    create_response = client.post("/api/rooms", json={"name": "Empty Room"})
+    room_id = create_response.json()["id"]
+
+    response = client.post(f"/api/rooms/{room_id}/start")
+    assert response.status_code == 400
+    assert "참가자가 없습니다" in response.json()["detail"]
+
+
+def test_start_workflow_uses_unified_workflow(client, monkeypatch):
+    """워크플로우 시작 시 통합 workflow + 런타임 human 프로필을 사용한다."""
+    create_response = client.post("/api/rooms", json={"name": "Team Room"})
+    room_id = create_response.json()["id"]
+
+    calls = {}
+
+    class MockSettings:
+        agent_profiles_path = "config/agent_profiles.yaml"
+        agendas_path = "config/agendas.yaml"
+        recursion_limit = 123
+        max_turns = 1000
+
+    def mock_create_meeting_workflow(**kwargs):
+        calls["workflow_kwargs"] = kwargs
+        return object()
+
+    def mock_build_initial_state(settings, initial_message, human_names, agendas):
+        calls["initial_state_args"] = {
+            "settings": settings,
+            "initial_message": initial_message,
+            "human_names": human_names,
+            "agendas": agendas,
+        }
+        return {"messages": [], "agendas": agendas}
+
+    monkeypatch.setattr("thetable.server.routes.get_settings", lambda: MockSettings())
+    monkeypatch.setattr("thetable.server.routes.load_agendas", lambda _path: [])
+    monkeypatch.setattr(
+        "thetable.server.routes.create_meeting_workflow",
+        mock_create_meeting_workflow,
+    )
+    monkeypatch.setattr(
+        "thetable.server.routes.build_initial_state",
+        mock_build_initial_state,
+    )
+
+    with client.websocket_connect(f"/ws/{room_id}?username=Alice") as ws:
+        ws.receive_json()  # 입장 이벤트
+
+        room = get_room_manager().get_room(room_id)
+        room.start_workflow_streaming = AsyncMock()
+
+        response = client.post(f"/api/rooms/{room_id}/start")
+        assert response.status_code == 200
+
+        workflow_kwargs = calls["workflow_kwargs"]
+        assert workflow_kwargs["profiles_path"] == "config/agent_profiles.yaml"
+        assert "input_provider" in workflow_kwargs
+        assert "profiles_override" in workflow_kwargs
+        assert "Alice" in workflow_kwargs["profiles_override"]
+        assert workflow_kwargs["profiles_override"]["Alice"].is_human is True
+
+        assert calls["initial_state_args"]["human_names"] == ["Alice"]
+        room.start_workflow_streaming.assert_awaited_once()
