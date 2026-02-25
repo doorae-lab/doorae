@@ -1,8 +1,8 @@
 # API Reference
 
-> ⚠️ **중요**: 이 문서는 향후 구현 예정인 API 설계 스펙입니다. 현재 대부분의 엔드포인트는 미구현 상태입니다.
-
 > 전체 API 엔드포인트 목록. 각 기능별 상세 스펙은 `.specs/` 디렉토리의 개별 문서를 참고한다.
+>
+> 섹션 1~5는 미구현 설계 스펙, 섹션 6~8은 구현 완료된 인터페이스이다.
 
 Base URL: `/api`
 
@@ -80,23 +80,148 @@ Base URL: `/api`
 
 ---
 
-## 6. WebSocket (미구현)
+## 6. 회의방 (Room)
 
-> 스펙: `.specs/meeting/115-회의-시스템-기본-구현/`
+> 구현: `thetable/server/routes.py`, `thetable/server/room.py`
+
+| 메서드 | 엔드포인트 | 설명 | 상태 |
+|--------|-----------|------|------|
+| `POST` | `/api/rooms` | 회의방 생성 | 구현 |
+| `GET` | `/api/rooms` | 회의방 목록 조회 | 구현 |
+| `GET` | `/api/rooms/{room_id}` | 회의방 상세 조회 | 구현 |
+| `DELETE` | `/api/rooms/{room_id}` | 회의방 삭제 | 구현 |
+| `POST` | `/api/rooms/{room_id}/start` | AI 워크플로우 시작 | 구현 |
+
+### Request/Response 모델
+
+**RoomCreate** (POST `/api/rooms` 요청 본문)
+
+| 필드 | 타입 | 필수 | 제약 | 설명 |
+|------|------|------|------|------|
+| `name` | string | O | 1~100자 | 회의방 이름 |
+| `agenda` | string | X | 최대 500자 | 회의 안건 |
+
+**RoomInfo** (응답 모델)
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `id` | string | 회의방 ID |
+| `name` | string | 회의방 이름 |
+| `agenda` | string \| null | 회의 안건 |
+| `created_at` | datetime | 생성 시간 |
+| `participants_count` | int | 현재 참가자 수 |
+
+### 에러 응답
+
+| 상태 코드 | 조건 |
+|-----------|------|
+| `400` | 회의방 생성 실패 (max_rooms 초과 등) |
+| `400` | 워크플로우 시작 시 참가자 없음 |
+| `404` | 존재하지 않는 room_id |
+| `409` | 워크플로우가 이미 실행 중 |
+
+---
+
+## 7. WebSocket
+
+> 구현: `thetable/server/routes.py`, `thetable/server/connection_manager.py`
 
 ### 접속
 
 ```
-WS /ws/{meeting_id}?token={access_token}
+WS /ws/{room_id}?username={username}
 ```
 
-### 이벤트
+| 파라미터 | 위치 | 타입 | 필수 | 설명 |
+|---------|------|------|------|------|
+| `room_id` | path | string | O | 회의방 ID |
+| `username` | query | string | O | 사용자 이름 |
 
-| 이벤트 | 방향 | 설명 |
-|--------|------|------|
-| `join` | Client → Server | 미팅 참가 |
-| `chat.send` | Client → Server | 채팅 메시지 전송 |
-| `meeting.control` | Client → Server | 미팅 제어 (시작/종료/일시중지) |
-| `agent.stream` | Server → Client | 에이전트 응답 스트리밍 |
-| `meeting.state` | Server → Client | 미팅 상태 변경 알림 |
-| `agenda.updated` | Server → Client | 안건 상태 변경 알림 |
+연결 실패 시 WebSocket close code `4004` (회의방 없음)로 종료.
+
+### 클라이언트 → 서버
+
+JSON 텍스트 메시지:
+
+```json
+{
+  "content": "메시지 내용"
+}
+```
+
+### 서버 → 클라이언트
+
+모든 이벤트는 아래 공통 구조를 따른다:
+
+```json
+{
+  "type": "<이벤트 타입>",
+  "data": { ... },
+  "timestamp": "ISO 8601"
+}
+```
+
+#### 이벤트 타입
+
+| type | 방향 | data 필드 | 설명 |
+|------|------|-----------|------|
+| `message` | broadcast | `content`, `sender` | 사용자 채팅 메시지 |
+| `system` | broadcast | `message` | 입장/퇴장/워크플로우 시작 알림 |
+| `error` | personal 또는 broadcast | `error` | 에러 메시지 |
+| `on_chain_start`, `on_chain_end` 등 | broadcast | LangGraph 이벤트 데이터 | AI 워크플로우 스트리밍 이벤트 |
+
+#### 이벤트 예시
+
+```json
+// message
+{
+  "type": "message",
+  "data": { "content": "안녕하세요", "sender": "Alice" },
+  "timestamp": "2026-02-25T15:30:45.123456"
+}
+
+// system
+{
+  "type": "system",
+  "data": { "message": "Alice님이 입장했습니다." },
+  "timestamp": "2026-02-25T15:30:45.123456"
+}
+
+// error (개인 전송)
+{
+  "type": "error",
+  "data": { "error": "잘못된 JSON 형식입니다." },
+  "timestamp": "2026-02-25T15:30:45.123456"
+}
+
+// LangGraph 워크플로우 이벤트 (broadcast)
+{
+  "type": "on_chain_start",
+  "data": { ... },
+  "metadata": { ... },
+  "timestamp": "2026-02-25T15:30:45.123456"
+}
+```
+
+### 연결 생명주기
+
+1. 클라이언트가 `WS /ws/{room_id}?username={username}`으로 연결
+2. 서버가 연결 수락 후 `system` 이벤트 (입장 알림) broadcast
+3. 클라이언트가 `{"content": "..."}` 형식으로 메시지 전송
+4. 서버가 `message` 이벤트로 전체 참가자에게 broadcast
+5. 워크플로우 실행 중이면 사용자 입력이 AI 워크플로우 큐로 전달
+6. 연결 해제 시 `system` 이벤트 (퇴장 알림) broadcast
+
+---
+
+## 8. 서버 설정
+
+> 구현: `thetable/server/config.py`
+
+환경 변수 prefix: `SERVER_`
+
+| 환경 변수 | 타입 | 기본값 | 설명 |
+|-----------|------|-------|------|
+| `SERVER_HOST` | string | `0.0.0.0` | 바인드 주소 |
+| `SERVER_PORT` | int | `8000` | 바인드 포트 |
+| `SERVER_MAX_ROOMS` | int | `100` | 최대 동시 회의방 수 |
