@@ -211,4 +211,6 @@ CLAUDE.md
 .serena/
 
 .claude/
+.claude/worktrees/
 .docs/
+.worktrees/
