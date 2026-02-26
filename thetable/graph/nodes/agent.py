@@ -1,6 +1,6 @@
 """AgentNode - AI 에이전트 노드"""
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 from loguru import logger
 
@@ -9,7 +9,12 @@ from thetable.agents.base_agent import BaseAgent
 from thetable.graph.nodes.base import BaseNode, NodeType
 from thetable.graph.nodes.registry import register_node
 from thetable.graph.state import MeetingState
-from thetable.graph.constants import STATUS_EMOJI, STATUS_TEXT
+from thetable.graph.constants import STATUS_EMOJI, STATUS_TEXT, HOST_ROLE_NAME
+from thetable.graph.agenda_tools import (
+    create_propose_tool,
+    create_approve_tool,
+    create_reject_tool,
+)
 
 
 @register_node("agent", category="agents")
@@ -87,6 +92,7 @@ class AgentNode(BaseNode):
         agendas = state.get("agendas", [])
         current_idx = state.get("current_agenda_idx", 0)
         summary = state.get("summary", "")
+        pending_proposals: List[dict] = list(state.get("pending_proposals", []))
 
         # 대화 기록을 명확한 포맷으로 변환
         formatted_messages = []
@@ -129,16 +135,31 @@ class AgentNode(BaseNode):
         else:
             enhanced_prompt = f"{agent_prompt}\n\n{agenda_context}"
 
+        # Host인 경우 대기 중인 후보 안건 컨텍스트 추가
+        if self.profile.name == HOST_ROLE_NAME and pending_proposals:
+            enhanced_prompt += "\n\n" + self._format_proposals_context(pending_proposals)
+
         # 시스템 메시지 + 포맷된 대화 기록
         system_msg = SystemMessage(content=enhanced_prompt)
         all_messages = [system_msg] + formatted_messages
+
+        # 안건 Tool 구성 (Closure 패턴)
+        agenda_actions: list = []
+        agenda_tools = [create_propose_tool(agenda_actions, self.profile.name)]
+
+        # Host이고 후보가 있으면 approve/reject Tool 추가
+        if self.profile.name == HOST_ROLE_NAME and pending_proposals:
+            agenda_tools.append(create_approve_tool(agenda_actions, pending_proposals))
+            agenda_tools.append(create_reject_tool(agenda_actions, pending_proposals))
 
         # BaseAgent의 invoke_with_tools 사용
         config = {
             "tags": ["participant", f"speaker:{self.profile.name}"],
             "run_name": self.profile.name,
         }
-        response = await self.agent.invoke_with_tools(all_messages, config=config)
+        response = await self.agent.invoke_with_tools(
+            all_messages, config=config, extra_tools=agenda_tools
+        )
         response.name = self.profile.name
 
         # 빈 응답 처리
@@ -149,7 +170,16 @@ class AgentNode(BaseNode):
                 name=self.profile.name,
             )
 
-        return {"messages": [response]}
+        result: Dict[str, Any] = {"messages": [response]}
+
+        # 안건 액션 처리
+        if agenda_actions:
+            agenda_updates = self._apply_agenda_actions(
+                agenda_actions, pending_proposals, agendas
+            )
+            result.update(agenda_updates)
+
+        return result
 
     def _build_agent_prompt(self) -> str:
         """프로필에서 에이전트 프롬프트 생성
@@ -272,3 +302,78 @@ class AgentNode(BaseNode):
             )
 
         return "\n".join(agenda_lines)
+
+    def _format_proposals_context(self, proposals: List[dict]) -> str:
+        """Host 프롬프트용 대기 중인 안건 후보 목록 포맷팅
+
+        Args:
+            proposals: pending_proposals 리스트
+
+        Returns:
+            포맷된 안건 후보 컨텍스트 문자열
+        """
+        lines = ["## ⏳ 대기 중인 안건 후보 (Host 승인 필요)", ""]
+        for i, proposal in enumerate(proposals):
+            title = proposal.get("title", "")
+            description = proposal.get("description", "")
+            proposed_by = proposal.get("proposed_by", "")
+            desc_str = f" — {description}" if description else ""
+            lines.append(f"{i}. [{proposed_by}] {title}{desc_str}")
+        lines.append("")
+        lines.append("💡 approve_agenda(index) 또는 reject_agenda(index, reason)로 처리하세요.")
+        return "\n".join(lines)
+
+    def _apply_agenda_actions(
+        self,
+        actions: List[dict],
+        pending_proposals: List[dict],
+        agendas: List[dict],
+    ) -> Dict[str, Any]:
+        """안건 액션을 state update dict로 변환
+
+        Args:
+            actions: agenda_actions container에 기록된 액션 목록
+            pending_proposals: 현재 후보 안건 리스트
+            agendas: 현재 정식 안건 리스트
+
+        Returns:
+            state 업데이트 딕셔너리 {"pending_proposals": [...], "agendas": [...]}
+        """
+        new_proposals = list(pending_proposals)
+        new_agendas = list(agendas)
+
+        # approve/reject는 인덱스 기반이므로 제거 시 뒤에서부터 처리
+        # (여러 번 처리 시 인덱스 drift 방지)
+        remove_indices = set()
+
+        for action in actions:
+            act = action.get("action")
+            if act == "propose":
+                new_proposals.append(action["data"])
+                logger.info(
+                    f"[{self.profile.name}] 📋 안건 후보 등록: '{action['data'].get('title', '')}'"
+                )
+            elif act == "approve":
+                idx = action.get("index")
+                if idx is not None and 0 <= idx < len(pending_proposals):
+                    remove_indices.add(idx)
+                    new_agendas.append(action["data"])
+                    logger.info(
+                        f"[{self.profile.name}] ✅ 안건 승인: '{action['data'].get('title', '')}'"
+                    )
+            elif act == "reject":
+                idx = action.get("index")
+                if idx is not None and 0 <= idx < len(pending_proposals):
+                    remove_indices.add(idx)
+                    logger.info(
+                        f"[{self.profile.name}] ❌ 안건 거절 (idx={idx})"
+                    )
+
+        # 제거 대상 인덱스를 역순으로 제거 (인덱스 drift 방지)
+        # pending_proposals 기준 인덱스이므로 new_proposals에서 제거
+        # propose로 추가된 항목은 기존 proposals 뒤에 붙으므로 기존 인덱스는 유효
+        for idx in sorted(remove_indices, reverse=True):
+            if idx < len(new_proposals):
+                new_proposals.pop(idx)
+
+        return {"pending_proposals": new_proposals, "agendas": new_agendas}

@@ -6,7 +6,6 @@ from loguru import logger
 
 from thetable.graph.nodes.base import BaseNode, NodeType
 from thetable.graph.nodes.registry import register_node
-# utils import 제거 - 함수들을 private 메서드로 이동
 from thetable.graph.state import MeetingState
 from thetable.graph.constants import HOST_ROLE_NAME
 
@@ -20,7 +19,6 @@ class ProcessResponseNode(BaseNode):
     - 안건 완료 감지 및 다음 안건으로 전환
     - 회의 종료 의도 감지
     - 발언 횟수 카운트
-    - 안건 동적 업데이트
 
     Attributes:
         model: LLM 모델
@@ -134,55 +132,6 @@ class ProcessResponseNode(BaseNode):
             logger.warning(f"⚠️ 회의 종료 감지 LLM 호출 실패 (발언: {content[:30]}...): {type(e).__name__}: {e}")
             return False
 
-    def _merge_llm_agendas(
-        self, agenda_result, existing_agendas: list[dict]
-    ) -> list[dict] | None:
-        """LLM 추출 안건과 기존 안건 병합
-
-        Args:
-            agenda_result: extract_agenda_updates 반환값
-            existing_agendas: 기존 안건 리스트
-
-        Returns:
-            병합된 안건 리스트 또는 None (업데이트 불가 시)
-        """
-        if agenda_result is None:
-            logger.warning("안건 추출 결과가 None, 기존 안건 유지")
-            return None
-
-        new_agendas = agenda_result.items_as_dicts()
-        if not new_agendas:
-            logger.warning("안건 추출 결과가 비어있어 기존 안건 유지")
-            return None
-
-        for i, new_agenda in enumerate(new_agendas):
-            if i >= len(existing_agendas):
-                break
-            # 기존 안건의 값이 있고 새 안건에 없는 필드만 복원
-            defaults = {
-                k: v
-                for k, v in existing_agendas[i].items()
-                if v and not new_agenda.get(k)
-            }
-            new_agenda.update(defaults)
-
-        return new_agendas
-
-    def _ensure_agenda_timestamps(self, agendas: list[dict]) -> None:
-        """안건 상태에 맞는 타임스탬프 보장
-
-        Args:
-            agendas: 타임스탬프를 확인할 안건 리스트 (in-place 수정)
-        """
-        now = time.time()
-        for agenda in agendas:
-            if agenda["status"] == "in_progress" and not agenda.get("start_time"):
-                agenda["start_time"] = now
-            if agenda["status"] in ("completed", "deferred") and not agenda.get(
-                "end_time"
-            ):
-                agenda["end_time"] = now
-
     async def execute(self, state: MeetingState) -> Dict[str, Any]:
         """에이전트 응답 처리
 
@@ -257,30 +206,6 @@ class ProcessResponseNode(BaseNode):
 
         # 턴 카운트 증가
         turn_count = state.get("turn_count", 0) + 1
-
-        # 7. 안건 동적 업데이트 (매 발언마다)
-        from thetable.graph.agenda_manager import extract_agenda_updates
-
-        try:
-            # 최근 10개 메시지만 분석 (토큰 절약)
-            recent_messages = messages[-10:] if len(messages) > 10 else messages
-
-            agenda_result = await extract_agenda_updates(
-                llm=self.model,
-                messages=recent_messages,
-                current_items=new_agendas,
-            )
-
-            # LLM 안건과 기존 안건 병합 (depth 개선)
-            merged_agendas = self._merge_llm_agendas(agenda_result, new_agendas)
-            if merged_agendas:
-                new_agendas = merged_agendas
-                # 타임스탬프 보장 (PR #75, #81)
-                self._ensure_agenda_timestamps(new_agendas)
-
-        except Exception as e:
-            # 안건 업데이트 실패 시 기존 안건 유지
-            logger.warning(f"⚠️ 안건 업데이트 실패: {e}")
 
         return {
             "pending_speakers": new_pending,

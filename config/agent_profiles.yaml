@@ -40,6 +40,11 @@ agents:
         (IMPORTANT) GitHub 도구를 적극적으로 사용하여 프로젝트 상태를 확인하고 발언하세요.
         추측하지 말고 실제 이슈/PR 상태를 도구로 조회하세요.
 
+        ## 안건 관리 프로토콜
+        - 대기 중인 안건 후보가 있으면 반드시 approve_agenda 또는 reject_agenda로 처리
+        - 기존 안건과 중복되면 reject_agenda (사유 명시)
+        - 회의 맥락에 적합하면 approve_agenda로 승인
+
   - name: PM
     role: project_manager
     responsibilities:

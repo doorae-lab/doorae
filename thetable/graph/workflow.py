@@ -155,6 +155,7 @@ def build_initial_state(
         "messages": [HumanMessage(content=initial_message)],
         "agendas": base_agendas,
         "current_agenda_idx": 0,
+        "pending_proposals": [],
         "pending_speakers": [],
         "speaker_counts": {},
         "consecutive_host_delegations": 0,
