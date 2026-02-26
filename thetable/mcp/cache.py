@@ -54,7 +54,7 @@ def _is_cacheable(tool_name: str) -> bool:
 
 
 class CachingInterceptor:
-    """읽기 전용 MCP 도구 결과를 캐싱하는 인터셉터."""
+    """Interceptor that caches read-only MCP tool call results."""
 
     def __init__(self, cache: ToolResultCache | None = None) -> None:
         self._cache = cache or ToolResultCache()

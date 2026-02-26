@@ -1,4 +1,4 @@
-"""MCP tool-call result caching interceptor 단위 테스트."""
+"""Unit tests for MCP tool-call result caching interceptor."""
 import time
 import pytest
 from unittest.mock import AsyncMock
@@ -78,7 +78,7 @@ def test_cache_ttl_expiry(monkeypatch):
     result = _make_result("data")
     cache.set("key1", result)
 
-    # TTL 만료 시뮬레이션
+    # Simulate TTL expiry
     original_monotonic = time.monotonic
     monkeypatch.setattr(time, "monotonic", lambda: original_monotonic() + 2.0)
 
@@ -104,14 +104,14 @@ async def test_cache_hit_skips_handler():
 
     handler = AsyncMock(return_value=result)
 
-    # 첫 번째 호출: MISS → handler 호출
+    # First call: MISS → handler called
     first = await interceptor(request, handler)
     assert handler.call_count == 1
     assert first is result
 
-    # 두 번째 호출: HIT → handler 미호출
+    # Second call: HIT → handler not called
     second = await interceptor(request, handler)
-    assert handler.call_count == 1  # 여전히 1
+    assert handler.call_count == 1  # still 1
     assert second is result
 
 
@@ -126,7 +126,7 @@ async def test_write_tool_always_calls_handler():
     await interceptor(request, handler)
     await interceptor(request, handler)
 
-    assert handler.call_count == 2  # 캐싱 없이 매번 호출
+    assert handler.call_count == 2  # called every time, no caching
 
 
 @pytest.mark.asyncio
@@ -139,7 +139,7 @@ async def test_shared_cache_between_interceptors():
     result = _make_result("repos")
     handler = AsyncMock(return_value=result)
 
-    # interceptor_a가 채운 캐시를 interceptor_b가 활용
+    # interceptor_b reuses cache populated by interceptor_a
     await interceptor_a(request, handler)
     await interceptor_b(request, handler)
 
