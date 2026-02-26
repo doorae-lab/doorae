@@ -29,7 +29,8 @@ async def initialize_mcp_tools(config_path: Optional[str] = None) -> dict[str, l
             return {}
 
         # MCP 클라이언트 초기화
-        mcp_client = MultiServerMCPClient(config_dict)
+        from thetable.mcp.cache import CachingInterceptor
+        mcp_client = MultiServerMCPClient(config_dict, tool_interceptors=[CachingInterceptor()])
 
         # 모든 서버의 tools 수집
         server_names = set(config_dict.keys())
