@@ -1,4 +1,5 @@
 """MCP tool-call result caching interceptor 단위 테스트."""
+import time
 import pytest
 from unittest.mock import AsyncMock
 
@@ -52,6 +53,12 @@ def test_make_cache_key_arg_order_independent():
     assert _make_cache_key(req1) == _make_cache_key(req2)
 
 
+def test_make_cache_key_different_servers():
+    req1 = MCPToolCallRequest(name="get_issue", args={"number": 1}, server_name="github")
+    req2 = MCPToolCallRequest(name="get_issue", args={"number": 1}, server_name="gitlab")
+    assert _make_cache_key(req1) != _make_cache_key(req2)
+
+
 # --- ToolResultCache ---
 
 def test_cache_set_and_get():
@@ -72,9 +79,8 @@ def test_cache_ttl_expiry(monkeypatch):
     cache.set("key1", result)
 
     # TTL 만료 시뮬레이션
-    import thetable.mcp.cache as cache_module
-    original_monotonic = cache_module.time.monotonic
-    monkeypatch.setattr(cache_module.time, "monotonic", lambda: original_monotonic() + 2.0)
+    original_monotonic = time.monotonic
+    monkeypatch.setattr(time, "monotonic", lambda: original_monotonic() + 2.0)
 
     assert cache.get("key1") is None
 

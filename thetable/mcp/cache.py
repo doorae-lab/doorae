@@ -42,7 +42,7 @@ class ToolResultCache:
 
 def _make_cache_key(request: MCPToolCallRequest) -> str:
     raw = json.dumps(
-        {"name": request.name, "args": request.args},
+        {"server": request.server_name, "name": request.name, "args": request.args},
         sort_keys=True,
         default=str,
     )
