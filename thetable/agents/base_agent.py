@@ -167,6 +167,10 @@ Always base your contributions on real data when tools are available.
                         ))
                 else:
                     logger.warning(f"[{self.name}]   ⚠️ 알 수 없는 도구: {tool_name}")
+                    tool_messages.append(ToolMessage(
+                        content=f"Error: Unknown tool '{tool_name}'. Available tools: {', '.join(t.name for t in self._mcp_tools)}",
+                        tool_call_id=tc["id"],
+                    ))
 
         # 최대 반복 도달
         logger.warning(f"[{self.name}] ⚠️ 최대 반복 횟수 도달 ({max_iterations})")
