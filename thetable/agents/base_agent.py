@@ -94,24 +94,28 @@ Always base your contributions on real data when tools are available.
     async def invoke_with_tools(
         self,
         messages: list,
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[Dict[str, Any]] = None,
+        extra_tools: Optional[list] = None,
     ) -> AIMessage:
         """Tool-calling 루프 실행 (LangGraph 통합용)
 
         Args:
             messages: SystemMessage, HumanMessage 등 메시지 리스트
             config: LLM 호출 config (tags, run_name 등)
+            extra_tools: 추가 도구 리스트 (MCP 도구 외 임시 도구)
 
         Returns:
             최종 AIMessage (tool_calls가 없는 응답)
         """
-        if not self._mcp_tools:
+        active_tools = self._mcp_tools + (extra_tools or [])
+
+        if not active_tools:
             # 도구 없으면 단순 호출
             response = await self._llm.ainvoke(messages, config=config)
             return response
 
         # Tool-calling 루프
-        logger.info(f"[{self.name}] 🔧 MCP tool-calling 모드 활성화 ({len(self._mcp_tools)}개 도구)")
+        logger.info(f"[{self.name}] 🔧 MCP tool-calling 모드 활성화 ({len(active_tools)}개 도구)")
         tool_messages = list(messages)  # 복사
         iteration = 0
         max_iterations = 50
@@ -122,7 +126,7 @@ Always base your contributions on real data when tools are available.
 
             try:
                 response = await self._llm.bind_tools(
-                    self._mcp_tools, parallel_tool_calls=False
+                    active_tools, parallel_tool_calls=False
                 ).ainvoke(
                     tool_messages,
                     config=config
@@ -133,7 +137,7 @@ Always base your contributions on real data when tools are available.
                     content=f"({self.name}: 응답이 너무 길어 생성을 중단했습니다. 더 간결한 질문으로 다시 시도해주세요.)",
                     name=self.name
                 )
-            
+
             tool_messages.append(response)
 
             if not response.tool_calls:
@@ -149,7 +153,7 @@ Always base your contributions on real data when tools are available.
                 logger.info(f"[{self.name}]   → 도구: {tool_name}")
                 logger.debug(f"[{self.name}]      인자: {tool_args}")
 
-                tool_fn = {t.name: t for t in self._mcp_tools}.get(tool_name)
+                tool_fn = {t.name: t for t in active_tools}.get(tool_name)
                 if tool_fn:
                     try:
                         result = await tool_fn.ainvoke(tool_args)

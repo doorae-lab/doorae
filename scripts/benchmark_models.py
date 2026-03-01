@@ -15,8 +15,6 @@ from rich.panel import Panel
 import os
 sys.path.append(os.getcwd())
 
-from thetable.graph.agenda_manager import extract_agenda_updates
-from thetable.graph.workflow import extract_mentions_llm
 from thetable.config import get_settings
 
 console = Console()
@@ -48,50 +46,27 @@ async def benchmark_model(model_name: str, base_url: str = None, api_key: str = 
 
     results = []
 
-    # Test 1: Agenda Extraction
-    console.print("\n[bold]Test 1: Agenda Extraction (Structured Output)[/bold]")
-    sample_messages = [
-        HumanMessage(content="회의 시작합시다. 오늘 안건은 1. 현황공유, 2. 이슈논의입니다."),
-        AIMessage(content="네 알겠습니다. 현황공유부터 하시죠.", name="PM"),
-        HumanMessage(content="좋습니다. 이슈논의는 내일로 미룹시다.", name="Host")
-    ]
-    current_items = []
-    
-    start_time = time.time()
-    try:
-        agenda_result = await extract_agenda_updates(model, sample_messages, current_items)
-        latency = time.time() - start_time
-        
-        items = agenda_result.items
-        success = len(items) >= 2 and items[1].status == "deferred"
-        status = "[green]PASS[/green]" if success else "[red]FAIL[/red]"
-        
-        console.print(f"Result: {len(items)} items extracted in {latency:.2f}s - {status}")
-        for item in items:
-            console.print(f"  - {item.title} ({item.status})")
-            
-        results.append({"Test": "Agenda Extraction", "Status": "PASS" if success else "FAIL", "Latency": f"{latency:.2f}s"})
-        
-    except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        results.append({"Test": "Agenda Extraction", "Status": "ERROR", "Latency": "-"})
+    # NOTE: Agenda Extraction benchmark removed (agenda_manager 모듈 삭제됨)
+    # 안건 관리는 이제 에이전트 Tool(propose/approve/reject)로 처리됩니다.
 
-    # Test 2: Mention Extraction
-    console.print("\n[bold]Test 2: Mention Extraction[/bold]")
+    # Test: Mention Extraction (LLM 기반)
+    console.print("\n[bold]Test: Mention Extraction[/bold]")
     content = "PM님, 그리고 Designer분, 의견 어떠신가요?"
     valid_speakers = ["Host", "PM", "Designer", "TechLead"]
-    
+    prompt = f'다음 발언에서 언급하거나 의견을 요청하는 참여자를 추출하세요.\n발언: "{content}"\n선택 가능한 참여자: {", ".join(valid_speakers)}\n언급된 참여자 이름만 쉼표로 구분하여 출력 (없으면 "없음"):'
+
     start_time = time.time()
     try:
-        mentions = await extract_mentions_llm(content, model, valid_speakers)
+        response = await model.ainvoke(prompt)
         latency = time.time() - start_time
-        
+        mentions = [s.strip() for s in response.content.split(",") if s.strip() in valid_speakers]
+
         success = "PM" in mentions and "Designer" in mentions
         status = "[green]PASS[/green]" if success else "[red]FAIL[/red]"
-        
+
         console.print(f"Result: {mentions} in {latency:.2f}s - {status}")
         results.append({"Test": "Mention Extraction", "Status": "PASS" if success else "FAIL", "Latency": f"{latency:.2f}s"})
-        
+
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         results.append({"Test": "Mention Extraction", "Status": "ERROR", "Latency": "-"})

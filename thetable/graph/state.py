@@ -32,6 +32,7 @@ class MeetingState(MessagesState):
     # 안건 관리
     agendas: List[dict] = []  # Agenda 리스트 (dict로 저장)
     current_agenda_idx: int = 0
+    pending_proposals: List[dict] = []  # 안건 후보 큐 (Host 승인 대기)
 
     # 발언자 큐
     pending_speakers: List[str] = []  # ["PM", "Designer", ...]
