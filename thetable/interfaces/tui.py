@@ -338,7 +338,7 @@ class MeetingTuiApp(App[None]):
         self.current_speaker = event.speaker
         color_idx = hash(event.speaker) % len(AGENT_COLORS)
         color = AGENT_COLORS[color_idx]
-        self._full_text += f"\n[bold {color}]── {event.speaker} ──[/bold {color}]\n"
+        self._full_text += f"\n\n[bold {color}][ {event.speaker} ][/bold {color}]\n"
         self._update_conversation()
 
     def on_agenda_updated(self, event: AgendaUpdated) -> None:
@@ -347,7 +347,7 @@ class MeetingTuiApp(App[None]):
 
     def on_human_turn_started(self, event: HumanTurnStarted) -> None:
         self.input_enabled = True
-        self._full_text += f"\n[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]\n"
+        self._full_text += f"\n\n[bold yellow][ {event.username}님 차례입니다 ][/bold yellow]\n"
         self._update_conversation()
 
     def on_turn_completed(self, event: TurnCompleted) -> None:
