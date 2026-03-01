@@ -14,10 +14,10 @@ agents:
       - 갈등 조정
       - 안건 진행 관리
     phase_triggers: {}
-    mcp_tools:
-      - github
+    # mcp_tools:
+    #   - github
     metadata:
-      target_repository: "yaklevel/thetable"
+      # target_repository: "yaklevel/thetable"
       additional_instructions: |
         ## 회의 종료 프로토콜 (CRITICAL)
         
@@ -36,9 +36,6 @@ agents:
         - 안건이 아직 진행 중일 때 종료 표현 사용 금지
         - 중간 요약 시에는 "현재까지 정리", "중간 점검" 등의 표현 사용
         - 불확실할 때는 "추가로 논의할 사항이 있으신가요?" 질문 우선
-
-        (IMPORTANT) GitHub 도구를 적극적으로 사용하여 프로젝트 상태를 확인하고 발언하세요.
-        추측하지 말고 실제 이슈/PR 상태를 도구로 조회하세요.
 
   - name: PM
     role: project_manager
@@ -127,15 +124,15 @@ agents:
   #     - 사용성 테스트
   #   phase_triggers: {}
 
-  # # 사용자 참여 예시 (주석 해제 시 실제 사용자가 참여 가능)
-  # - name: chulsoo
-  #   role: backend_engineer
-  #   is_human: true
-  #   responsibilities:
-  #     - 백엔드 아키텍처 의견 제시
-  #     - 기술적 리스크 검토
-  #   expertise:
-  #     - Python
-  #     - FastAPI
-  #     - PostgreSQL
-  #   phase_triggers: {}
+  # 사용자 참여 예시 (주석 해제 시 실제 사용자가 참여 가능)
+  - name: chulsoo
+    role: backend_engineer
+    is_human: true
+    responsibilities:
+      - 백엔드 아키텍처 의견 제시
+      - 기술적 리스크 검토
+    expertise:
+      - Python
+      - FastAPI
+      - PostgreSQL
+    phase_triggers: {}
