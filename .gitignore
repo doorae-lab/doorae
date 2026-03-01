@@ -214,3 +214,6 @@ CLAUDE.md
 .claude/worktrees/
 .docs/
 .worktrees/
+
+.opencode/
+.specify/
