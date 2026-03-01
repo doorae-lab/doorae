@@ -103,8 +103,8 @@ class MeetingTuiApp(App[None]):
         height: 1fr;
     }
     #agenda-panel {
-        width: 25;
-        border-right: solid $primary;
+        width: 35;
+        border-left: solid $primary;
         padding: 1;
     }
     #main-panel {
@@ -163,10 +163,10 @@ class MeetingTuiApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal():
-            yield AgendaPanel(id="agenda-panel")
             with Vertical(id="main-panel"):
                 with VerticalScroll(id="conversation-scroll"):
                     yield Static(id="conversation")
+            yield AgendaPanel(id="agenda-panel")
         yield Input(id="input-area", placeholder="의견을 입력하세요 (Enter로 전송, 빈 입력 시 스킵)")
         yield Footer()
 
