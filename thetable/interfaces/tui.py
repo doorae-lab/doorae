@@ -311,7 +311,9 @@ class MeetingTuiApp(App[None]):
 
     def on_speaker_changed(self, event: SpeakerChanged) -> None:
         self.current_speaker = event.speaker
-        self._full_text += f"\n\n[bold cyan]── {event.speaker} ──[/bold cyan]\n"
+        color_idx = hash(event.speaker) % len(AGENT_COLORS)
+        color = AGENT_COLORS[color_idx]
+        self._full_text += f"\n\n[bold {color}]── {event.speaker} ──[/bold {color}]\n"
         self._update_conversation()
 
     def on_agenda_updated(self, event: AgendaUpdated) -> None:
@@ -373,9 +375,5 @@ class MeetingTuiApp(App[None]):
             decision = agenda.get("decision", "-")
             self._full_text += f"  {emoji} {title}\n"
             self._full_text += f"     결정: {decision}\n"
-        if self._last_speaker_counts:
-            self._full_text += "\n[bold]📊 발언 통계[/bold]\n"
-            for speaker, count in self._last_speaker_counts.items():
-                self._full_text += f"  {speaker}: {count}회\n"
         self._full_text += "\n[dim]Ctrl+C로 종료[/dim]"
         self._update_conversation()
