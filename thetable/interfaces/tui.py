@@ -233,7 +233,7 @@ class MeetingTuiApp(App[None]):
                 )
             )
         except WorkerCancelled:
-            pass
+            pass  # Ctrl+C/Q 종료 시 정상 취소 — 무시
         except Exception as e:
             self.post_message(StreamError(error=str(e)))
 
