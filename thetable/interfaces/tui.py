@@ -107,6 +107,11 @@ class MeetingTuiApp(App[None]):
     #input-area.visible {
         display: block;
     }
+    #current-stream {
+        height: auto;
+        padding: 0 1;
+        color: $text-muted;
+    }
     #summary {
         display: none;
         height: 1fr;
@@ -145,6 +150,7 @@ class MeetingTuiApp(App[None]):
         self._last_agendas: list[dict[str, object]] = []
         self._last_speaker_counts: dict[str, int] = {}
         self._input_provider: TuiInputProvider | None = None
+        self._token_buffer: str = ""
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -152,6 +158,7 @@ class MeetingTuiApp(App[None]):
             yield AgendaPanel(id="agenda-panel")
             with Vertical(id="main-panel"):
                 yield RichLog(id="conversation", auto_scroll=True, wrap=True, max_lines=2000)
+                yield Static(id="current-stream")
         yield Input(id="input-area", placeholder="의견을 입력하세요 (Enter로 전송, 빈 입력 시 스킵)")
         yield RichLog(id="summary")
         yield Footer()
@@ -302,13 +309,25 @@ class MeetingTuiApp(App[None]):
             summary_log.display = True
             self._render_summary(summary_log)
 
-    def on_token_streamed(self, event: TokenStreamed) -> None:
+    def _flush_token_buffer(self) -> None:
+        if not self._token_buffer:
+            return
         log = self.query_one("#conversation", RichLog)
+        color_idx = hash(self.current_speaker) % len(AGENT_COLORS)
+        color = AGENT_COLORS[color_idx]
+        log.write(f"[{color}]{self._token_buffer}[/{color}]")
+        self._token_buffer = ""
+        self.query_one("#current-stream", Static).update("")
+
+    def on_token_streamed(self, event: TokenStreamed) -> None:
+        self._token_buffer += event.token
+        stream = self.query_one("#current-stream", Static)
         color_idx = hash(event.agent_name) % len(AGENT_COLORS)
         color = AGENT_COLORS[color_idx]
-        log.write(f"[{color}]{event.token}[/{color}]", expand=True)
+        stream.update(f"[{color}]{self._token_buffer}[/{color}]")
 
     def on_speaker_changed(self, event: SpeakerChanged) -> None:
+        self._flush_token_buffer()
         self.current_speaker = event.speaker
         log = self.query_one("#conversation", RichLog)
         log.write("")
@@ -324,8 +343,7 @@ class MeetingTuiApp(App[None]):
         log.write(f"[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]")
 
     def on_turn_completed(self, event: TurnCompleted) -> None:
-        log = self.query_one("#conversation", RichLog)
-        log.write("")
+        self._flush_token_buffer()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if self._input_provider is not None:
