@@ -52,6 +52,18 @@ class TurnCompleted(Message):
         self.speaker = speaker
 
 
+class ToolCallStarted(Message):
+    def __init__(self, tool_name: str) -> None:
+        super().__init__()
+        self.tool_name = tool_name
+
+
+class ToolCallEnded(Message):
+    def __init__(self, tool_name: str) -> None:
+        super().__init__()
+        self.tool_name = tool_name
+
+
 class MeetingEnded(Message):
     def __init__(self, agendas: list[dict[str, object]], speaker_counts: dict[str, int]) -> None:
         super().__init__()
@@ -190,7 +202,6 @@ class MeetingTuiApp(App[None]):
 
     @work(exclusive=True)
     async def run_meeting_worker(self) -> None:
-        """LangGraph 워크플로우 이벤트를 소비하고 Textual 메시지로 변환한다."""
         try:
             if self._workflow is None:
                 return
@@ -211,6 +222,10 @@ class MeetingTuiApp(App[None]):
                     self._handle_worker_chat_model_end(event)
                 elif kind == "on_chain_end":
                     self._handle_worker_chain_end(event)
+                elif kind == "on_tool_start":
+                    self._handle_worker_tool_start(event)
+                elif kind == "on_tool_end":
+                    self._handle_worker_tool_end(event)
             self.post_message(
                 MeetingEnded(
                     agendas=self._last_agendas,
@@ -280,6 +295,16 @@ class MeetingTuiApp(App[None]):
         self._last_speaker_counts = output_data.get("speaker_counts", self._last_speaker_counts)
         _ = pending
 
+    def _handle_worker_tool_start(self, event: Any) -> None:
+        tool_name = event.get("name", "")
+        if tool_name:
+            self.post_message(ToolCallStarted(tool_name=tool_name))
+
+    def _handle_worker_tool_end(self, event: Any) -> None:
+        tool_name = event.get("name", "")
+        if tool_name:
+            self.post_message(ToolCallEnded(tool_name=tool_name))
+
     def _update_conversation(self) -> None:
         self.query_one("#conversation", Static).update(self._full_text)
         self.query_one("#conversation-scroll", VerticalScroll).scroll_end(animate=False)
@@ -329,6 +354,14 @@ class MeetingTuiApp(App[None]):
         self._full_text += "\n"
         self._update_conversation()
 
+    def on_tool_call_started(self, event: ToolCallStarted) -> None:
+        self._full_text += f"\n[dim]⚙ {event.tool_name} 호출 중...[/dim]"
+        self._update_conversation()
+
+    def on_tool_call_ended(self, event: ToolCallEnded) -> None:
+        self._full_text += f" [dim]✓[/dim]\n"
+        self._update_conversation()
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if self._input_provider is not None:
             self._input_provider.submit_input(event.value)
@@ -341,7 +374,7 @@ class MeetingTuiApp(App[None]):
         self.meeting_status = "ended"
 
     def on_stream_error(self, event: StreamError) -> None:
-        self._full_text += f"\n[bold red]⚠ 오류: {event.error}[/bold red]\n"
+        self._full_text += f"\n[bold yellow]⚠ 오류: {event.error}[/bold yellow]\n"
         self._update_conversation()
 
     def on_resize(self) -> None:
