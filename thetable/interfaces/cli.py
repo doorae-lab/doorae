@@ -481,6 +481,7 @@ async def run_meeting(
         profiles_path: agent_profiles.yaml 경로 (None이면 설정값 사용)
         stream: 스트리밍 모드 사용 여부
         settings: Settings 인스턴스 (None이면 기본 설정 사용)
+        use_tui: TUI 모드 여부 (True면 stderr를 로그 파일로 리다이렉트)
     """
     # 설정이 없으면 기본 설정 로드
     if settings is None:
@@ -508,59 +509,74 @@ async def run_meeting(
     logger.debug(f"Settings loaded: {settings}")
     logger.debug(f"Profiles path: {profiles_path}")
 
-    # MCP Tools 초기화
-    mcp_tools = await _initialize_mcp(settings, use_tui=use_tui)
-
-    # Workflow 생성
-    logger.debug("Creating workflow...")
-    workflow = create_meeting_workflow(
-        profiles_path=str(profiles_path),
-        mcp_tools=mcp_tools or {}
-    )
-    logger.debug(f"Workflow created: {workflow}")
-
-    # Human 프로필 이름 추출
-    from thetable.core.profile import load_agent_profiles
-    profiles = load_agent_profiles(str(profiles_path))
-    human_names = [name for name, p in profiles.items() if p.is_human]
-    logger.debug(f"Human participants: {human_names}")
-
-    # 안건 로드
-    from thetable.core.agenda import load_agendas
-    agendas = load_agendas(str(settings.agendas_path))
-
-    # 초기 상태 구성
-    initial_state = _build_initial_state(settings, initial_message, human_names, agendas)
-    logger.debug(f"Initial state: {initial_state}")
-
-    # 실행
-    logger.debug(f"Running workflow (stream={stream})...")
-    graph_config = {"recursion_limit": settings.recursion_limit}
-
+    # TUI 모드: stderr를 로그 파일로 리다이렉트 (MCP subprocess stderr 격리)
+    stderr_backup = None
+    stderr_file = None
     if use_tui:
-        from thetable.interfaces.tui import MeetingTuiApp
+        stderr_backup = sys.stderr
+        stderr_file = open("thetable.log", "a")
+        sys.stderr = stderr_file
 
-        tui_app = MeetingTuiApp(
-            settings=settings,
+    try:
+        # MCP Tools 초기화
+        mcp_tools = await _initialize_mcp(settings, use_tui=use_tui)
+
+        # Workflow 생성
+        logger.debug("Creating workflow...")
+        workflow = create_meeting_workflow(
             profiles_path=str(profiles_path),
-            initial_message=initial_message,
-            mcp_tools=mcp_tools,
+            mcp_tools=mcp_tools or {}
         )
-        await tui_app.run_async()
-        return
+        logger.debug(f"Workflow created: {workflow}")
 
-    if stream:
-        await _run_streaming(workflow, initial_state, graph_config)
-    else:
-        await _run_batch(workflow, initial_state, graph_config)
+        # Human 프로필 이름 추출
+        from thetable.core.profile import load_agent_profiles
+        profiles = load_agent_profiles(str(profiles_path))
+        human_names = [name for name, p in profiles.items() if p.is_human]
+        logger.debug(f"Human participants: {human_names}")
 
-    # 회의 종료 패널
-    console.print(
-        Panel(
-            "[bold green]회의 종료[/bold green]",
-            border_style="green",
+        # 안건 로드
+        from thetable.core.agenda import load_agendas
+        agendas = load_agendas(str(settings.agendas_path))
+
+        # 초기 상태 구성
+        initial_state = _build_initial_state(settings, initial_message, human_names, agendas)
+        logger.debug(f"Initial state: {initial_state}")
+
+        # 실행
+        logger.debug(f"Running workflow (stream={stream})...")
+        graph_config = {"recursion_limit": settings.recursion_limit}
+
+        if use_tui:
+            from thetable.interfaces.tui import MeetingTuiApp
+
+            tui_app = MeetingTuiApp(
+                settings=settings,
+                profiles_path=str(profiles_path),
+                initial_message=initial_message,
+                mcp_tools=mcp_tools,
+            )
+            await tui_app.run_async()
+            return
+
+        if stream:
+            await _run_streaming(workflow, initial_state, graph_config)
+        else:
+            await _run_batch(workflow, initial_state, graph_config)
+
+        # 회의 종료 패널
+        console.print(
+            Panel(
+                "[bold green]회의 종료[/bold green]",
+                border_style="green",
+            )
         )
-    )
+    finally:
+        # TUI 모드: stderr 복원
+        if stderr_backup is not None:
+            sys.stderr = stderr_backup
+        if stderr_file is not None:
+            stderr_file.close()
 
 
 if __name__ == "__main__":
