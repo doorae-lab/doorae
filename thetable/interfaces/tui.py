@@ -112,11 +112,6 @@ class MeetingTuiApp(App[None]):
         padding: 0 1;
         color: $text-muted;
     }
-    #summary {
-        display: none;
-        height: 1fr;
-        padding: 1;
-    }
     """
 
     TITLE = "TheTable"
@@ -160,8 +155,8 @@ class MeetingTuiApp(App[None]):
                 yield RichLog(id="conversation", auto_scroll=True, wrap=True, max_lines=2000)
                 yield Static(id="current-stream")
         yield Input(id="input-area", placeholder="의견을 입력하세요 (Enter로 전송, 빈 입력 시 스킵)")
-        yield RichLog(id="summary")
         yield Footer()
+
 
     async def on_mount(self) -> None:
         from thetable.core.agenda import load_agendas
@@ -302,12 +297,8 @@ class MeetingTuiApp(App[None]):
 
     def watch_meeting_status(self, status: str) -> None:
         if status == "ended":
-            self.query_one("#agenda-panel", AgendaPanel).display = False
-            self.query_one("#conversation", RichLog).display = False
-            self.query_one("#input-area", Input).display = False
-            summary_log = self.query_one("#summary", RichLog)
-            summary_log.display = True
-            self._render_summary(summary_log)
+            log = self.query_one("#conversation", RichLog)
+            self._render_summary(log)
 
     def _flush_token_buffer(self) -> None:
         if not self._token_buffer:
@@ -376,7 +367,8 @@ class MeetingTuiApp(App[None]):
         )
 
     def _render_summary(self, log: RichLog) -> None:
-        log.write("[bold]📋 회의 요약[/bold]\n")
+        log.write("")
+        log.write("[bold]📋 회의 요약[/bold]")
         for agenda in self._last_agendas:
             raw_status = agenda.get("status", "pending")
             status = raw_status if isinstance(raw_status, str) else "pending"
@@ -385,9 +377,10 @@ class MeetingTuiApp(App[None]):
             decision = agenda.get("decision", "-")
             log.write(f"  {emoji} {title}")
             log.write(f"     결정: {decision}")
-        log.write("")
         if self._last_speaker_counts:
+            log.write("")
             log.write("[bold]📊 발언 통계[/bold]")
             for speaker, count in self._last_speaker_counts.items():
                 log.write(f"  {speaker}: {count}회")
-        log.write("\n[dim]q 또는 Ctrl+C로 종료[/dim]")
+        log.write("")
+        log.write("[dim]Ctrl+C로 종료[/dim]")
