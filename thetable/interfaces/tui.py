@@ -257,7 +257,7 @@ class MeetingTuiApp(App[None]):
                     speaker = tag.replace("speaker:", "")
                     break
 
-        if speaker and speaker not in ("ChatOpenAI", "RunnableSequence"):
+        if speaker and speaker not in ("ChatOpenAI", "RunnableSequence") and speaker != self.current_speaker:
             self.post_message(SpeakerChanged(speaker=speaker, pending=[]))
 
     def _handle_worker_chat_model_stream(self, event: Any) -> None:
@@ -338,7 +338,7 @@ class MeetingTuiApp(App[None]):
         self.current_speaker = event.speaker
         color_idx = hash(event.speaker) % len(AGENT_COLORS)
         color = AGENT_COLORS[color_idx]
-        self._full_text += f"\n\n[bold {color}]── {event.speaker} ──[/bold {color}]\n"
+        self._full_text += f"\n[bold {color}]── {event.speaker} ──[/bold {color}]\n"
         self._update_conversation()
 
     def on_agenda_updated(self, event: AgendaUpdated) -> None:
@@ -351,15 +351,14 @@ class MeetingTuiApp(App[None]):
         self._update_conversation()
 
     def on_turn_completed(self, event: TurnCompleted) -> None:
-        self._full_text += "\n"
-        self._update_conversation()
+        pass
 
     def on_tool_call_started(self, event: ToolCallStarted) -> None:
         self._full_text += f"\n[dim]⚙ {event.tool_name} 호출 중...[/dim]"
         self._update_conversation()
 
     def on_tool_call_ended(self, event: ToolCallEnded) -> None:
-        self._full_text += f" [dim]✓[/dim]\n"
+        self._full_text += " [dim]✓[/dim]"
         self._update_conversation()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
