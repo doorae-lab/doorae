@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     agent_profiles_path: str = "config/agent_profiles.yaml"
     agendas_path: str = "config/agendas.yaml"
 
+
+    # TUI 설정
+    tui_enabled: bool = True  # --no-tui 플래그로 비활성화 가능
+
     # 대화 요약 설정
     max_messages_before_summary: int = 5  # 이 개수 초과 시 요약
     keep_recent_messages: int = 3  # 최근 몇 개 유지

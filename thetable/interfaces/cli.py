@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """TheTable CLI - AI-powered team meeting system"""
+import os
+import sys
 import asyncio
 import time
 from pathlib import Path
@@ -24,6 +26,25 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+
+
+def should_use_tui(no_tui_flag: bool) -> bool:
+    """TUI 모드 사용 여부를 결정한다.
+
+    Returns True only when: TTY detected AND terminal >= 80×24 AND --no-tui not set.
+    """
+    if no_tui_flag:
+        return False
+    if not sys.stdout.isatty():
+        return False
+    try:
+        cols, rows = os.get_terminal_size()
+        if cols < 80 or rows < 24:
+            logger.warning(f"Terminal too small for TUI ({cols}x{rows}), falling back to CLI")
+            return False
+    except OSError:
+        return False
+    return True
 
 
 # 스트리밍 이벤트 핸들러
@@ -231,6 +252,11 @@ def main(
         "--no-stream",
         help="스트리밍 모드 비활성화 (배치 모드 사용)",
     ),
+    no_tui: bool = typer.Option(
+        False,
+        "--no-tui",
+        help="TUI 모드 비활성화 (클래식 CLI 출력 사용)",
+    ),
     config: Optional[Path] = typer.Option(
         None,
         "--config",
@@ -315,6 +341,7 @@ def main(
         profiles_path=profiles,
         stream=stream,
         settings=settings,
+        use_tui=should_use_tui(no_tui),
     ))
 
 
@@ -440,6 +467,7 @@ async def run_meeting(
     profiles_path: Optional[Path] = None,
     stream: bool = False,
     settings: Optional[Settings] = None,
+    use_tui: bool = False,
 ) -> None:
     """회의 실행.
 
@@ -481,7 +509,7 @@ async def run_meeting(
     logger.debug("Creating workflow...")
     workflow = create_meeting_workflow(
         profiles_path=str(profiles_path),
-        mcp_tools=mcp_tools
+        mcp_tools=mcp_tools or {}
     )
     logger.debug(f"Workflow created: {workflow}")
 
@@ -502,6 +530,18 @@ async def run_meeting(
     # 실행
     logger.debug(f"Running workflow (stream={stream})...")
     graph_config = {"recursion_limit": settings.recursion_limit}
+
+    if use_tui:
+        from thetable.interfaces.tui import MeetingTuiApp
+
+        tui_app = MeetingTuiApp(
+            settings=settings,
+            profiles_path=str(profiles_path),
+            initial_message=initial_message,
+            mcp_tools=mcp_tools,
+        )
+        await tui_app.run_async()
+        return
 
     if stream:
         await _run_streaming(workflow, initial_state, graph_config)
