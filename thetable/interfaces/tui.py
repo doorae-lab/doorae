@@ -7,13 +7,14 @@ from typing import TYPE_CHECKING, Any, cast
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.reactive import reactive
-from textual.widgets import Footer, Header, Input, RichLog, Static
+from textual.widgets import Footer, Header, Input, Static
 from textual.worker import WorkerCancelled
 from thetable.config import Settings
 from thetable.graph.constants import AGENT_COLORS, STATUS_EMOJI
+
 if TYPE_CHECKING:
     from thetable.graph.input_provider import TuiInputProvider
 
@@ -97,8 +98,11 @@ class MeetingTuiApp(App[None]):
     #main-panel {
         width: 1fr;
     }
-    #conversation {
+    #conversation-scroll {
         height: 1fr;
+    }
+    #conversation {
+        width: 1fr;
     }
     #input-area {
         height: 3;
@@ -107,11 +111,6 @@ class MeetingTuiApp(App[None]):
     #input-area.visible {
         display: block;
     }
-    #current-stream {
-        height: auto;
-        padding: 0 1;
-        color: $text-muted;
-    }
     """
 
     TITLE = "TheTable"
@@ -119,6 +118,8 @@ class MeetingTuiApp(App[None]):
         Binding("ctrl+c", "quit", "종료", show=False),
         Binding("ctrl+q", "quit", "종료"),
         Binding("question_mark", "help", "도움말"),
+        Binding("pageup", "scroll_up", "Page Up", show=False),
+        Binding("pagedown", "scroll_down", "Page Down", show=False),
     ]
 
     current_speaker: reactive[str] = reactive("")
@@ -145,18 +146,17 @@ class MeetingTuiApp(App[None]):
         self._last_agendas: list[dict[str, object]] = []
         self._last_speaker_counts: dict[str, int] = {}
         self._input_provider: TuiInputProvider | None = None
-        self._token_buffer: str = ""
+        self._full_text: str = ""
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal():
             yield AgendaPanel(id="agenda-panel")
             with Vertical(id="main-panel"):
-                yield RichLog(id="conversation", auto_scroll=True, wrap=True, max_lines=2000)
-                yield Static(id="current-stream")
+                with VerticalScroll(id="conversation-scroll"):
+                    yield Static(id="conversation")
         yield Input(id="input-area", placeholder="의견을 입력하세요 (Enter로 전송, 빈 입력 시 스킵)")
         yield Footer()
-
 
     async def on_mount(self) -> None:
         from thetable.core.agenda import load_agendas
@@ -280,6 +280,10 @@ class MeetingTuiApp(App[None]):
         self._last_speaker_counts = output_data.get("speaker_counts", self._last_speaker_counts)
         _ = pending
 
+    def _update_conversation(self) -> None:
+        self.query_one("#conversation", Static).update(self._full_text)
+        self.query_one("#conversation-scroll", VerticalScroll).scroll_end(animate=False)
+
     def watch_current_speaker(self, speaker: str) -> None:
         self.sub_title = f"발언자: {speaker}" if speaker else ""
 
@@ -297,32 +301,18 @@ class MeetingTuiApp(App[None]):
 
     def watch_meeting_status(self, status: str) -> None:
         if status == "ended":
-            log = self.query_one("#conversation", RichLog)
-            self._render_summary(log)
-
-    def _flush_token_buffer(self) -> None:
-        if not self._token_buffer:
-            return
-        log = self.query_one("#conversation", RichLog)
-        color_idx = hash(self.current_speaker) % len(AGENT_COLORS)
-        color = AGENT_COLORS[color_idx]
-        log.write(f"[{color}]{self._token_buffer}[/{color}]")
-        self._token_buffer = ""
-        self.query_one("#current-stream", Static).update("")
+            self._render_summary()
 
     def on_token_streamed(self, event: TokenStreamed) -> None:
-        self._token_buffer += event.token
-        stream = self.query_one("#current-stream", Static)
         color_idx = hash(event.agent_name) % len(AGENT_COLORS)
         color = AGENT_COLORS[color_idx]
-        stream.update(f"[{color}]{self._token_buffer}[/{color}]")
+        self._full_text += f"[{color}]{event.token}[/{color}]"
+        self._update_conversation()
 
     def on_speaker_changed(self, event: SpeakerChanged) -> None:
-        self._flush_token_buffer()
         self.current_speaker = event.speaker
-        log = self.query_one("#conversation", RichLog)
-        log.write("")
-        log.write(f"[bold cyan]── {event.speaker} ──[/bold cyan]")
+        self._full_text += f"\n\n[bold cyan]── {event.speaker} ──[/bold cyan]\n"
+        self._update_conversation()
 
     def on_agenda_updated(self, event: AgendaUpdated) -> None:
         self._last_agendas = event.agendas
@@ -330,11 +320,12 @@ class MeetingTuiApp(App[None]):
 
     def on_human_turn_started(self, event: HumanTurnStarted) -> None:
         self.input_enabled = True
-        log = self.query_one("#conversation", RichLog)
-        log.write(f"[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]")
+        self._full_text += f"\n[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]\n"
+        self._update_conversation()
 
     def on_turn_completed(self, event: TurnCompleted) -> None:
-        self._flush_token_buffer()
+        self._full_text += "\n"
+        self._update_conversation()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if self._input_provider is not None:
@@ -348,8 +339,8 @@ class MeetingTuiApp(App[None]):
         self.meeting_status = "ended"
 
     def on_stream_error(self, event: StreamError) -> None:
-        log = self.query_one("#conversation", RichLog)
-        log.write(f"[bold red]⚠ 오류: {event.error}[/bold red]")
+        self._full_text += f"\n[bold red]⚠ 오류: {event.error}[/bold red]\n"
+        self._update_conversation()
 
     def on_resize(self) -> None:
         agenda_panel = self.query_one("#agenda-panel", AgendaPanel)
@@ -361,26 +352,30 @@ class MeetingTuiApp(App[None]):
 
     def action_help(self) -> None:
         self.notify(
-            "Ctrl+C/Ctrl+Q: 종료\n?: 도움말",
+            "Ctrl+C/Ctrl+Q: 종료\n?: 도움말\nPageUp/Down: 스크롤",
             title="단축키",
             timeout=5,
         )
 
-    def _render_summary(self, log: RichLog) -> None:
-        log.write("")
-        log.write("[bold]📋 회의 요약[/bold]")
+    def action_scroll_up(self) -> None:
+        self.query_one("#conversation-scroll", VerticalScroll).scroll_page_up()
+
+    def action_scroll_down(self) -> None:
+        self.query_one("#conversation-scroll", VerticalScroll).scroll_page_down()
+
+    def _render_summary(self) -> None:
+        self._full_text += "\n\n[bold]📋 회의 요약[/bold]\n"
         for agenda in self._last_agendas:
             raw_status = agenda.get("status", "pending")
             status = raw_status if isinstance(raw_status, str) else "pending"
             emoji = STATUS_EMOJI.get(status, "❓")
             title = agenda.get("title", "")
             decision = agenda.get("decision", "-")
-            log.write(f"  {emoji} {title}")
-            log.write(f"     결정: {decision}")
+            self._full_text += f"  {emoji} {title}\n"
+            self._full_text += f"     결정: {decision}\n"
         if self._last_speaker_counts:
-            log.write("")
-            log.write("[bold]📊 발언 통계[/bold]")
+            self._full_text += "\n[bold]📊 발언 통계[/bold]\n"
             for speaker, count in self._last_speaker_counts.items():
-                log.write(f"  {speaker}: {count}회")
-        log.write("")
-        log.write("[dim]Ctrl+C로 종료[/dim]")
+                self._full_text += f"  {speaker}: {count}회\n"
+        self._full_text += "\n[dim]Ctrl+C로 종료[/dim]"
+        self._update_conversation()
