@@ -318,7 +318,8 @@ def main(
         raise typer.Exit(code=0)
 
     # 로깅 설정
-    setup_logging(verbose=verbose, quiet=quiet)
+    use_tui = should_use_tui(no_tui)
+    setup_logging(verbose=verbose, quiet=quiet, use_tui=use_tui)
 
     # 스트리밍 모드 계산 (--no-stream 플래그의 반대)
     stream = not no_stream
@@ -341,16 +342,15 @@ def main(
         profiles_path=profiles,
         stream=stream,
         settings=settings,
-        use_tui=should_use_tui(no_tui),
+        use_tui=use_tui,
     ))
 
 
-async def _initialize_mcp(settings: Settings) -> dict[str, list] | None:
+async def _initialize_mcp(settings: Settings, use_tui: bool = False) -> dict[str, list] | None:
     """MCP 도구 초기화
-
     Args:
         settings: Settings 인스턴스
-
+        use_tui: TUI 모드 여부 (True면 console 출력 억제)
     Returns:
         서버별 MCP 도구 딕셔너리 또는 None
     """
@@ -360,19 +360,24 @@ async def _initialize_mcp(settings: Settings) -> dict[str, list] | None:
         mcp_tools = await initialize_mcp_tools()
         if mcp_tools:
             total = sum(len(t) for t in mcp_tools.values())
-            console.print(f"[green]✅ MCP 도구 로드 완료: {total}개 도구 ({len(mcp_tools)}개 서버)[/green]")
+            logger.info(f"MCP 도구 로드 완료: {total}개 도구 ({len(mcp_tools)}개 서버)")
+            if not use_tui:
+                console.print(f"[green]✅ MCP 도구 로드 완료: {total}개 도구 ({len(mcp_tools)}개 서버)[/green]")
         else:
-            console.print("[yellow]⚠️  MCP 도구를 사용할 수 없습니다[/yellow]")
-            console.print("[yellow]   확인 사항:[/yellow]")
-            console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
-            console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
+            logger.warning("MCP 도구를 사용할 수 없습니다")
+            if not use_tui:
+                console.print("[yellow]⚠️  MCP 도구를 사용할 수 없습니다[/yellow]")
+                console.print("[yellow]   확인 사항:[/yellow]")
+                console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
+                console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
         return mcp_tools
     except Exception as e:
         logger.warning(f"MCP 초기화 실패: {e}")
-        console.print(f"[yellow]⚠️  MCP 초기화 실패: {e}[/yellow]")
-        console.print("[yellow]   확인 사항:[/yellow]")
-        console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
-        console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
+        if not use_tui:
+            console.print(f"[yellow]⚠️  MCP 초기화 실패: {e}[/yellow]")
+            console.print("[yellow]   확인 사항:[/yellow]")
+            console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
+            console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
         return None
 
 
@@ -486,24 +491,25 @@ async def run_meeting(
         profiles_path = Path(settings.agent_profiles_path)
 
     # 회의 시작 패널
-    console.print(
-        Panel(
-            f"[bold]회의 시작[/bold]\n\n"
-            f"프로필: [cyan]{profiles_path}[/cyan]\n"
-            f"Main LLM: [yellow]{settings.llm_main_model}[/yellow] "
-            f"(온도: {settings.llm_main_temperature})\n"
-            f"Task LLM: [yellow]{settings.llm_task_model}[/yellow] "
-            f"(온도: {settings.llm_task_temperature})",
-            title="🚀 TheTable",
-            border_style="green",
+    if not use_tui:
+        console.print(
+            Panel(
+                f"[bold]회의 시작[/bold]\n\n"
+                f"프로필: [cyan]{profiles_path}[/cyan]\n"
+                f"Main LLM: [yellow]{settings.llm_main_model}[/yellow] "
+                f"(온도: {settings.llm_main_temperature})\n"
+                f"Task LLM: [yellow]{settings.llm_task_model}[/yellow] "
+                f"(온도: {settings.llm_task_temperature})",
+                title="🚀 TheTable",
+                border_style="green",
+            )
         )
-    )
 
     logger.debug(f"Settings loaded: {settings}")
     logger.debug(f"Profiles path: {profiles_path}")
 
     # MCP Tools 초기화
-    mcp_tools = await _initialize_mcp(settings)
+    mcp_tools = await _initialize_mcp(settings, use_tui=use_tui)
 
     # Workflow 생성
     logger.debug("Creating workflow...")
