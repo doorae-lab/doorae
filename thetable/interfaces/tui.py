@@ -103,7 +103,7 @@ class MeetingTuiApp(App[None]):
         height: 1fr;
     }
     #agenda-panel {
-        width: 35;
+        width: 55;
         border-left: solid $primary;
         padding: 1;
     }
@@ -338,7 +338,7 @@ class MeetingTuiApp(App[None]):
         self.current_speaker = event.speaker
         color_idx = hash(event.speaker) % len(AGENT_COLORS)
         color = AGENT_COLORS[color_idx]
-        self._full_text += f"\n\n[bold {color}][ {event.speaker} ][/bold {color}]\n"
+        self._full_text += f"\n\n\n[bold {color}]── {event.speaker} ──[/bold {color}]\n\n"
         self._update_conversation()
 
     def on_agenda_updated(self, event: AgendaUpdated) -> None:
@@ -347,14 +347,14 @@ class MeetingTuiApp(App[None]):
 
     def on_human_turn_started(self, event: HumanTurnStarted) -> None:
         self.input_enabled = True
-        self._full_text += f"\n\n[bold yellow][ {event.username}님 차례입니다 ][/bold yellow]\n"
+        self._full_text += f"\n\n[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]\n"
         self._update_conversation()
 
     def on_turn_completed(self, event: TurnCompleted) -> None:
         pass
 
     def on_tool_call_started(self, event: ToolCallStarted) -> None:
-        self._full_text += f"\n[dim]⚙ {event.tool_name} 호출 중...[/dim]"
+        self._full_text += f"[dim]⚙ {event.tool_name} 호출 중...[/dim]"
         self._update_conversation()
 
     def on_tool_call_ended(self, event: ToolCallEnded) -> None:
