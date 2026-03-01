@@ -358,7 +358,7 @@ class MeetingTuiApp(App[None]):
         self._update_conversation()
 
     def on_tool_call_ended(self, event: ToolCallEnded) -> None:
-        self._full_text += " [dim]✓[/dim]"
+        self._full_text += " [dim]✓[/dim]\n"
         self._update_conversation()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
