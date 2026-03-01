@@ -355,7 +355,7 @@ class AgentNode(BaseNode):
                 )
             elif act == "approve":
                 idx = action.get("index")
-                if idx is not None and 0 <= idx < len(pending_proposals):
+                if idx is not None and 0 <= idx < len(pending_proposals) and idx not in remove_indices:
                     remove_indices.add(idx)
                     new_agendas.append(action["data"])
                     logger.info(

@@ -1,6 +1,5 @@
 """안건 관리 Tool 단위 테스트"""
 
-import pytest
 from thetable.graph.agenda_tools import (
     create_propose_tool,
     create_approve_tool,
@@ -15,7 +14,7 @@ class TestProposeAgendaTool:
         """제안 시 container에 액션이 기록되는지 확인"""
         container = []
         tool = create_propose_tool(container, "PM")
-        result = tool.invoke({"title": "신규 기능 논의", "description": "Q3 로드맵 검토"})
+        tool.invoke({"title": "신규 기능 논의", "description": "Q3 로드맵 검토"})
 
         assert len(container) == 1
         assert container[0]["action"] == "propose"
@@ -53,7 +52,7 @@ class TestApproveAgendaTool:
             {"title": "신규 기능", "description": "", "proposed_by": "PM", "status": "pending"},
         ]
         tool = create_approve_tool(container, proposals)
-        result = tool.invoke({"proposal_index": 0})
+        tool.invoke({"proposal_index": 0})
 
         assert len(container) == 1
         assert container[0]["action"] == "approve"
@@ -102,7 +101,7 @@ class TestRejectAgendaTool:
             {"title": "중복 안건", "proposed_by": "PM"},
         ]
         tool = create_reject_tool(container, proposals)
-        result = tool.invoke({"proposal_index": 0, "reason": "기존 안건과 중복"})
+        tool.invoke({"proposal_index": 0, "reason": "기존 안건과 중복"})
 
         assert len(container) == 1
         assert container[0]["action"] == "reject"

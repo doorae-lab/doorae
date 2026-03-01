@@ -139,3 +139,20 @@ def test_apply_agenda_actions_empty_actions_returns_unchanged_copies():
     assert result["agendas"] == agendas
     assert result["pending_proposals"] is not pending_proposals
     assert result["agendas"] is not agendas
+
+
+def test_apply_agenda_actions_duplicate_approve_same_index_adds_once():
+    """같은 인덱스를 2번 approve해도 안건이 1번만 추가되는지 확인"""
+    node = _create_node()
+    proposal = {"title": "중복 승인 대상", "proposed_by": "PM", "status": "pending"}
+    pending_proposals = [proposal]
+    agendas = [{"title": "기존 안건", "status": "in_progress"}]
+    actions = [
+        {"action": "approve", "index": 0, "data": proposal},
+        {"action": "approve", "index": 0, "data": proposal},
+    ]
+
+    result = _apply_actions(node, actions, pending_proposals, agendas)
+
+    assert result["agendas"] == [*agendas, proposal]  # 1번만 추가
+    assert result["pending_proposals"] == []  # 제거는 정상
