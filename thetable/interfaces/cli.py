@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """TheTable CLI - AI-powered team meeting system"""
+import os
+import sys
 import asyncio
 import time
 from pathlib import Path
@@ -24,6 +26,25 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+
+
+def should_use_tui(no_tui_flag: bool) -> bool:
+    """TUI 모드 사용 여부를 결정한다.
+
+    Returns True only when: TTY detected AND terminal >= 80×24 AND --no-tui not set.
+    """
+    if no_tui_flag:
+        return False
+    if not sys.stdout.isatty():
+        return False
+    try:
+        cols, rows = os.get_terminal_size()
+        if cols < 80 or rows < 24:
+            logger.warning(f"Terminal too small for TUI ({cols}x{rows}), falling back to CLI")
+            return False
+    except OSError:
+        return False
+    return True
 
 
 # 스트리밍 이벤트 핸들러
@@ -231,6 +252,11 @@ def main(
         "--no-stream",
         help="스트리밍 모드 비활성화 (배치 모드 사용)",
     ),
+    no_tui: bool = typer.Option(
+        False,
+        "--no-tui",
+        help="TUI 모드 비활성화 (클래식 CLI 출력 사용)",
+    ),
     config: Optional[Path] = typer.Option(
         None,
         "--config",
@@ -292,7 +318,8 @@ def main(
         raise typer.Exit(code=0)
 
     # 로깅 설정
-    setup_logging(verbose=verbose, quiet=quiet)
+    use_tui = should_use_tui(no_tui)
+    setup_logging(verbose=verbose, quiet=quiet, use_tui=use_tui)
 
     # 스트리밍 모드 계산 (--no-stream 플래그의 반대)
     stream = not no_stream
@@ -315,15 +342,15 @@ def main(
         profiles_path=profiles,
         stream=stream,
         settings=settings,
+        use_tui=use_tui,
     ))
 
 
-async def _initialize_mcp(settings: Settings) -> dict[str, list] | None:
+async def _initialize_mcp(settings: Settings, use_tui: bool = False) -> dict[str, list] | None:
     """MCP 도구 초기화
-
     Args:
         settings: Settings 인스턴스
-
+        use_tui: TUI 모드 여부 (True면 console 출력 억제)
     Returns:
         서버별 MCP 도구 딕셔너리 또는 None
     """
@@ -333,19 +360,24 @@ async def _initialize_mcp(settings: Settings) -> dict[str, list] | None:
         mcp_tools = await initialize_mcp_tools()
         if mcp_tools:
             total = sum(len(t) for t in mcp_tools.values())
-            console.print(f"[green]✅ MCP 도구 로드 완료: {total}개 도구 ({len(mcp_tools)}개 서버)[/green]")
+            logger.info(f"MCP 도구 로드 완료: {total}개 도구 ({len(mcp_tools)}개 서버)")
+            if not use_tui:
+                console.print(f"[green]✅ MCP 도구 로드 완료: {total}개 도구 ({len(mcp_tools)}개 서버)[/green]")
         else:
-            console.print("[yellow]⚠️  MCP 도구를 사용할 수 없습니다[/yellow]")
-            console.print("[yellow]   확인 사항:[/yellow]")
-            console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
-            console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
+            logger.warning("MCP 도구를 사용할 수 없습니다")
+            if not use_tui:
+                console.print("[yellow]⚠️  MCP 도구를 사용할 수 없습니다[/yellow]")
+                console.print("[yellow]   확인 사항:[/yellow]")
+                console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
+                console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
         return mcp_tools
     except Exception as e:
         logger.warning(f"MCP 초기화 실패: {e}")
-        console.print(f"[yellow]⚠️  MCP 초기화 실패: {e}[/yellow]")
-        console.print("[yellow]   확인 사항:[/yellow]")
-        console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
-        console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
+        if not use_tui:
+            console.print(f"[yellow]⚠️  MCP 초기화 실패: {e}[/yellow]")
+            console.print("[yellow]   확인 사항:[/yellow]")
+            console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
+            console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
         return None
 
 
@@ -440,6 +472,7 @@ async def run_meeting(
     profiles_path: Optional[Path] = None,
     stream: bool = False,
     settings: Optional[Settings] = None,
+    use_tui: bool = False,
 ) -> None:
     """회의 실행.
 
@@ -448,6 +481,7 @@ async def run_meeting(
         profiles_path: agent_profiles.yaml 경로 (None이면 설정값 사용)
         stream: 스트리밍 모드 사용 여부
         settings: Settings 인스턴스 (None이면 기본 설정 사용)
+        use_tui: TUI 모드 여부 (True면 stderr를 로그 파일로 리다이렉트)
     """
     # 설정이 없으면 기본 설정 로드
     if settings is None:
@@ -458,63 +492,91 @@ async def run_meeting(
         profiles_path = Path(settings.agent_profiles_path)
 
     # 회의 시작 패널
-    console.print(
-        Panel(
-            f"[bold]회의 시작[/bold]\n\n"
-            f"프로필: [cyan]{profiles_path}[/cyan]\n"
-            f"Main LLM: [yellow]{settings.llm_main_model}[/yellow] "
-            f"(온도: {settings.llm_main_temperature})\n"
-            f"Task LLM: [yellow]{settings.llm_task_model}[/yellow] "
-            f"(온도: {settings.llm_task_temperature})",
-            title="🚀 TheTable",
-            border_style="green",
+    if not use_tui:
+        console.print(
+            Panel(
+                f"[bold]회의 시작[/bold]\n\n"
+                f"프로필: [cyan]{profiles_path}[/cyan]\n"
+                f"Main LLM: [yellow]{settings.llm_main_model}[/yellow] "
+                f"(온도: {settings.llm_main_temperature})\n"
+                f"Task LLM: [yellow]{settings.llm_task_model}[/yellow] "
+                f"(온도: {settings.llm_task_temperature})",
+                title="🚀 TheTable",
+                border_style="green",
+            )
         )
-    )
 
     logger.debug(f"Settings loaded: {settings}")
     logger.debug(f"Profiles path: {profiles_path}")
 
-    # MCP Tools 초기화
-    mcp_tools = await _initialize_mcp(settings)
+    # TUI 모드: stderr를 로그 파일로 리다이렉트 (MCP subprocess stderr 격리)
+    stderr_backup = None
+    stderr_file = None
+    if use_tui:
+        stderr_backup = sys.stderr
+        stderr_file = open("thetable.log", "a")
+        sys.stderr = stderr_file
 
-    # Workflow 생성
-    logger.debug("Creating workflow...")
-    workflow = create_meeting_workflow(
-        profiles_path=str(profiles_path),
-        mcp_tools=mcp_tools
-    )
-    logger.debug(f"Workflow created: {workflow}")
+    try:
+        # MCP Tools 초기화
+        mcp_tools = await _initialize_mcp(settings, use_tui=use_tui)
 
-    # Human 프로필 이름 추출
-    from thetable.core.profile import load_agent_profiles
-    profiles = load_agent_profiles(str(profiles_path))
-    human_names = [name for name, p in profiles.items() if p.is_human]
-    logger.debug(f"Human participants: {human_names}")
-
-    # 안건 로드
-    from thetable.core.agenda import load_agendas
-    agendas = load_agendas(str(settings.agendas_path))
-
-    # 초기 상태 구성
-    initial_state = _build_initial_state(settings, initial_message, human_names, agendas)
-    logger.debug(f"Initial state: {initial_state}")
-
-    # 실행
-    logger.debug(f"Running workflow (stream={stream})...")
-    graph_config = {"recursion_limit": settings.recursion_limit}
-
-    if stream:
-        await _run_streaming(workflow, initial_state, graph_config)
-    else:
-        await _run_batch(workflow, initial_state, graph_config)
-
-    # 회의 종료 패널
-    console.print(
-        Panel(
-            "[bold green]회의 종료[/bold green]",
-            border_style="green",
+        # Workflow 생성
+        logger.debug("Creating workflow...")
+        workflow = create_meeting_workflow(
+            profiles_path=str(profiles_path),
+            mcp_tools=mcp_tools or {}
         )
-    )
+        logger.debug(f"Workflow created: {workflow}")
+
+        # Human 프로필 이름 추출
+        from thetable.core.profile import load_agent_profiles
+        profiles = load_agent_profiles(str(profiles_path))
+        human_names = [name for name, p in profiles.items() if p.is_human]
+        logger.debug(f"Human participants: {human_names}")
+
+        # 안건 로드
+        from thetable.core.agenda import load_agendas
+        agendas = load_agendas(str(settings.agendas_path))
+
+        # 초기 상태 구성
+        initial_state = _build_initial_state(settings, initial_message, human_names, agendas)
+        logger.debug(f"Initial state: {initial_state}")
+
+        # 실행
+        logger.debug(f"Running workflow (stream={stream})...")
+        graph_config = {"recursion_limit": settings.recursion_limit}
+
+        if use_tui:
+            from thetable.interfaces.tui import MeetingTuiApp
+
+            tui_app = MeetingTuiApp(
+                settings=settings,
+                profiles_path=str(profiles_path),
+                initial_message=initial_message,
+                mcp_tools=mcp_tools,
+            )
+            await tui_app.run_async()
+            return
+
+        if stream:
+            await _run_streaming(workflow, initial_state, graph_config)
+        else:
+            await _run_batch(workflow, initial_state, graph_config)
+
+        # 회의 종료 패널
+        console.print(
+            Panel(
+                "[bold green]회의 종료[/bold green]",
+                border_style="green",
+            )
+        )
+    finally:
+        # TUI 모드: stderr 복원
+        if stderr_backup is not None:
+            sys.stderr = stderr_backup
+        if stderr_file is not None:
+            stderr_file.close()
 
 
 if __name__ == "__main__":

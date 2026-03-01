@@ -20,4 +20,4 @@ STATUS_TEXT = {
 HOST_ROLE_NAME = "Host"
 
 # 에이전트 색상 (동적 할당용)
-AGENT_COLORS = ["green", "blue", "red", "yellow", "cyan", "magenta"]
+AGENT_COLORS = ["green", "blue", "yellow", "cyan", "magenta", "bright_white"]

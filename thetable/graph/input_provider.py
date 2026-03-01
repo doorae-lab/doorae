@@ -69,3 +69,24 @@ class QueueInputProvider(InputProvider):
 
         user_input = await queue.get()
         return user_input if user_input is not None else ""
+
+
+class TuiInputProvider(InputProvider):
+    """TUI Input 위젯과 LangGraph 워크플로우를 연결하는 입력 제공자.
+
+    asyncio.Event를 사용하여 워크플로우의 HumanNode(입력 대기)와
+    TUI의 Input 위젯(사용자 키 입력 수신) 간 동기화를 수행한다.
+    """
+
+    def __init__(self) -> None:
+        self._input_ready = asyncio.Event()
+        self._input_value: str = ""
+
+    async def get_input(self, state: MeetingState, username: str) -> str:
+        self._input_ready.clear()
+        await self._input_ready.wait()
+        return self._input_value
+
+    def submit_input(self, value: str) -> None:
+        self._input_value = value
+        self._input_ready.set()
