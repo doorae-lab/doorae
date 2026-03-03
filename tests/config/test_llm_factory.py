@@ -2,7 +2,8 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from thetable.config.llm_factory import create_main_llm, create_task_llm
+from thetable.config.llm_factory import create_agent_llm, create_main_llm, create_task_llm
+from thetable.core.profile import AgentLLMConfig, AgentProfile
 
 
 @pytest.fixture
@@ -95,3 +96,79 @@ def test_create_task_llm_with_base_url(mock_settings):
 
             call_kwargs = mock_chat.call_args[1]
             assert call_kwargs["base_url"] == "https://task.api.com"
+
+
+def test_create_agent_llm_uses_agent_overrides(mock_settings):
+    """Agent LLM 에이전트별 설정 우선 테스트"""
+    profile = AgentProfile(
+        name="PM",
+        role="project_manager",
+        responsibilities=["일정 관리"],
+        expertise=["관리"],
+        llm=AgentLLMConfig(
+            model="gpt-4.1-mini",
+            api_key="agent-key",
+            base_url="https://agent.api.com",
+            temperature=0.2,
+            max_tokens=1234,
+        ),
+    )
+
+    with patch("thetable.config.llm_factory.ChatOpenAI") as mock_chat:
+        create_agent_llm(profile=profile, settings=mock_settings, streaming=True)
+
+        call_kwargs = mock_chat.call_args[1]
+        assert call_kwargs["model"] == "gpt-4.1-mini"
+        assert call_kwargs["api_key"] == "agent-key"
+        assert call_kwargs["base_url"] == "https://agent.api.com"
+        assert call_kwargs["temperature"] == 0.2
+        assert call_kwargs["max_tokens"] == 1234
+        assert call_kwargs["streaming"] is True
+        assert call_kwargs["timeout"] == 30
+        assert call_kwargs["max_retries"] == 2
+
+
+def test_create_agent_llm_field_by_field_fallback(mock_settings):
+    """Agent LLM 필드별 fallback 테스트"""
+    profile = AgentProfile(
+        name="TechLead",
+        role="tech_lead",
+        responsibilities=["의사결정"],
+        expertise=["아키텍처"],
+        llm=AgentLLMConfig(
+            model="gpt-4.1",
+            temperature=0.1,
+        ),
+    )
+
+    mock_settings.main_base_url = "https://global.api.com"
+
+    with patch("thetable.config.llm_factory.ChatOpenAI") as mock_chat:
+        create_agent_llm(profile=profile, settings=mock_settings)
+
+        call_kwargs = mock_chat.call_args[1]
+        assert call_kwargs["model"] == "gpt-4.1"  # agent override
+        assert call_kwargs["temperature"] == 0.1  # agent override
+        assert call_kwargs["max_tokens"] == 4000  # global fallback
+        assert call_kwargs["api_key"] == "test-main-key"  # global fallback
+        assert call_kwargs["base_url"] == "https://global.api.com"  # global fallback
+
+
+def test_create_agent_llm_without_llm_config_uses_global(mock_settings):
+    """Agent llm 설정이 없으면 글로벌 설정 사용"""
+    profile = AgentProfile(
+        name="Backend",
+        role="backend_engineer",
+        responsibilities=["API"],
+        expertise=["Python"],
+    )
+
+    with patch("thetable.config.llm_factory.ChatOpenAI") as mock_chat:
+        create_agent_llm(profile=profile, settings=mock_settings)
+
+        call_kwargs = mock_chat.call_args[1]
+        assert call_kwargs["model"] == "gpt-4o-mini"
+        assert call_kwargs["temperature"] == 0.7
+        assert call_kwargs["max_tokens"] == 4000
+        assert call_kwargs["api_key"] == "test-main-key"
+        assert "base_url" not in call_kwargs

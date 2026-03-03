@@ -15,7 +15,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.language_models import BaseChatModel
 from langgraph.graph import StateGraph, END
 
-from thetable.config import create_main_llm, create_task_llm
+from thetable.config import create_agent_llm, create_main_llm, create_task_llm, get_settings
 from thetable.graph.state import MeetingState
 from thetable.core.profile import AgentProfile, load_agent_profiles
 from thetable.graph.input_provider import CliInputProvider, InputProvider
@@ -51,7 +51,9 @@ def create_meeting_workflow(
         CompiledGraph: 실행 가능한 회의 그래프
     """
 
-    # Main model (에이전트 응답 생성용, 스트리밍 활성화)
+    settings = get_settings()
+
+    # Main model (refill_speakers용, 스트리밍 활성화)
     if main_model is None:
         main_model = create_main_llm(streaming=True)
 
@@ -88,10 +90,18 @@ def create_meeting_workflow(
     # 6. 각 에이전트 노드 추가 (NodeRegistry 활용)
     for name, profile in profiles.items():
         node_type = "human" if profile.is_human else "agent"
+        if profile.is_human:
+            node_model = None
+        elif profile.llm is None:
+            # Keep backwards compatibility: caller-provided main_model should still
+            # drive agent turns when no per-agent LLM override is configured.
+            node_model = main_model
+        else:
+            node_model = create_agent_llm(profile=profile, settings=settings, streaming=True)
         node = NodeRegistry.create(
             node_type,
             profile=profile,
-            model=main_model,
+            model=node_model,
             all_agent_names=list(profiles.keys()),
             all_profiles=profiles,
             mcp_tools=mcp_tools,

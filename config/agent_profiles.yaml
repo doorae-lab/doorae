@@ -56,6 +56,13 @@ agents:
       # default_branch: "main"
       additional_instructions: |
         (IMPORTANT) 도구를 적극적으로 사용하세요.
+    # llm:
+    #   # 에이전트별 모델/provider 오버라이드 (미설정 항목은 .env 전역값 fallback)
+    #   model: "openai/gpt-4.1-mini"
+    #   api_key: "${OPENROUTER_API_KEY}"
+    #   base_url: "https://openrouter.ai/api/v1"
+    #   temperature: 0.2
+    #   max_tokens: 1200
 
   - name: TechLead
     role: tech_lead

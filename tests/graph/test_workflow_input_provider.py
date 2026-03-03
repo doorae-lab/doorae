@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from thetable.core.profile import AgentProfile
+from thetable.core.profile import AgentLLMConfig, AgentProfile
 from thetable.graph.input_provider import InputProvider
 
 
@@ -40,3 +40,113 @@ def test_workflow_accepts_input_provider_and_profiles_override():
         )
 
     assert workflow is not None
+
+
+def test_workflow_uses_create_agent_llm_for_ai_profiles():
+    from thetable.graph.workflow import create_meeting_workflow
+
+    mock_provider = AsyncMock(spec=InputProvider)
+    mock_main_model = MagicMock(name="main_model")
+    mock_task_model = MagicMock(name="task_model")
+    mock_pm_model = MagicMock(name="pm_model")
+
+    base_profiles = {
+        "Host": AgentProfile(
+            name="Host",
+            role="host",
+            responsibilities=["진행"],
+            expertise=["퍼실리테이션"],
+            is_human=False,
+        ),
+        "PM": AgentProfile(
+            name="PM",
+            role="participant",
+            responsibilities=["참여"],
+            expertise=["일반"],
+            is_human=False,
+            llm=AgentLLMConfig(model="gpt-4.1-mini", temperature=0.3),
+        ),
+        "Alice": AgentProfile(
+            name="Alice",
+            role="participant",
+            responsibilities=["질문"],
+            expertise=["도메인"],
+            is_human=True,
+        ),
+    }
+
+    with patch("thetable.graph.workflow.create_main_llm", return_value=mock_main_model), patch(
+        "thetable.graph.workflow.create_task_llm", return_value=mock_task_model
+    ), patch("thetable.graph.workflow.load_agent_profiles", return_value=base_profiles), patch(
+        "thetable.graph.workflow.create_agent_llm",
+        return_value=mock_pm_model,
+    ) as mock_create_agent_llm:
+        workflow = create_meeting_workflow(input_provider=mock_provider)
+
+    assert workflow is not None
+    assert mock_create_agent_llm.call_count == 1
+    created_profiles = [
+        call.kwargs["profile"].name for call in mock_create_agent_llm.call_args_list
+    ]
+    assert created_profiles == ["PM"]
+
+    for call in mock_create_agent_llm.call_args_list:
+        assert call.kwargs["streaming"] is True
+
+
+def test_workflow_reuses_main_model_when_profile_llm_not_set() -> None:
+    from thetable.graph.workflow import create_meeting_workflow
+
+    mock_provider = AsyncMock(spec=InputProvider)
+    mock_main_model = MagicMock(name="provided_main_model")
+    mock_task_model = MagicMock(name="task_model")
+    mock_pm_model = MagicMock(name="pm_model")
+
+    base_profiles = {
+        "Host": AgentProfile(
+            name="Host",
+            role="host",
+            responsibilities=["진행"],
+            expertise=["퍼실리테이션"],
+            is_human=False,
+        ),
+        "PM": AgentProfile(
+            name="PM",
+            role="participant",
+            responsibilities=["참여"],
+            expertise=["일반"],
+            is_human=False,
+            llm=AgentLLMConfig(model="gpt-4.1-mini", temperature=0.3),
+        ),
+    }
+
+    def _capture_node_models():
+        captured: dict[str, object] = {}
+
+        def _fake_create(node_type: str, **kwargs: object) -> object:
+            profile = kwargs["profile"]
+            profile_name = getattr(profile, "name", "unknown")
+            captured[str(profile_name)] = kwargs.get("model")
+            return MagicMock(name=f"{node_type}_{profile_name}_node")
+
+        return captured, _fake_create
+
+    captured_models, fake_create = _capture_node_models()
+    with patch("thetable.graph.workflow.create_task_llm", return_value=mock_task_model), patch(
+        "thetable.graph.workflow.load_agent_profiles", return_value=base_profiles
+    ), patch(
+        "thetable.graph.workflow.create_agent_llm",
+        return_value=mock_pm_model,
+    ) as mock_create_agent_llm, patch(
+        "thetable.graph.workflow.NodeRegistry.create",
+        side_effect=fake_create,
+    ):
+        workflow = create_meeting_workflow(
+            main_model=mock_main_model,
+            input_provider=mock_provider,
+        )
+
+    assert workflow is not None
+    assert captured_models["Host"] is mock_main_model
+    assert captured_models["PM"] is mock_pm_model
+    assert mock_create_agent_llm.call_count == 1
