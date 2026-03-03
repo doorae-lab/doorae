@@ -33,6 +33,7 @@ def _create_state(pending_proposals: list[dict[str, str]]) -> MeetingState:
         "pending_proposals": pending_proposals,
         "pending_speakers": [],
         "speaker_counts": {},
+        "participant_statuses": {},
         "consecutive_host_delegations": 0,
         "turn_count": 0,
         "max_turns": 1000,
@@ -84,3 +85,40 @@ async def test_host_with_pending_gets_propose_approve_reject_tools():
     tool_names = _tool_names_from_call(invoke_with_tools_mock)
     assert set(tool_names) == {"propose_agenda", "approve_agenda", "reject_agenda"}
     assert len(tool_names) == 3
+
+
+@pytest.mark.asyncio
+async def test_supervisor_agent_gets_sub_agent_tools():
+    profile = AgentProfile(
+        name="TechLead",
+        role="tech_lead",
+        responsibilities=["리드"],
+        expertise=["설계"],
+        agents=[
+            AgentProfile(
+                name="Backend",
+                role="backend_engineer",
+                responsibilities=["API 구현"],
+                expertise=["Python"],
+            ),
+            AgentProfile(
+                name="Frontend",
+                role="frontend_engineer",
+                responsibilities=["UI 구현"],
+                expertise=["React"],
+            ),
+        ],
+    )
+    node = AgentNode(profile=profile, model=MagicMock())
+    invoke_with_tools_mock: AsyncMock = AsyncMock(
+        return_value=AIMessage(content="테스트 응답", name="TechLead")
+    )
+    node.agent.invoke_with_tools = invoke_with_tools_mock
+
+    result = await node.execute(_create_state([]))
+
+    tool_names = _tool_names_from_call(invoke_with_tools_mock)
+    assert "propose_agenda" in tool_names
+    assert "ask_backend" in tool_names
+    assert "ask_frontend" in tool_names
+    assert cast(dict[str, str], result["participant_statuses"])["TechLead"] == "idle"

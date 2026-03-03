@@ -1,4 +1,5 @@
 """Meeting state definition"""
+from enum import Enum
 from typing import List, Optional, Dict, Any
 from langgraph.graph import MessagesState
 from pydantic import BaseModel
@@ -26,6 +27,15 @@ class Agenda(BaseModel):
     end_time: Optional[float] = None  # Unix timestamp
 
 
+class ParticipantStatus(str, Enum):
+    """참여자 현재 상태"""
+
+    idle = "idle"
+    speaking = "speaking"
+    tool_calling = "tool_calling"
+    waiting_input = "waiting_input"
+
+
 class MeetingState(MessagesState):
     """회의 상태"""
 
@@ -39,6 +49,7 @@ class MeetingState(MessagesState):
 
     # 발언 추적
     speaker_counts: Dict[str, int] = {}
+    participant_statuses: Dict[str, str] = {}
 
     # Host 위임 추적 (무한루프 방지)
     consecutive_host_delegations: int = 0

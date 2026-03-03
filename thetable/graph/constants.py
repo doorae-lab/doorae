@@ -16,6 +16,22 @@ STATUS_TEXT = {
     "deferred": "보류"
 }
 
+# 참여자 상태 이모지
+PARTICIPANT_STATUS_EMOJI = {
+    "idle": "⚪",
+    "speaking": "🗣️",
+    "tool_calling": "🔧",
+    "waiting_input": "⌨️",
+}
+
+# 참여자 상태 텍스트
+PARTICIPANT_STATUS_TEXT = {
+    "idle": "대기 중",
+    "speaking": "발언 중",
+    "tool_calling": "도구 호출 중",
+    "waiting_input": "입력 대기",
+}
+
 # Host 역할 이름
 HOST_ROLE_NAME = "Host"
 

@@ -168,6 +168,7 @@ def build_initial_state(
         "pending_proposals": [],
         "pending_speakers": [],
         "speaker_counts": {},
+        "participant_statuses": {},
         "consecutive_host_delegations": 0,
         "turn_count": 0,
         "max_turns": settings.max_turns,

@@ -12,14 +12,21 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.reactive import reactive
-from textual.widgets import Footer, Header, Input, Static
+from textual.widgets import Footer, Header, Input, Static, Tree
 from textual.worker import WorkerCancelled
 from thetable.config import Settings
-from thetable.graph.constants import AGENT_COLORS, STATUS_EMOJI
+from thetable.graph.constants import (
+    AGENT_COLORS,
+    PARTICIPANT_STATUS_EMOJI,
+    PARTICIPANT_STATUS_TEXT,
+    STATUS_EMOJI,
+)
 from thetable.interfaces.time_utils import format_elapsed
 
 if TYPE_CHECKING:
+    from thetable.core.profile import AgentProfile
     from thetable.graph.input_provider import TuiInputProvider
+    from textual.widgets._tree import TreeNode
     from textual.timer import Timer
 
 
@@ -66,6 +73,13 @@ class ToolCallEnded(Message):
     def __init__(self, tool_name: str) -> None:
         super().__init__()
         self.tool_name = tool_name
+
+
+class ParticipantStatusChanged(Message):
+    def __init__(self, participant_name: str, status: str) -> None:
+        super().__init__()
+        self.participant_name = participant_name
+        self.status = status
 
 
 class MeetingEnded(Message):
@@ -137,6 +151,73 @@ class AgendaPanel(Static):
         self.update("\n".join(lines))
 
 
+class ParticipantPanel(Vertical):
+    """참여자 계층 및 상태 패널."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._top_profiles: dict[str, AgentProfile] = {}
+        self._flat_profiles: dict[str, AgentProfile] = {}
+        self._statuses: dict[str, str] = {}
+        self._participant_nodes: dict[str, TreeNode[Any]] = {}
+
+    def compose(self) -> ComposeResult:
+        yield Static("[bold]👥 참여자[/bold]")
+        yield Tree("participants", id="participant-tree")
+
+    def on_mount(self) -> None:
+        tree = self.query_one("#participant-tree", Tree)
+        tree.show_root = False
+
+    def initialize(
+        self,
+        top_profiles: dict[str, AgentProfile],
+        flat_profiles: dict[str, AgentProfile],
+    ) -> None:
+        self._top_profiles = top_profiles
+        self._flat_profiles = flat_profiles
+        self._statuses = {name: "idle" for name in flat_profiles}
+        self._rebuild_tree()
+
+    def update_status(self, participant_name: str, status: str) -> None:
+        self._statuses[participant_name] = status
+        node = self._participant_nodes.get(participant_name)
+        profile = self._flat_profiles.get(participant_name)
+        if node is not None:
+            node.set_label(self._format_label(participant_name, profile))
+
+    def _rebuild_tree(self) -> None:
+        tree = self.query_one("#participant-tree", Tree)
+        tree.root.remove_children()
+        self._participant_nodes = {}
+        for profile in self._top_profiles.values():
+            self._add_profile_node(tree.root, profile, is_top_level=True)
+        tree.root.expand()
+
+    def _add_profile_node(
+        self,
+        parent_node: TreeNode[Any],
+        profile: AgentProfile,
+        is_top_level: bool,
+    ) -> None:
+        node = parent_node.add(
+            self._format_label(profile.name, profile),
+            expand=is_top_level,
+        )
+        if not is_top_level and profile.agents:
+            node.collapse()
+        self._participant_nodes[profile.name] = node
+        for child in profile.agents or []:
+            self._add_profile_node(node, child, is_top_level=False)
+
+    def _format_label(self, name: str, profile: AgentProfile | None) -> str:
+        status = self._statuses.get(name, "idle")
+        status_emoji = PARTICIPANT_STATUS_EMOJI.get(status, "⚪")
+        status_text = PARTICIPANT_STATUS_TEXT.get(status, status)
+        role = profile.role if profile else "participant"
+        return f"{status_emoji} {name} ({role}) [{status_text}]"
+
+
 class MeetingTuiApp(App[None]):
     DEFAULT_CSS = """
     Screen {
@@ -146,10 +227,20 @@ class MeetingTuiApp(App[None]):
         height: 1fr;
     }
     #agenda-panel {
-        width: 55;
+        width: 45;
         border-left: solid $primary;
         padding: 1 2;
         background: $surface-darken-1;
+    }
+    #participant-panel {
+        width: 40;
+        border-right: solid $primary;
+        padding: 1 1;
+        background: $surface-darken-2;
+    }
+    #participant-tree {
+        height: 1fr;
+        margin-top: 1;
     }
     #main-panel {
         width: 1fr;
@@ -215,10 +306,12 @@ class MeetingTuiApp(App[None]):
         self._full_text: str = ""
         self._meeting_start_time: float = 0.0
         self._timer_interval: Timer | None = None
+        self._participant_statuses: dict[str, str] = {}
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal():
+            yield ParticipantPanel(id="participant-panel")
             with Vertical(id="main-panel"):
                 with VerticalScroll(id="conversation-scroll"):
                     yield Static(id="conversation")
@@ -230,7 +323,7 @@ class MeetingTuiApp(App[None]):
 
     async def on_mount(self) -> None:
         from thetable.core.agenda import load_agendas
-        from thetable.core.profile import load_agent_profiles
+        from thetable.core.profile import flatten_all_profiles, load_agent_profiles
         from thetable.graph.input_provider import TuiInputProvider
         from thetable.graph.workflow import build_initial_state, create_meeting_workflow
 
@@ -242,12 +335,17 @@ class MeetingTuiApp(App[None]):
         )
 
         profiles = load_agent_profiles(self._profiles_path)
-        self._human_names = [name.lower() for name, p in profiles.items() if p.is_human]
+        all_profiles = flatten_all_profiles(profiles)
+        self._human_names = [name.lower() for name, p in all_profiles.items() if p.is_human]
+        participant_panel = self.query_one("#participant-panel", ParticipantPanel)
+        participant_panel.initialize(profiles, all_profiles)
+        self._participant_statuses = {name: "idle" for name in all_profiles}
 
         agendas = load_agendas(str(self._settings.agendas_path))
         self._initial_state = build_initial_state(
             self._settings, self._initial_message, self._human_names, agendas
         )
+        self._initial_state["participant_statuses"] = dict(self._participant_statuses)
         raw_start_time = self._initial_state.get("start_time")
         if isinstance(raw_start_time, (int, float)):
             self._meeting_start_time = float(raw_start_time)
@@ -359,6 +457,15 @@ class MeetingTuiApp(App[None]):
         pending = output_data.get("pending_speakers", [])
         self._last_agendas = output_data.get("agendas", self._last_agendas)
         self._last_speaker_counts = output_data.get("speaker_counts", self._last_speaker_counts)
+        raw_statuses = output_data.get("participant_statuses")
+        if isinstance(raw_statuses, dict):
+            for name, status in raw_statuses.items():
+                if (
+                    isinstance(name, str)
+                    and isinstance(status, str)
+                    and self._participant_statuses.get(name) != status
+                ):
+                    self.post_message(ParticipantStatusChanged(name, status))
         _ = pending
 
     def _handle_worker_tool_start(self, event: Any) -> None:
@@ -410,8 +517,12 @@ class MeetingTuiApp(App[None]):
         self._update_conversation()
 
     def on_speaker_changed(self, event: SpeakerChanged) -> None:
+        prev_speaker = self.current_speaker
         self.current_speaker = event.speaker
         self.input_enabled = False
+        if prev_speaker and prev_speaker != event.speaker:
+            self.post_message(ParticipantStatusChanged(prev_speaker, "idle"))
+        self.post_message(ParticipantStatusChanged(event.speaker, "speaking"))
         color_idx = hash(event.speaker) % len(AGENT_COLORS)
         color = AGENT_COLORS[color_idx]
         self._full_text += f"\n\n\n[bold {color}]── {event.speaker} ──[/bold {color}]\n\n"
@@ -427,20 +538,31 @@ class MeetingTuiApp(App[None]):
         label = self.query_one("#human-input-label", Static)
         agenda_title = self._get_current_agenda_title()
         label.update(escape(f"[{event.username}의 차례] {agenda_title}"))
+        self.post_message(ParticipantStatusChanged(event.username, "waiting_input"))
         self.input_enabled = True
         self._full_text += f"\n\n[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]\n"
         self._update_conversation()
 
     def on_turn_completed(self, event: TurnCompleted) -> None:
-        pass
+        if event.speaker:
+            self.post_message(ParticipantStatusChanged(event.speaker, "idle"))
 
     def on_tool_call_started(self, event: ToolCallStarted) -> None:
+        if self.current_speaker:
+            self.post_message(ParticipantStatusChanged(self.current_speaker, "tool_calling"))
         self._full_text += f"[dim]⚙ {event.tool_name} 호출 중...[/dim]"
         self._update_conversation()
 
     def on_tool_call_ended(self, event: ToolCallEnded) -> None:
+        if self.current_speaker:
+            self.post_message(ParticipantStatusChanged(self.current_speaker, "speaking"))
         self._full_text += " [dim]✓[/dim]\n"
         self._update_conversation()
+
+    def on_participant_status_changed(self, event: ParticipantStatusChanged) -> None:
+        self._participant_statuses[event.participant_name] = event.status
+        participant_panel = self.query_one("#participant-panel", ParticipantPanel)
+        participant_panel.update_status(event.participant_name, event.status)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if self._input_provider is not None:
