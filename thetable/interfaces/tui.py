@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
+from rich.markup import escape
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -362,7 +363,7 @@ class MeetingTuiApp(App[None]):
     def on_human_turn_started(self, event: HumanTurnStarted) -> None:
         label = self.query_one("#human-input-label", Static)
         agenda_title = self._get_current_agenda_title()
-        label.update(f"[{event.username}의 차례] {agenda_title}")
+        label.update(escape(f"[{event.username}의 차례] {agenda_title}"))
         self.input_enabled = True
         self._full_text += f"\n\n[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]\n"
         self._update_conversation()
