@@ -440,6 +440,10 @@ class MeetingTuiApp(App[None]):
         self.meeting_status = "ended"
 
     def on_stream_error(self, event: StreamError) -> None:
+        if self._timer_interval is not None:
+            self._timer_interval.stop()
+            self._timer_interval = None
+        self.meeting_status = "ended"
         self._full_text += f"\n[bold yellow]⚠ 오류: {event.error}[/bold yellow]\n"
         self._update_conversation()
 

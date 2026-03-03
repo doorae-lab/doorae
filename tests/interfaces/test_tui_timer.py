@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from thetable.interfaces.tui import AgendaPanel, MeetingEnded, MeetingTuiApp
+from thetable.interfaces.tui import AgendaPanel, MeetingEnded, MeetingTuiApp, StreamError
 
 
 class CapturingAgendaPanel(AgendaPanel):
@@ -65,6 +65,20 @@ def test_meeting_ended_stops_interval_timer() -> None:
     app._render_summary = lambda: None  # type: ignore[method-assign]
 
     app.on_meeting_ended(MeetingEnded(agendas=[], speaker_counts={}))
+
+    assert timer.stopped is True
+    assert app._timer_interval is None
+    assert app.meeting_status == "ended"
+
+
+def test_stream_error_stops_interval_timer_and_ends_meeting() -> None:
+    app = _build_app()
+    timer = DummyTimer()
+    app._timer_interval = timer  # type: ignore[assignment]
+    app._render_summary = lambda: None  # type: ignore[method-assign]
+    app._update_conversation = lambda: None  # type: ignore[method-assign]
+
+    app.on_stream_error(StreamError(error="boom"))
 
     assert timer.stopped is True
     assert app._timer_interval is None
