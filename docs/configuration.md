@@ -206,6 +206,23 @@ GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your_token
 - 참여자에게 특별히 시킬 일이에요
 - 예: "GitHub 도구를 적극 사용하세요"
 
+**에이전트별 LLM 설정 (llm)**
+- 특정 참여자만 다른 모델/provider를 쓰고 싶을 때 사용해요
+- 지정한 필드만 덮어쓰고 나머지는 `.env` 전역 `LLM_MAIN_*` 값으로 자동 fallback 돼요
+- 설정 가능 필드: `model`, `api_key`, `base_url`, `temperature`, `max_tokens`
+
+예시:
+```yaml
+- name: PM
+  role: project_manager
+  responsibilities: [프로젝트 일정 관리]
+  expertise: [일정 계획]
+  llm:
+    model: "openai/gpt-4.1-mini"
+    temperature: 0.2
+    max_tokens: 1200
+```
+
 ### 예시: Host 참여자
 
 ```

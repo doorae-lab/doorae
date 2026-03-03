@@ -38,27 +38,38 @@ class AgentNode(BaseNode):
     def __init__(
         self,
         profile: AgentProfile,
-        model,
+        model=None,
         tools: Optional[list] = None,
         all_agent_names: Optional[list[str]] = None,
         all_profiles: Optional[dict] = None,
         mcp_tools: Optional[dict] = None,
+        settings=None,
         **kwargs,
     ):
         """초기화
 
         Args:
             profile: 에이전트 프로필
-            model: LLM 모델 인스턴스
+            model: LLM 모델 인스턴스 (None이면 profile 기반으로 생성)
             tools: MCP tools 리스트 (선택)
             all_agent_names: 전체 참여자 목록
             all_profiles: 전체 프로필 딕셔너리
             mcp_tools: 서버별 MCP tools 딕셔너리 {server_name: [tools]}
+            settings: 글로벌 설정 (선택)
             **kwargs: 추가 파라미터 (무시됨)
         """
         self.profile = profile
         self.all_agent_names = all_agent_names or []
         self.all_profiles = all_profiles or {}
+
+        if model is None:
+            from thetable.config import create_agent_llm, get_settings
+
+            model = create_agent_llm(
+                profile=profile,
+                settings=settings or get_settings(),
+                streaming=True,
+            )
 
         # mcp_tools에서 agent_tools 자동 추출
         if tools is None and mcp_tools and profile.mcp_tools:

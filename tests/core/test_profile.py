@@ -1,5 +1,5 @@
 import pytest
-from thetable.core.profile import AgentProfile, load_agent_profiles
+from thetable.core.profile import AgentLLMConfig, AgentProfile, load_agent_profiles
 
 
 def test_agent_profile_creation():
@@ -129,3 +129,36 @@ def test_host_profile_responsibilities():
     assert "회의 퍼실리테이션" in host.expertise
     assert "갈등 조정" in host.expertise
     assert "시간 관리" in host.expertise
+
+
+def test_agent_profile_llm_config_optional():
+    profile = AgentProfile(
+        name="Backend",
+        role="backend_engineer",
+        responsibilities=["API 설계"],
+        expertise=["Python"],
+    )
+    assert profile.llm is None
+
+
+def test_agent_profile_llm_config_loaded():
+    profile = AgentProfile(
+        name="PM",
+        role="project_manager",
+        responsibilities=["일정"],
+        expertise=["관리"],
+        llm={
+            "model": "gpt-4.1-mini",
+            "api_key": "test-key",
+            "base_url": "https://example.ai/v1",
+            "temperature": 0.2,
+            "max_tokens": 512,
+        },
+    )
+
+    assert isinstance(profile.llm, AgentLLMConfig)
+    assert profile.llm.model == "gpt-4.1-mini"
+    assert profile.llm.api_key == "test-key"
+    assert profile.llm.base_url == "https://example.ai/v1"
+    assert profile.llm.temperature == 0.2
+    assert profile.llm.max_tokens == 512

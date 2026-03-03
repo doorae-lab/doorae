@@ -4,17 +4,28 @@ from pydantic import BaseModel, Field
 import yaml
 
 
+class AgentLLMConfig(BaseModel):
+    """에이전트별 LLM 설정"""
+
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+
+
 class AgentProfile(BaseModel):
     """Agent의 역할, 책임, 전문성 정의 (계층적 구조 지원)"""
     name: str
     role: str
     responsibilities: List[str]
     expertise: List[str]
-    phase_triggers: Dict[str, str] = {}
+    phase_triggers: Dict[str, str] = Field(default_factory=dict)
     agents: Optional[List["AgentProfile"]] = None  # 재귀적 하위 에이전트
     is_human: bool = False  # 사용자 참여자 여부
-    mcp_tools: List[str] = []  # 사용할 MCP 서버 목록 (예: ["github", "jira"])
+    mcp_tools: List[str] = Field(default_factory=list)  # 사용할 MCP 서버 목록 (예: ["github", "jira"])
     metadata: Dict[str, Any] = Field(default_factory=dict)  # Agent별 메타데이터 (예: repository 정보)
+    llm: Optional[AgentLLMConfig] = None
 
     def matches_phase(self, phase: str) -> bool:
         """특정 phase에서 자동 발언해야 하는지 확인"""
