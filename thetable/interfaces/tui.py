@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
+from rich.markup import escape
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -116,12 +117,22 @@ class MeetingTuiApp(App[None]):
     #conversation {
         width: 1fr;
     }
+    #human-input-panel {
+        height: auto;
+        display: none;
+        border-top: solid $accent;
+        padding: 0 1;
+        background: $surface;
+    }
+    #human-input-panel.visible {
+        display: block;
+    }
+    #human-input-label {
+        color: $accent;
+        padding: 0 0 0 1;
+    }
     #input-area {
         height: 3;
-        display: none;
-    }
-    #input-area.visible {
-        display: block;
     }
     """
 
@@ -167,7 +178,9 @@ class MeetingTuiApp(App[None]):
                 with VerticalScroll(id="conversation-scroll"):
                     yield Static(id="conversation")
             yield AgendaPanel(id="agenda-panel")
-        yield Input(id="input-area", placeholder="의견을 입력하세요 (Enter로 전송, 빈 입력 시 스킵)")
+        with Vertical(id="human-input-panel"):
+            yield Static("의견을 입력하세요", id="human-input-label")
+            yield Input(id="input-area", placeholder="의견을 입력하세요 (Enter로 전송, 빈 입력 시 스킵)")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -317,12 +330,13 @@ class MeetingTuiApp(App[None]):
         agenda_panel.update_agendas(self._last_agendas, idx)
 
     def watch_input_enabled(self, enabled: bool) -> None:
+        panel = self.query_one("#human-input-panel", Vertical)
         input_area = self.query_one("#input-area", Input)
         if enabled:
-            input_area.add_class("visible")
+            panel.add_class("visible")
             input_area.focus()
         else:
-            input_area.remove_class("visible")
+            panel.remove_class("visible")
 
     def watch_meeting_status(self, status: str) -> None:
         if status == "ended":
@@ -336,6 +350,7 @@ class MeetingTuiApp(App[None]):
 
     def on_speaker_changed(self, event: SpeakerChanged) -> None:
         self.current_speaker = event.speaker
+        self.input_enabled = False
         color_idx = hash(event.speaker) % len(AGENT_COLORS)
         color = AGENT_COLORS[color_idx]
         self._full_text += f"\n\n\n[bold {color}]── {event.speaker} ──[/bold {color}]\n\n"
@@ -346,6 +361,9 @@ class MeetingTuiApp(App[None]):
         self.current_agenda_idx = event.current_idx
 
     def on_human_turn_started(self, event: HumanTurnStarted) -> None:
+        label = self.query_one("#human-input-label", Static)
+        agenda_title = self._get_current_agenda_title()
+        label.update(escape(f"[{event.username}의 차례] {agenda_title}"))
         self.input_enabled = True
         self._full_text += f"\n\n[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]\n"
         self._update_conversation()
@@ -409,3 +427,11 @@ class MeetingTuiApp(App[None]):
             self._full_text += f"     결정: {decision}\n"
         self._full_text += "\n[dim]Ctrl+C로 종료[/dim]"
         self._update_conversation()
+
+    def _get_current_agenda_title(self) -> str:
+        if not self._last_agendas:
+            return "안건 미지정"
+        if self.current_agenda_idx < 0 or self.current_agenda_idx >= len(self._last_agendas):
+            return "안건 미지정"
+        title = self._last_agendas[self.current_agenda_idx].get("title")
+        return str(title) if title else "안건 미지정"
