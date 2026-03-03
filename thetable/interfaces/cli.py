@@ -18,6 +18,7 @@ from thetable.config import Settings, get_settings, setup_tracing
 from thetable.graph.workflow import build_initial_state, create_meeting_workflow
 from thetable.graph.constants import STATUS_EMOJI, HOST_ROLE_NAME, AGENT_COLORS
 from thetable.interfaces.logging import setup_logging
+from thetable.interfaces.time_utils import format_elapsed
 
 
 app = typer.Typer(
@@ -201,16 +202,14 @@ def format_agenda_panel(
             # 진행 중: 경과 시간
             agenda_start = agenda.get("start_time") or start_time
             elapsed = time.time() - agenda_start
-            mins, secs = divmod(int(elapsed), 60)
-            time_str = f" [{mins}m {secs}s]"
+            time_str = f" [{format_elapsed(max(0, int(elapsed)))}]"
         elif agenda["status"] == "completed":
             # 완료: 총 소요 시간
             agenda_start = agenda.get("start_time")
             agenda_end = agenda.get("end_time")
             if agenda_start and agenda_end:
                 elapsed = agenda_end - agenda_start
-                mins, secs = divmod(int(elapsed), 60)
-                time_str = f" [{mins}m {secs}s]"
+                time_str = f" [{format_elapsed(max(0, int(elapsed)))}]"
 
         # 현재 안건 표시
         indicator = " ← 현재" if i == current_idx else ""

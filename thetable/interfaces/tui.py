@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any, cast
 
 from textual import work
@@ -14,9 +15,11 @@ from textual.widgets import Footer, Header, Input, Static
 from textual.worker import WorkerCancelled
 from thetable.config import Settings
 from thetable.graph.constants import AGENT_COLORS, STATUS_EMOJI
+from thetable.interfaces.time_utils import format_elapsed
 
 if TYPE_CHECKING:
     from thetable.graph.input_provider import TuiInputProvider
+    from textual.timer import Timer
 
 
 class TokenStreamed(Message):
@@ -80,15 +83,54 @@ class StreamError(Message):
 class AgendaPanel(Static):
     """안건 진행 상태 패널."""
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._timer_str: str = "00:00"
+        self._meeting_start_time: float | None = None
+        self._last_agendas: list[dict[str, object]] = []
+        self._current_idx: int = 0
+
+    def update_timer(self, timer_str: str) -> None:
+        self._timer_str = timer_str
+        self.update_agendas(self._last_agendas, self._current_idx)
+
+    def update_meeting_start_time(self, meeting_start_time: float) -> None:
+        self._meeting_start_time = meeting_start_time
+        self.update_agendas(self._last_agendas, self._current_idx)
+
     def update_agendas(self, agendas: list[dict[str, object]], current_idx: int) -> None:
-        lines = []
+        self._last_agendas = agendas
+        self._current_idx = current_idx
+
+        lines = [f"[bold cyan]⏱ 총 경과: {self._timer_str}[/bold cyan]", "─" * 30]
+        now = time.time()
+
         for i, agenda in enumerate(agendas):
             raw_status = agenda.get("status", "pending")
             status = raw_status if isinstance(raw_status, str) else "pending"
             emoji = STATUS_EMOJI.get(status, "❓")
             title = agenda.get("title", "")
             marker = " ◀" if i == current_idx else ""
-            lines.append(f"{emoji} {i + 1}. {title}{marker}")
+            elapsed_str = ""
+
+            if status == "in_progress":
+                raw_start = agenda.get("start_time")
+                agenda_start = (
+                    float(raw_start)
+                    if isinstance(raw_start, (int, float))
+                    else self._meeting_start_time
+                )
+                if agenda_start is not None:
+                    elapsed_seconds = max(0, int(now - agenda_start))
+                    elapsed_str = f" [{format_elapsed(elapsed_seconds)}]"
+            elif status == "completed":
+                raw_start = agenda.get("start_time")
+                raw_end = agenda.get("end_time")
+                if isinstance(raw_start, (int, float)) and isinstance(raw_end, (int, float)):
+                    elapsed_seconds = max(0, int(raw_end - raw_start))
+                    elapsed_str = f" [{format_elapsed(elapsed_seconds)}]"
+
+            lines.append(f"{emoji} {i + 1}. {title}{elapsed_str}{marker}")
             if agenda.get("decision"):
                 lines.append(f"   └─ {agenda['decision']}")
         self.update("\n".join(lines))
@@ -105,7 +147,8 @@ class MeetingTuiApp(App[None]):
     #agenda-panel {
         width: 55;
         border-left: solid $primary;
-        padding: 1;
+        padding: 1 2;
+        background: $surface-darken-1;
     }
     #main-panel {
         width: 1fr;
@@ -159,6 +202,8 @@ class MeetingTuiApp(App[None]):
         self._last_speaker_counts: dict[str, int] = {}
         self._input_provider: TuiInputProvider | None = None
         self._full_text: str = ""
+        self._meeting_start_time: float = 0.0
+        self._timer_interval: Timer | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -190,13 +235,21 @@ class MeetingTuiApp(App[None]):
         self._initial_state = build_initial_state(
             self._settings, self._initial_message, self._human_names, agendas
         )
+        raw_start_time = self._initial_state.get("start_time")
+        if isinstance(raw_start_time, (int, float)):
+            self._meeting_start_time = float(raw_start_time)
+        else:
+            self._meeting_start_time = time.time()
+            self._initial_state["start_time"] = self._meeting_start_time
         self._graph_config = {"recursion_limit": self._settings.recursion_limit}
         initial_agendas = self._initial_state.get("agendas", [])
         if isinstance(initial_agendas, list):
             self._last_agendas = cast(list[dict[str, object]], initial_agendas)
 
         agenda_panel = self.query_one("#agenda-panel", AgendaPanel)
+        agenda_panel.update_meeting_start_time(self._meeting_start_time)
         agenda_panel.update_agendas(self._last_agendas, 0)
+        self._timer_interval = self.set_interval(1.0, self._tick_timer)
 
         self.run_meeting_worker()
 
@@ -316,6 +369,14 @@ class MeetingTuiApp(App[None]):
         agenda_panel = self.query_one("#agenda-panel", AgendaPanel)
         agenda_panel.update_agendas(self._last_agendas, idx)
 
+    def _tick_timer(self) -> None:
+        if self.meeting_status == "ended":
+            return
+        elapsed_seconds = max(0, int(time.time() - self._meeting_start_time))
+        timer_str = format_elapsed(elapsed_seconds)
+        agenda_panel = self.query_one("#agenda-panel", AgendaPanel)
+        agenda_panel.update_timer(timer_str)
+
     def watch_input_enabled(self, enabled: bool) -> None:
         input_area = self.query_one("#input-area", Input)
         if enabled:
@@ -343,6 +404,8 @@ class MeetingTuiApp(App[None]):
 
     def on_agenda_updated(self, event: AgendaUpdated) -> None:
         self._last_agendas = event.agendas
+        agenda_panel = self.query_one("#agenda-panel", AgendaPanel)
+        agenda_panel.update_meeting_start_time(self._meeting_start_time)
         self.current_agenda_idx = event.current_idx
 
     def on_human_turn_started(self, event: HumanTurnStarted) -> None:
@@ -370,6 +433,10 @@ class MeetingTuiApp(App[None]):
     def on_meeting_ended(self, event: MeetingEnded) -> None:
         self._last_agendas = event.agendas
         self._last_speaker_counts = event.speaker_counts
+        if self._timer_interval is not None:
+            self._timer_interval.stop()
+            self._timer_interval = None
+        self._tick_timer()
         self.meeting_status = "ended"
 
     def on_stream_error(self, event: StreamError) -> None:
@@ -398,7 +465,9 @@ class MeetingTuiApp(App[None]):
         self.query_one("#conversation-scroll", VerticalScroll).scroll_page_down()
 
     def _render_summary(self) -> None:
+        total_elapsed_seconds = max(0, int(time.time() - self._meeting_start_time))
         self._full_text += "\n\n[bold]📋 회의 요약[/bold]\n"
+        self._full_text += f"[bold cyan]⏱ 총 경과: {format_elapsed(total_elapsed_seconds)}[/bold cyan]\n\n"
         for agenda in self._last_agendas:
             raw_status = agenda.get("status", "pending")
             status = raw_status if isinstance(raw_status, str) else "pending"
@@ -407,5 +476,21 @@ class MeetingTuiApp(App[None]):
             decision = agenda.get("decision", "-")
             self._full_text += f"  {emoji} {title}\n"
             self._full_text += f"     결정: {decision}\n"
+            duration = ""
+            if status == "in_progress":
+                raw_start = agenda.get("start_time")
+                agenda_start = (
+                    float(raw_start)
+                    if isinstance(raw_start, (int, float))
+                    else self._meeting_start_time
+                )
+                duration = format_elapsed(max(0, int(time.time() - agenda_start)))
+            elif status == "completed":
+                raw_start = agenda.get("start_time")
+                raw_end = agenda.get("end_time")
+                if isinstance(raw_start, (int, float)) and isinstance(raw_end, (int, float)):
+                    duration = format_elapsed(max(0, int(raw_end - raw_start)))
+            if duration:
+                self._full_text += f"     소요: {duration}\n"
         self._full_text += "\n[dim]Ctrl+C로 종료[/dim]"
         self._update_conversation()
