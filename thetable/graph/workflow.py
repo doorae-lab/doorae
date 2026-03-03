@@ -90,11 +90,14 @@ def create_meeting_workflow(
     # 6. 각 에이전트 노드 추가 (NodeRegistry 활용)
     for name, profile in profiles.items():
         node_type = "human" if profile.is_human else "agent"
-        node_model = (
-            None
-            if profile.is_human
-            else create_agent_llm(profile=profile, settings=settings, streaming=True)
-        )
+        if profile.is_human:
+            node_model = None
+        elif profile.llm is None:
+            # Keep backwards compatibility: caller-provided main_model should still
+            # drive agent turns when no per-agent LLM override is configured.
+            node_model = main_model
+        else:
+            node_model = create_agent_llm(profile=profile, settings=settings, streaming=True)
         node = NodeRegistry.create(
             node_type,
             profile=profile,
