@@ -219,3 +219,6 @@ CLAUDE.md
 .specify/
 
 specs/
+.codex/
+
+.agents/
