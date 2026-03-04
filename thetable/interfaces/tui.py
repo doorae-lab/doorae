@@ -226,15 +226,19 @@ class MeetingTuiApp(App[None]):
     Horizontal {
         height: 1fr;
     }
-    #agenda-panel {
+    #right-sidebar {
         width: 45;
         border-left: solid $primary;
+    }
+    #agenda-panel {
+        height: 1fr;
         padding: 1 2;
         background: $surface-darken-1;
     }
     #participant-panel {
-        width: 40;
-        border-right: solid $primary;
+        height: auto;
+        max-height: 50%;
+        border-top: solid $primary;
         padding: 1 1;
         background: $surface-darken-2;
     }
@@ -311,11 +315,12 @@ class MeetingTuiApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal():
-            yield ParticipantPanel(id="participant-panel")
             with Vertical(id="main-panel"):
                 with VerticalScroll(id="conversation-scroll"):
                     yield Static(id="conversation")
-            yield AgendaPanel(id="agenda-panel")
+            with Vertical(id="right-sidebar"):
+                yield AgendaPanel(id="agenda-panel")
+                yield ParticipantPanel(id="participant-panel")
         with Vertical(id="human-input-panel"):
             yield Static("의견을 입력하세요", id="human-input-label")
             yield Input(id="input-area", placeholder="의견을 입력하세요 (Enter로 전송, 빈 입력 시 스킵)")
@@ -588,8 +593,8 @@ class MeetingTuiApp(App[None]):
         self._update_conversation()
 
     def on_resize(self) -> None:
-        agenda_panel = self.query_one("#agenda-panel", AgendaPanel)
-        agenda_panel.display = self.size.width >= 100
+        sidebar = self.query_one("#right-sidebar", Vertical)
+        sidebar.display = self.size.width >= 100
 
     async def action_quit(self) -> None:
         self.workers.cancel_all()
