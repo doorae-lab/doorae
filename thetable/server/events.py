@@ -50,6 +50,11 @@ def event_to_dict(event: Dict[str, Any]) -> Dict[str, Any]:
         "timestamp": datetime.now().isoformat(),
     }
 
+    # delegated_by: 태그 확인 → is_delegated 필드 포함
+    tags = event.get("tags", [])
+    if any(tag.startswith("delegated_by:") for tag in tags):
+        result["is_delegated"] = True
+
     # 메타데이터 추가
     if "metadata" in event:
         result["metadata"] = _to_jsonable(event["metadata"])

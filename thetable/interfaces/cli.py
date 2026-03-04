@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """TheTable CLI - AI-powered team meeting system"""
+import colorsys
 import os
+import random
 import sys
 import asyncio
 import time
@@ -16,7 +18,7 @@ from rich.table import Table
 from thetable import __version__
 from thetable.config import Settings, get_settings, setup_tracing
 from thetable.graph.workflow import build_initial_state, create_meeting_workflow
-from thetable.graph.constants import STATUS_EMOJI, HOST_ROLE_NAME, AGENT_COLORS
+from thetable.graph.constants import STATUS_EMOJI
 from thetable.interfaces.logging import setup_logging
 from thetable.interfaces.time_utils import format_elapsed
 
@@ -74,30 +76,70 @@ def _handle_chain_start(event: dict, state_ref: dict) -> None:
         console.print()
 
 
+def _random_speaker_color() -> str:
+    """터미널 다크 배경에서 읽기 좋은 랜덤 hex 색상 생성."""
+    h = random.random()
+    s = random.uniform(0.6, 1.0)
+    l = random.uniform(0.45, 0.65)
+    r, g, b = colorsys.hls_to_rgb(h, l, s)
+    return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
+
+
+def _get_speaker_color(state_ref: dict, speaker: str) -> str:
+    colors = state_ref.setdefault("speaker_colors", {})
+    if speaker not in colors:
+        colors[speaker] = _random_speaker_color()
+    return colors[speaker]
+
+
+def _is_delegated(tags: list[str]) -> bool:
+    """delegated_by: 태그 여부 확인."""
+    return any(tag.startswith("delegated_by:") for tag in tags)
+
+
 def _handle_chat_model_start(event: dict, state_ref: dict) -> None:
     """on_chat_model_start 이벤트 처리 - 발언자 표시"""
+    tags = event.get("tags", [])
     speaker = event.get("name")
 
     # run_name이 없으면 tags에서 speaker: 접두사 찾기
     if not speaker or speaker == "ChatOpenAI":
-        tags = event.get("tags", [])
         for tag in tags:
             if tag.startswith("speaker:"):
                 speaker = tag.replace("speaker:", "")
                 break
 
-    # 발언자가 변경되었으면 표시
-    if speaker and speaker not in ("ChatOpenAI", "RunnableSequence") and speaker != state_ref.get("current_speaker"):
-        if state_ref.get("current_speaker"):
-            console.print()  # 이전 발언 줄바꿈
-        console.print(f"\n[bold cyan][{speaker}][/bold cyan]")
-        state_ref["current_speaker"] = speaker
+    if not speaker or speaker in ("ChatOpenAI", "RunnableSequence"):
+        return
+
+    if _is_delegated(tags):
+        state_ref["in_delegated"] = True
+        if not state_ref.get("hide_delegated") and speaker != state_ref.get("current_delegated_speaker"):
+            state_ref["current_delegated_speaker"] = speaker
+            console.print(f"\n  [dim]↳ {speaker} (위임)[/dim]")
+    else:
+        state_ref["in_delegated"] = False
+        state_ref["current_delegated_speaker"] = None
+        if speaker != state_ref.get("current_speaker"):
+            if state_ref.get("current_speaker"):
+                console.print()  # 이전 발언 줄바꿈
+            color = _get_speaker_color(state_ref, speaker)
+            console.print(f"\n[bold {color}][{speaker}][/bold {color}]")
+            state_ref["current_speaker"] = speaker
 
 
-def _handle_chat_model_stream(event: dict) -> None:
+def _handle_chat_model_stream(event: dict, state_ref: dict) -> None:
     """on_chat_model_stream 이벤트 처리 - 토큰 출력"""
     tags = event.get("tags", [])
     if "participant" not in tags:
+        return
+
+    if state_ref.get("in_delegated"):
+        if not state_ref.get("hide_delegated"):
+            chunk = event["data"]["chunk"]
+            content = getattr(chunk, "content", "")
+            if content:
+                console.print(f"  [dim]{content}[/dim]", end="")
         return
 
     chunk = event["data"]["chunk"]
@@ -106,12 +148,20 @@ def _handle_chat_model_stream(event: dict) -> None:
         console.print(content, end="")
 
 
-def _handle_chat_model_end(event: dict) -> None:
+def _handle_chat_model_end(event: dict, state_ref: dict) -> None:
     """on_chat_model_end 이벤트 처리 - 응답 완료"""
     tags = event.get("tags", [])
-    if "participant" in tags:
-        console.print()  # 줄바꿈
-        console.rule(style="dim")
+    if "participant" not in tags:
+        return
+
+    if _is_delegated(tags):
+        state_ref["in_delegated"] = False
+        if not state_ref.get("hide_delegated"):
+            console.print()  # 줄바꿈
+        return
+
+    console.print()  # 줄바꿈
+    console.rule(style="dim")
 
 
 def _handle_chain_end(event: dict, state_ref: dict) -> None:
@@ -288,6 +338,11 @@ def main(
         "-t",
         help="LangSmith 추적 활성화",
     ),
+    hide_delegated: bool = typer.Option(
+        False,
+        "--hide-delegated",
+        help="서브 에이전트(위임) 발언 숨김 (CLI 모드)",
+    ),
 ) -> None:
     """TheTable CLI - AI 기반 팀 회의 시스템
 
@@ -342,6 +397,7 @@ def main(
         stream=stream,
         settings=settings,
         use_tui=use_tui,
+        hide_delegated=hide_delegated,
     ))
 
 
@@ -390,23 +446,27 @@ def _build_initial_state(
     return build_initial_state(settings, initial_message, human_names, agendas)
 
 
-async def _run_streaming(workflow, state: dict, config: dict) -> None:
+async def _run_streaming(workflow, state: dict, config: dict, hide_delegated: bool = False) -> None:
     """스트리밍 모드 실행
 
     Args:
         workflow: 워크플로우 인스턴스
         state: 초기 상태
         config: LangGraph 설정
+        hide_delegated: 위임 발언 숨김 여부
     """
     state_ref = {
         "current_speaker": None,
+        "current_delegated_speaker": None,
+        "in_delegated": False,
+        "hide_delegated": hide_delegated,
         "prev_agenda_state": None,
         "start_time": state["start_time"],
         "agendas": None,
         "speaker_counts": None,
     }
 
-    # 이벤트 핸들러 매핑
+    # 이벤트 핸들러 매핑 (모두 state_ref 수신)
     event_handlers = {
         "on_chain_start": _handle_chain_start,
         "on_chat_model_start": _handle_chat_model_start,
@@ -419,11 +479,7 @@ async def _run_streaming(workflow, state: dict, config: dict) -> None:
         kind = event["event"]
         handler = event_handlers.get(kind)
         if handler:
-            # state_ref를 받는 핸들러와 받지 않는 핸들러 구분
-            if kind in ("on_chain_start", "on_chat_model_start", "on_chain_end"):
-                handler(event, state_ref)
-            else:
-                handler(event)
+            handler(event, state_ref)
 
     # 스트리밍 완료 후 요약 테이블 출력
     _print_summary_table(state_ref.get("agendas"), state_ref.get("speaker_counts"))
@@ -449,12 +505,13 @@ async def _run_batch(workflow, state: dict, config: dict) -> dict:
     console.rule(style="yellow")
 
     # 참가자 목록 추출 및 색상 할당
-    speakers = list(dict.fromkeys(getattr(msg, "name", "System") for msg in result.get("messages", [])))
-    color_map = {speaker: AGENT_COLORS[i % len(AGENT_COLORS)] for i, speaker in enumerate(speakers)}
+    speaker_colors: dict[str, str] = {}
 
     for msg in result.get("messages", []):
         speaker = getattr(msg, "name", "System")
-        color = color_map.get(speaker, "white")
+        if speaker not in speaker_colors:
+            speaker_colors[speaker] = _random_speaker_color()
+        color = speaker_colors[speaker]
 
         console.print(f"\n[bold {color}][{speaker}][/bold {color}]")
         console.print(msg.content)
@@ -472,6 +529,7 @@ async def run_meeting(
     stream: bool = False,
     settings: Optional[Settings] = None,
     use_tui: bool = False,
+    hide_delegated: bool = False,
 ) -> None:
     """회의 실행.
 
@@ -559,7 +617,7 @@ async def run_meeting(
             return
 
         if stream:
-            await _run_streaming(workflow, initial_state, graph_config)
+            await _run_streaming(workflow, initial_state, graph_config, hide_delegated=hide_delegated)
         else:
             await _run_batch(workflow, initial_state, graph_config)
 

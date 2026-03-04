@@ -40,9 +40,9 @@ agents:
   - name: PM
     role: project_manager
     responsibilities:
-      - 프로젝트 일정 관리
+      - 프로젝트 일정 관리(Github Project, milestone, issue 기반)
       - 진행 상황 보고
-      - 리스크 식별
+      # - 리스크 식별
       - 실무진 의견 수렴
     expertise:
       - 일정 계획

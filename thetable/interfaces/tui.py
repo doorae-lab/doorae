@@ -2,21 +2,25 @@
 
 from __future__ import annotations
 
+import colorsys
+import random
 import time
 from typing import TYPE_CHECKING, Any, cast
 
 from rich.markup import escape
+from rich.spinner import Spinner
+from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.reactive import reactive
-from textual.widgets import Footer, Header, Input, Static, Tree
+from textual.widget import Widget
+from textual.widgets import Collapsible, Footer, Header, Input, Markdown, Static, Tree
 from textual.worker import WorkerCancelled
 from thetable.config import Settings
 from thetable.graph.constants import (
-    AGENT_COLORS,
     PARTICIPANT_STATUS_EMOJI,
     PARTICIPANT_STATUS_TEXT,
     STATUS_EMOJI,
@@ -30,18 +34,172 @@ if TYPE_CHECKING:
     from textual.timer import Timer
 
 
+def _is_delegated(tags: list[str]) -> bool:
+    """delegated_by: 태그 여부 확인."""
+    return any(tag.startswith("delegated_by:") for tag in tags)
+
+
+def _random_speaker_color() -> str:
+    """터미널 다크 배경에서 읽기 좋은 랜덤 hex 색상 생성."""
+    h = random.random()
+    s = random.uniform(0.6, 1.0)
+    l = random.uniform(0.45, 0.65)
+    r, g, b = colorsys.hls_to_rgb(h, l, s)
+    return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
+
+
+class SpinnerWidget(Widget):
+    """rich.spinner 기반 애니메이션 위젯."""
+
+    DEFAULT_CSS = """
+    SpinnerWidget {
+        height: 1;
+        width: 1fr;
+        padding: 0 1;
+        color: $text-muted;
+    }
+    """
+
+    def __init__(self, label: str, color: str | None = None) -> None:
+        super().__init__()
+        self._label = label
+        self._spinner = Spinner("dots")
+        self._color = color
+
+    def render(self) -> Text:
+        text = self._spinner.render(time.monotonic())
+        if self._color:
+            return Text.assemble(text, f" {self._label}", style=self._color)
+        return Text.assemble(text, f" {self._label}")
+
+    def on_mount(self) -> None:
+        self._refresh_timer = self.set_interval(1 / 12, self.refresh)
+
+    def on_unmount(self) -> None:
+        if hasattr(self, "_refresh_timer"):
+            self._refresh_timer.stop()
+
+
+class SpeechBubble(Widget):
+    """단일 발언 위젯 — 스트리밍 중 Static, 완료 후 Markdown."""
+
+    DEFAULT_CSS = """
+    SpeechBubble {
+        width: 1fr;
+        height: auto;
+        margin-bottom: 1;
+        border-left: wide transparent;
+        padding: 1 0 0 1;
+        background: $surface-lighten-1;
+    }
+    SpeechBubble.delegated {
+        margin: 1 0 1 2;
+        opacity: 0.8;
+        border-left: block $secondary;
+        background: $surface-lighten-2;
+    }
+    SpeechBubble Markdown {
+        padding: 1 1;
+        height: auto;
+    }
+    SpeechBubble .bubble-body {
+        padding: 1 1;
+        height: auto;
+    }
+    SpeechBubble .bubble-header {
+        height: auto;
+        width: 1fr;
+    }
+    SpeechBubble .bubble-header Static {
+        width: auto;
+    }
+    SpeechBubble .bubble-header SpinnerWidget {
+        width: auto;
+    }
+    SpeechBubble Collapsible {
+        margin: 0 0 0 1;
+        padding: 0;
+        height: auto;
+    }
+    SpeechBubble .tool-indicator {
+        color: $text-muted;
+        padding: 0 1;
+        height: auto;
+    }
+    """
+
+    def __init__(self, speaker: str, color: str, is_delegated: bool = False) -> None:
+        super().__init__(classes="delegated" if is_delegated else "")
+        self._speaker = speaker
+        self._color = color
+        self._buffer = ""
+        self.is_delegated = is_delegated
+        self._body: Static | None = None
+        self._tool_indicator: SpinnerWidget | None = None
+        self._header_spinner: SpinnerWidget | None = None
+
+    def on_mount(self) -> None:
+        if not self.is_delegated:
+            self.styles.border_left = ("wide", self._color)
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(classes="bubble-header"):
+            if self.is_delegated:
+                yield Static(f"[dim] {self._speaker} (위임)[/dim]")
+            else:
+                yield Static(f"[bold {self._color}] {self._speaker}[/bold {self._color}]")
+            self._header_spinner = SpinnerWidget("", self._color)
+            yield self._header_spinner
+        self._body = Static("", classes="bubble-body")
+        yield self._body
+
+    def append_token(self, token: str) -> None:
+        self._buffer += token
+        if self._body is not None:
+            if self.is_delegated:
+                self._body.update(f"[dim]{escape(self._buffer)}[/dim]")
+            else:
+                self._body.update(self._buffer)
+
+    def show_tool_started(self, tool_name: str) -> None:
+        """tool 호출 시작 — spinner 인디케이터 표시."""
+        self._tool_indicator = SpinnerWidget(f"⚙ {tool_name}")
+        self.mount(self._tool_indicator)
+
+    def show_tool_ended(self) -> None:
+        """tool 호출 완료 — spinner 제거."""
+        if self._tool_indicator is not None:
+            self._tool_indicator.remove()
+            self._tool_indicator = None
+
+    def finalize(self) -> None:
+        """발언 완료 시 body를 Markdown으로 교체, spinner 정리."""
+        if self._header_spinner is not None:
+            self._header_spinner.remove()
+            self._header_spinner = None
+        if self._body is not None:
+            self._body.remove()
+            self._body = None
+        if self._tool_indicator is not None:
+            self._tool_indicator.remove()
+            self._tool_indicator = None
+        self.mount(Markdown(self._buffer))
+
+
 class TokenStreamed(Message):
-    def __init__(self, token: str, agent_name: str) -> None:
+    def __init__(self, token: str, agent_name: str, is_delegated: bool = False) -> None:
         super().__init__()
         self.token = token
         self.agent_name = agent_name
+        self.is_delegated = is_delegated
 
 
 class SpeakerChanged(Message):
-    def __init__(self, speaker: str, pending: list[str]) -> None:
+    def __init__(self, speaker: str, pending: list[str], is_delegated: bool = False) -> None:
         super().__init__()
         self.speaker = speaker
         self.pending = pending
+        self.is_delegated = is_delegated
 
 
 class AgendaUpdated(Message):
@@ -58,9 +216,10 @@ class HumanTurnStarted(Message):
 
 
 class TurnCompleted(Message):
-    def __init__(self, speaker: str) -> None:
+    def __init__(self, speaker: str, is_delegated: bool = False) -> None:
         super().__init__()
         self.speaker = speaker
+        self.is_delegated = is_delegated
 
 
 class ToolCallStarted(Message):
@@ -227,33 +386,36 @@ class MeetingTuiApp(App[None]):
         height: 1fr;
     }
     #right-sidebar {
-        width: 45;
-        border-left: solid $primary;
+        width: 55;
     }
     #agenda-panel {
         height: 1fr;
         padding: 1 2;
-        background: $surface-darken-1;
+        border-top: solid $primary;
+        border-bottom: solid $primary;
+        border-left: solid $primary;
+        border-right: solid $primary;
     }
     #participant-panel {
         height: auto;
-        max-height: 50%;
-        border-top: solid $primary;
+        max-height: 40%;
         padding: 1 1;
-        background: $surface-darken-2;
+        border-top: solid $primary;
+        border-bottom: solid $primary;
+        border-left: solid $primary;
+        border-right: solid $primary;
     }
     #participant-tree {
         height: 1fr;
         margin-top: 1;
+        padding: 1 2;
     }
     #main-panel {
         width: 1fr;
     }
     #conversation-scroll {
         height: 1fr;
-    }
-    #conversation {
-        width: 1fr;
+        padding: 1 2;
     }
     #human-input-panel {
         height: auto;
@@ -281,12 +443,14 @@ class MeetingTuiApp(App[None]):
         Binding("question_mark", "help", "도움말"),
         Binding("pageup", "scroll_up", "Page Up", show=False),
         Binding("pagedown", "scroll_down", "Page Down", show=False),
+        Binding("d", "toggle_delegated", "위임 표시"),
     ]
 
     current_speaker: reactive[str] = reactive("")
     current_agenda_idx: reactive[int] = reactive(0)
     meeting_status: reactive[str] = reactive("starting")
     input_enabled: reactive[bool] = reactive(False)
+    show_delegated: reactive[bool] = reactive(True)
 
     def __init__(
         self,
@@ -307,7 +471,10 @@ class MeetingTuiApp(App[None]):
         self._last_agendas: list[dict[str, object]] = []
         self._last_speaker_counts: dict[str, int] = {}
         self._input_provider: TuiInputProvider | None = None
-        self._full_text: str = ""
+        self._current_bubble: SpeechBubble | None = None
+        self._current_delegated_bubble: SpeechBubble | None = None
+        self._current_delegated_speaker: str = ""
+        self._speaker_colors: dict[str, str] = {}
         self._meeting_start_time: float = 0.0
         self._timer_interval: Timer | None = None
         self._participant_statuses: dict[str, str] = {}
@@ -316,8 +483,7 @@ class MeetingTuiApp(App[None]):
         yield Header()
         with Horizontal():
             with Vertical(id="main-panel"):
-                with VerticalScroll(id="conversation-scroll"):
-                    yield Static(id="conversation")
+                yield VerticalScroll(id="conversation-scroll")
             with Vertical(id="right-sidebar"):
                 yield AgendaPanel(id="agenda-panel")
                 yield ParticipantPanel(id="participant-panel")
@@ -418,31 +584,57 @@ class MeetingTuiApp(App[None]):
             self.post_message(HumanTurnStarted(username=event_name))
 
     def _handle_worker_chat_model_start(self, event: Any) -> None:
+        tags = event.get("tags", [])
         speaker = event.get("name")
         if not speaker or speaker == "ChatOpenAI":
-            tags = event.get("tags", [])
             for tag in tags:
                 if tag.startswith("speaker:"):
                     speaker = tag.replace("speaker:", "")
                     break
 
-        if speaker and speaker not in ("ChatOpenAI", "RunnableSequence") and speaker != self.current_speaker:
-            self.post_message(SpeakerChanged(speaker=speaker, pending=[]))
+        if not speaker or speaker in ("ChatOpenAI", "RunnableSequence"):
+            return
+
+        if _is_delegated(tags):
+            if speaker != self._current_delegated_speaker:
+                self.post_message(SpeakerChanged(speaker=speaker, pending=[], is_delegated=True))
+        else:
+            if speaker != self.current_speaker:
+                self.post_message(SpeakerChanged(speaker=speaker, pending=[]))
 
     def _handle_worker_chat_model_stream(self, event: Any) -> None:
         tags = event.get("tags", [])
         if "participant" not in tags:
             return
 
+        delegated = _is_delegated(tags)
         chunk = event.get("data", {}).get("chunk")
         content = getattr(chunk, "content", "")
-        if content:
-            self.post_message(TokenStreamed(token=content, agent_name=self.current_speaker))
+        if not content:
+            return
+
+        if delegated:
+            agent_name = next(
+                (tag.replace("speaker:", "") for tag in tags if tag.startswith("speaker:")),
+                self.current_speaker,
+            )
+        else:
+            agent_name = self.current_speaker
+
+        self.post_message(TokenStreamed(token=content, agent_name=agent_name, is_delegated=delegated))
 
     def _handle_worker_chat_model_end(self, event: Any) -> None:
         tags = event.get("tags", [])
         if "participant" in tags:
-            self.post_message(TurnCompleted(speaker=self.current_speaker))
+            delegated = _is_delegated(tags)
+            if delegated:
+                speaker = next(
+                    (tag.replace("speaker:", "") for tag in tags if tag.startswith("speaker:")),
+                    self._current_delegated_speaker,
+                )
+            else:
+                speaker = self.current_speaker
+            self.post_message(TurnCompleted(speaker=speaker, is_delegated=delegated))
 
     def _handle_worker_chain_end(self, event: Any) -> None:
         tags = event.get("tags", [])
@@ -483,9 +675,19 @@ class MeetingTuiApp(App[None]):
         if tool_name:
             self.post_message(ToolCallEnded(tool_name=tool_name))
 
-    def _update_conversation(self) -> None:
-        self.query_one("#conversation", Static).update(self._full_text)
-        self.query_one("#conversation-scroll", VerticalScroll).scroll_end(animate=False)
+    def _get_speaker_color(self, speaker: str) -> str:
+        if speaker not in self._speaker_colors:
+            self._speaker_colors[speaker] = _random_speaker_color()
+        return self._speaker_colors[speaker]
+
+    def _mount_bubble(self, bubble: SpeechBubble) -> None:
+        """bubble을 conversation-scroll에 마운트하고 끝으로 스크롤."""
+        scroll = self.query_one("#conversation-scroll", VerticalScroll)
+        if bubble.is_delegated and not self.show_delegated:
+            bubble.display = False
+        scroll.mount(bubble)
+        if bubble.display:
+            scroll.scroll_end(animate=False)
 
     def watch_current_speaker(self, speaker: str) -> None:
         self.sub_title = f"발언자: {speaker}" if speaker else ""
@@ -493,6 +695,11 @@ class MeetingTuiApp(App[None]):
     def watch_current_agenda_idx(self, idx: int) -> None:
         agenda_panel = self.query_one("#agenda-panel", AgendaPanel)
         agenda_panel.update_agendas(self._last_agendas, idx)
+
+    def watch_show_delegated(self, show: bool) -> None:
+        for collapsible in self.query(Collapsible):
+            if getattr(collapsible, "is_delegated", False):
+                collapsible.display = show
 
     def _tick_timer(self) -> None:
         if self.meeting_status == "ended":
@@ -516,22 +723,56 @@ class MeetingTuiApp(App[None]):
             self._render_summary()
 
     def on_token_streamed(self, event: TokenStreamed) -> None:
-        color_idx = hash(event.agent_name) % len(AGENT_COLORS)
-        color = AGENT_COLORS[color_idx]
-        self._full_text += f"[{color}]{event.token}[/{color}]"
-        self._update_conversation()
+        if event.is_delegated:
+            if self._current_delegated_bubble:
+                self._current_delegated_bubble.append_token(event.token)
+        else:
+            if self._current_bubble:
+                self._current_bubble.append_token(event.token)
+        scroll = self.query_one("#conversation-scroll", VerticalScroll)
+        scroll.scroll_end(animate=False)
 
     def on_speaker_changed(self, event: SpeakerChanged) -> None:
+        if event.is_delegated:
+            self._current_delegated_speaker = event.speaker
+            self.post_message(ParticipantStatusChanged(event.speaker, "speaking"))
+            bubble = SpeechBubble(
+                speaker=event.speaker,
+                color=self._get_speaker_color(event.speaker),
+                is_delegated=True,
+            )
+            self._current_delegated_bubble = bubble
+            if self._current_bubble:
+                collapsible = Collapsible(
+                    bubble,
+                    title=f"{event.speaker} (위임)",
+                    collapsed=False,
+                )
+                if not self.show_delegated:
+                    collapsible.display = False
+                collapsible.is_delegated = True  # type: ignore[attr-defined]
+                self._current_bubble.mount(collapsible)
+                scroll = self.query_one("#conversation-scroll", VerticalScroll)
+                scroll.scroll_end(animate=False)
+            else:
+                self._mount_bubble(bubble)
+            return
+
+        self._current_delegated_bubble = None
+        self._current_delegated_speaker = ""
         prev_speaker = self.current_speaker
         self.current_speaker = event.speaker
         self.input_enabled = False
         if prev_speaker and prev_speaker != event.speaker:
             self.post_message(ParticipantStatusChanged(prev_speaker, "idle"))
         self.post_message(ParticipantStatusChanged(event.speaker, "speaking"))
-        color_idx = hash(event.speaker) % len(AGENT_COLORS)
-        color = AGENT_COLORS[color_idx]
-        self._full_text += f"\n\n\n[bold {color}]── {event.speaker} ──[/bold {color}]\n\n"
-        self._update_conversation()
+        bubble = SpeechBubble(
+            speaker=event.speaker,
+            color=self._get_speaker_color(event.speaker),
+            is_delegated=False,
+        )
+        self._current_bubble = bubble
+        self._mount_bubble(bubble)
 
     def on_agenda_updated(self, event: AgendaUpdated) -> None:
         self._last_agendas = event.agendas
@@ -545,24 +786,40 @@ class MeetingTuiApp(App[None]):
         label.update(escape(f"[{event.username}의 차례] {agenda_title}"))
         self.post_message(ParticipantStatusChanged(event.username, "waiting_input"))
         self.input_enabled = True
-        self._full_text += f"\n\n[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]\n"
-        self._update_conversation()
+        scroll = self.query_one("#conversation-scroll", VerticalScroll)
+        scroll.mount(
+            Static(f"[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]")
+        )
+        scroll.scroll_end(animate=False)
 
     def on_turn_completed(self, event: TurnCompleted) -> None:
+        if event.is_delegated:
+            self._current_delegated_speaker = ""
+            if self._current_delegated_bubble:
+                self._current_delegated_bubble.finalize()
+                self._current_delegated_bubble = None
+            self.post_message(ParticipantStatusChanged(event.speaker, "idle"))
+            return
+        if self._current_bubble:
+            self._current_bubble.finalize()
+            # bubble 참조 유지 — tool 호출이 뒤따를 수 있으므로
+            # 다음 speaker 변경 시 None으로 초기화됨
         if event.speaker:
             self.post_message(ParticipantStatusChanged(event.speaker, "idle"))
 
     def on_tool_call_started(self, event: ToolCallStarted) -> None:
         if self.current_speaker:
             self.post_message(ParticipantStatusChanged(self.current_speaker, "tool_calling"))
-        self._full_text += f"[dim]⚙ {event.tool_name} 호출 중...[/dim]"
-        self._update_conversation()
+        active_bubble = self._current_delegated_bubble or self._current_bubble
+        if active_bubble:
+            active_bubble.show_tool_started(event.tool_name)
 
     def on_tool_call_ended(self, event: ToolCallEnded) -> None:
         if self.current_speaker:
             self.post_message(ParticipantStatusChanged(self.current_speaker, "speaking"))
-        self._full_text += " [dim]✓[/dim]\n"
-        self._update_conversation()
+        active_bubble = self._current_delegated_bubble or self._current_bubble
+        if active_bubble:
+            active_bubble.show_tool_ended()
 
     def on_participant_status_changed(self, event: ParticipantStatusChanged) -> None:
         self._participant_statuses[event.participant_name] = event.status
@@ -589,8 +846,9 @@ class MeetingTuiApp(App[None]):
             self._timer_interval.stop()
             self._timer_interval = None
         self.meeting_status = "ended"
-        self._full_text += f"\n[bold yellow]⚠ 오류: {event.error}[/bold yellow]\n"
-        self._update_conversation()
+        scroll = self.query_one("#conversation-scroll", VerticalScroll)
+        scroll.mount(Static(f"[bold yellow]⚠ 오류: {event.error}[/bold yellow]"))
+        scroll.scroll_end(animate=False)
 
     def on_resize(self) -> None:
         sidebar = self.query_one("#right-sidebar", Vertical)
@@ -602,10 +860,15 @@ class MeetingTuiApp(App[None]):
 
     def action_help(self) -> None:
         self.notify(
-            "Ctrl+C/Ctrl+Q: 종료\n?: 도움말\nPageUp/Down: 스크롤",
+            "Ctrl+C/Ctrl+Q: 종료\n?: 도움말\nPageUp/Down: 스크롤\nd: 위임 발언 표시/숨김",
             title="단축키",
             timeout=5,
         )
+
+    def action_toggle_delegated(self) -> None:
+        self.show_delegated = not self.show_delegated
+        status = "표시" if self.show_delegated else "숨김"
+        self.notify(f"위임 발언 {status}", timeout=2)
 
     def action_scroll_up(self) -> None:
         self.query_one("#conversation-scroll", VerticalScroll).scroll_page_up()
@@ -615,16 +878,20 @@ class MeetingTuiApp(App[None]):
 
     def _render_summary(self) -> None:
         total_elapsed_seconds = max(0, int(time.time() - self._meeting_start_time))
-        self._full_text += "\n\n[bold]📋 회의 요약[/bold]\n"
-        self._full_text += f"[bold cyan]⏱ 총 경과: {format_elapsed(total_elapsed_seconds)}[/bold cyan]\n\n"
+        lines = [
+            "## 📋 회의 요약",
+            "",
+            f"**⏱ 총 경과: {format_elapsed(total_elapsed_seconds)}**",
+            "",
+        ]
         for agenda in self._last_agendas:
             raw_status = agenda.get("status", "pending")
             status = raw_status if isinstance(raw_status, str) else "pending"
             emoji = STATUS_EMOJI.get(status, "❓")
             title = agenda.get("title", "")
             decision = agenda.get("decision", "-")
-            self._full_text += f"  {emoji} {title}\n"
-            self._full_text += f"     결정: {decision}\n"
+            lines.append(f"- {emoji} **{title}**")
+            lines.append(f"  - 결정: {decision}")
             duration = ""
             if status == "in_progress":
                 raw_start = agenda.get("start_time")
@@ -640,9 +907,11 @@ class MeetingTuiApp(App[None]):
                 if isinstance(raw_start, (int, float)) and isinstance(raw_end, (int, float)):
                     duration = format_elapsed(max(0, int(raw_end - raw_start)))
             if duration:
-                self._full_text += f"     소요: {duration}\n"
-        self._full_text += "\n[dim]Ctrl+C로 종료[/dim]"
-        self._update_conversation()
+                lines.append(f"  - 소요: {duration}")
+        lines.extend(["", "*Ctrl+C로 종료*"])
+        scroll = self.query_one("#conversation-scroll", VerticalScroll)
+        scroll.mount(Markdown("\n".join(lines)))
+        scroll.scroll_end(animate=False)
 
     def _get_current_agenda_title(self) -> str:
         if not self._last_agendas:
