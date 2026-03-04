@@ -18,7 +18,7 @@ from rich.table import Table
 from thetable import __version__
 from thetable.config import Settings, get_settings, setup_tracing
 from thetable.graph.workflow import build_initial_state, create_meeting_workflow
-from thetable.graph.constants import STATUS_EMOJI, HOST_ROLE_NAME
+from thetable.graph.constants import STATUS_EMOJI
 from thetable.interfaces.logging import setup_logging
 from thetable.interfaces.time_utils import format_elapsed
 
