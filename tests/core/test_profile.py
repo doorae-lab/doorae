@@ -1,5 +1,11 @@
 import pytest
-from thetable.core.profile import AgentLLMConfig, AgentProfile, load_agent_profiles
+from thetable.core.profile import (
+    AgentLLMConfig,
+    AgentProfile,
+    flatten_all_profiles,
+    load_agent_profiles,
+    validate_no_cycles,
+)
 
 
 def test_agent_profile_creation():
@@ -65,13 +71,11 @@ def test_load_agent_profiles_from_yaml():
 
 def test_hierarchical_agent_profile():
     """계층적 Agent Profile 테스트"""
-    # 현재 TechLead는 하위 에이전트가 주석 처리되어 leaf 노드
     profiles = load_agent_profiles("config/agent_profiles.yaml")
     tech_lead = profiles["TechLead"]
 
-    # TechLead는 현재 leaf 노드 (agents 주석 처리됨)
-    assert not tech_lead.is_supervisor()
-    assert tech_lead.get_child_names() == []
+    assert tech_lead.is_supervisor()
+    assert tech_lead.get_child_names() == ["Backend", "Frontend"]
 
     # PM도 leaf 노드
     pm = profiles["PM"]
@@ -112,6 +116,45 @@ def test_host_profile_exists():
     # Host는 leaf 노드여야 함 (하위 에이전트 없음)
     assert not profiles["Host"].is_supervisor()
     assert profiles["Host"].get_child_names() == []
+
+
+def test_flatten_all_profiles_includes_nested_agents():
+    profiles = load_agent_profiles("config/agent_profiles.yaml")
+    flat_profiles = flatten_all_profiles(profiles)
+
+    assert {"Host", "PM", "TechLead", "Backend", "Frontend"}.issubset(flat_profiles.keys())
+    assert flat_profiles["Backend"].role == "backend_engineer"
+    assert flat_profiles["Frontend"].role == "frontend_engineer"
+
+
+def test_validate_no_cycles_raises_on_recursive_reference():
+    profiles = {
+        "A": AgentProfile(
+            name="A",
+            role="lead",
+            responsibilities=["coordination"],
+            expertise=["planning"],
+            agents=[
+                AgentProfile(
+                    name="B",
+                    role="worker",
+                    responsibilities=["execute"],
+                    expertise=["python"],
+                    agents=[
+                        AgentProfile(
+                            name="A",
+                            role="lead",
+                            responsibilities=["coordination"],
+                            expertise=["planning"],
+                        )
+                    ],
+                )
+            ],
+        )
+    }
+
+    with pytest.raises(ValueError, match="Agent cycle detected"):
+        validate_no_cycles(profiles)
 
 
 def test_host_profile_responsibilities():

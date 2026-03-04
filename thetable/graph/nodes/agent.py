@@ -8,13 +8,14 @@ from thetable.core.profile import AgentProfile
 from thetable.agents.base_agent import BaseAgent
 from thetable.graph.nodes.base import BaseNode, NodeType
 from thetable.graph.nodes.registry import register_node
-from thetable.graph.state import MeetingState
+from thetable.graph.state import MeetingState, ParticipantStatus
 from thetable.graph.constants import STATUS_EMOJI, STATUS_TEXT, HOST_ROLE_NAME
 from thetable.graph.agenda_tools import (
     create_propose_tool,
     create_approve_tool,
     create_reject_tool,
 )
+from thetable.graph.sub_agent_tool import create_sub_agent_tool
 
 
 @register_node("agent", category="agents")
@@ -61,6 +62,8 @@ class AgentNode(BaseNode):
         self.profile = profile
         self.all_agent_names = all_agent_names or []
         self.all_profiles = all_profiles or {}
+        self.sub_agent_tools: list = []
+        self._mcp_tools = mcp_tools or {}
 
         if model is None:
             from thetable.config import create_agent_llm, get_settings
@@ -72,11 +75,11 @@ class AgentNode(BaseNode):
             )
 
         # mcp_tools에서 agent_tools 자동 추출
-        if tools is None and mcp_tools and profile.mcp_tools:
+        if tools is None and self._mcp_tools and profile.mcp_tools:
             tools = []
             for server_name in profile.mcp_tools:
-                if server_name in mcp_tools:
-                    tools.extend(mcp_tools[server_name])
+                if server_name in self._mcp_tools:
+                    tools.extend(self._mcp_tools[server_name])
             if tools:
                 logger.info(
                     f"✅ {profile.name}: {len(tools)}개 MCP 도구 연결 "
@@ -90,6 +93,23 @@ class AgentNode(BaseNode):
         if tools:
             self.agent.bind_mcp_tools(tools)
             logger.info(f"[{profile.name}] 🔧 MCP 도구 바인딩: {len(tools)}개")
+
+        # supervisor profile이면 하위 에이전트를 tool로 바인딩
+        if profile.is_supervisor():
+            for sub_profile in profile.agents or []:
+                sub_tool = create_sub_agent_tool(
+                    sub_profile=sub_profile,
+                    model=model,
+                    parent_name=profile.name,
+                    mcp_tools=self._mcp_tools,
+                )
+                self.sub_agent_tools.append(sub_tool)
+            if self.sub_agent_tools:
+                logger.info(
+                    f"[{profile.name}] 👥 하위 에이전트 도구 바인딩: "
+                    f"{len(self.sub_agent_tools)}개"
+                )
+
     async def execute(self, state: MeetingState) -> Dict[str, Any]:
         """에이전트 발언 생성
 
@@ -104,6 +124,7 @@ class AgentNode(BaseNode):
         current_idx = state.get("current_agenda_idx", 0)
         summary = state.get("summary", "")
         pending_proposals: List[dict] = list(state.get("pending_proposals", []))
+        participant_statuses: Dict[str, str] = dict(state.get("participant_statuses", {}))
 
         # 대화 기록을 명확한 포맷으로 변환
         formatted_messages = []
@@ -163,13 +184,18 @@ class AgentNode(BaseNode):
             agenda_tools.append(create_approve_tool(agenda_actions, pending_proposals))
             agenda_tools.append(create_reject_tool(agenda_actions, pending_proposals))
 
+        all_tools = agenda_tools + self.sub_agent_tools
+
         # BaseAgent의 invoke_with_tools 사용
         config = {
             "tags": ["participant", f"speaker:{self.profile.name}"],
             "run_name": self.profile.name,
         }
+        participant_statuses[self.profile.name] = ParticipantStatus.speaking.value
+        if all_tools or getattr(self.agent, "_mcp_tools", []):
+            participant_statuses[self.profile.name] = ParticipantStatus.tool_calling.value
         response = await self.agent.invoke_with_tools(
-            all_messages, config=config, extra_tools=agenda_tools
+            all_messages, config=config, extra_tools=all_tools
         )
         response.name = self.profile.name
 
@@ -181,7 +207,11 @@ class AgentNode(BaseNode):
                 name=self.profile.name,
             )
 
-        result: Dict[str, Any] = {"messages": [response]}
+        participant_statuses[self.profile.name] = ParticipantStatus.idle.value
+        result: Dict[str, Any] = {
+            "messages": [response],
+            "participant_statuses": participant_statuses,
+        }
 
         # 안건 액션 처리
         if agenda_actions:

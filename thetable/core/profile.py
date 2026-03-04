@@ -2,6 +2,7 @@
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 import yaml
+from loguru import logger
 
 
 class AgentLLMConfig(BaseModel):
@@ -46,14 +47,57 @@ class AgentProfile(BaseModel):
 AgentProfile.model_rebuild()
 
 
+def validate_no_cycles(profiles: Dict[str, AgentProfile]) -> None:
+    """하위 에이전트 순환 참조 검증."""
+
+    def dfs(profile: AgentProfile, path: List[str]) -> None:
+        if profile.name in path:
+            cycle_path = " -> ".join(path + [profile.name])
+            raise ValueError(f"Agent cycle detected: {cycle_path}")
+
+        next_path = path + [profile.name]
+        for child in profile.agents or []:
+            dfs(child, next_path)
+
+    for profile in profiles.values():
+        dfs(profile, [])
+
+
+def flatten_all_profiles(profiles: Dict[str, AgentProfile]) -> Dict[str, AgentProfile]:
+    """모든 레벨의 참여자를 flat dict로 반환."""
+    flat: Dict[str, AgentProfile] = {}
+
+    def walk(profile: AgentProfile) -> None:
+        if profile.name in flat:
+            raise ValueError(f"Duplicate agent name detected: {profile.name}")
+        flat[profile.name] = profile
+        for child in profile.agents or []:
+            walk(child)
+
+    for profile in profiles.values():
+        walk(profile)
+
+    return flat
+
+
 def load_agent_profiles(yaml_path: str) -> Dict[str, AgentProfile]:
     """YAML 파일에서 Agent Profile 로드"""
     with open(yaml_path, 'r', encoding='utf-8') as f:
         data = yaml.safe_load(f)
 
-    profiles = {}
+    profiles: Dict[str, AgentProfile] = {}
     for agent_data in data.get('agents', []):
-        profile = AgentProfile(**agent_data)
+        payload = dict(agent_data)
+        if payload.get("is_human") and payload.get("agents"):
+            logger.warning(
+                f"[{payload.get('name', 'unknown')}] is_human=true 이므로 agents 필드는 무시됩니다."
+            )
+            payload.pop("agents", None)
+
+        profile = AgentProfile(**payload)
+        if profile.name in profiles:
+            raise ValueError(f"Duplicate top-level agent name detected: {profile.name}")
         profiles[profile.name] = profile
 
+    validate_no_cycles(profiles)
     return profiles

@@ -85,29 +85,29 @@ agents:
       # additional_instructions: |
       #   Always base your contributions on real data when tools are available.
       # review_required: true
-    # agents:
-    #   - name: Backend
-    #     role: backend_engineer
-    #     responsibilities:
-    #       - API 설계 및 구현
-    #       - 데이터베이스 최적화
-    #       - 서버 로직 개발
-    #     expertise:
-    #       - Python
-    #       - PostgreSQL
-    #       - FastAPI
-    #     phase_triggers: {}
-    #   - name: Frontend
-    #     role: frontend_engineer
-    #     responsibilities:
-    #       - UI 컴포넌트 구현
-    #       - 사용자 경험 최적화
-    #       - 반응형 디자인
-    #     expertise:
-    #       - React
-    #       - TypeScript
-    #       - CSS
-    #     phase_triggers: {}
+    agents:
+      - name: Backend
+        role: backend_engineer
+        responsibilities:
+          - API 설계 및 구현
+          - 데이터베이스 최적화
+          - 서버 로직 개발
+        expertise:
+          - Python
+          - PostgreSQL
+          - FastAPI
+        phase_triggers: {}
+      - name: Frontend
+        role: frontend_engineer
+        responsibilities:
+          - UI 컴포넌트 구현
+          - 사용자 경험 최적화
+          - 반응형 디자인
+        expertise:
+          - React
+          - TypeScript
+          - CSS
+        phase_triggers: {}
 
   # - name: DevOps
   #   role: devops_engineer
@@ -131,28 +131,7 @@ agents:
   #     - 사용성 테스트
   #   phase_triggers: {}
 
-  - name: Backend
-    role: backend_engineer
-    responsibilities:
-      - API 설계 및 구현
-      - 데이터베이스 최적화
-      - 서버 로직 개발
-    expertise:
-      - Python
-      - PostgreSQL
-      - FastAPI
-    phase_triggers: {}
-  - name: Frontend
-    role: frontend_engineer
-    responsibilities:
-      - UI 컴포넌트 구현
-      - 사용자 경험 최적화
-      - 반응형 디자인
-    expertise:
-      - React
-      - TypeScript
-      - CSS
-    phase_triggers: {}
+  # Backend/Frontend는 TechLead의 하위 에이전트로 동작
 
 
   # 사용자 참여 예시 (주석 해제 시 실제 사용자가 참여 가능)
