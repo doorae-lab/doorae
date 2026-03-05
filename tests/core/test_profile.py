@@ -205,3 +205,30 @@ def test_agent_profile_llm_config_loaded():
     assert profile.llm.base_url == "https://example.ai/v1"
     assert profile.llm.temperature == 0.2
     assert profile.llm.max_tokens == 512
+
+
+def test_agent_llm_config_resolves_env_vars(monkeypatch):
+    """${VAR} 패턴이 환경변수 값으로 치환된다"""
+    monkeypatch.setenv("MY_API_KEY", "sk-real-key-123")
+    monkeypatch.setenv("MY_BASE_URL", "https://api.example.com/v1")
+
+    config = AgentLLMConfig(
+        api_key="${MY_API_KEY}",
+        base_url="${MY_BASE_URL}",
+        model="gpt-4.1-mini",
+    )
+
+    assert config.api_key == "sk-real-key-123"
+    assert config.base_url == "https://api.example.com/v1"
+    assert config.model == "gpt-4.1-mini"  # 일반 문자열은 그대로
+
+
+def test_agent_llm_config_unset_env_var_becomes_none(monkeypatch):
+    """존재하지 않는 환경변수 참조 시 None으로 fallback"""
+    monkeypatch.delenv("NONEXISTENT_KEY", raising=False)
+
+    config = AgentLLMConfig(
+        api_key="${NONEXISTENT_KEY}",
+    )
+
+    assert config.api_key is None

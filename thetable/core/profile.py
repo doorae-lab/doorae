@@ -1,8 +1,20 @@
 """Agent profile system"""
+import os
+import re
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 import yaml
 from loguru import logger
+
+
+def _resolve_env_var(value: str | None) -> str | None:
+    """${VAR} 패턴을 환경변수 값으로 치환. 미설정 시 None 반환."""
+    if value is None:
+        return None
+    match = re.fullmatch(r"\$\{(\w+)\}", value)
+    if match:
+        return os.environ.get(match.group(1))
+    return value
 
 
 class AgentLLMConfig(BaseModel):
@@ -13,6 +25,13 @@ class AgentLLMConfig(BaseModel):
     base_url: Optional[str] = None
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
+
+    @model_validator(mode="after")
+    def resolve_env_vars(self) -> "AgentLLMConfig":
+        self.model = _resolve_env_var(self.model)
+        self.api_key = _resolve_env_var(self.api_key)
+        self.base_url = _resolve_env_var(self.base_url)
+        return self
 
 
 class AgentProfile(BaseModel):
