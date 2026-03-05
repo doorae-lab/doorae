@@ -23,6 +23,7 @@ Hello everyone, let's begin today's sprint meeting. The first agenda item is...
 [PM]
 Let me share the current project status. Based on the GitHub issues...
 ```
+<img width="1080" height="1794" alt="image" src="https://github.com/user-attachments/assets/75135a4c-1789-4cf5-9202-2f7a9198b132" />
 
 ## Features
 
