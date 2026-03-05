@@ -40,15 +40,17 @@ agents:
   - name: PM
     role: project_manager
     responsibilities:
-      - 프로젝트 일정 관리(Github Project, milestone, issue 기반)
+      - 프로젝트 일정 관리
+      - 마일스톤 관리
+      - 이슈 상태 관리
       - 진행 상황 보고
       # - 리스크 식별
       - 실무진 의견 수렴
     expertise:
       - 일정 계획
       - 자원 관리
-    phase_triggers:
-      status_check: "프로젝트 현황을 보고하세요"
+    # phase_triggers:
+    #   status_check: "프로젝트 현황을 보고하세요"
     mcp_tools:
       - github
     metadata:
@@ -56,13 +58,13 @@ agents:
       # default_branch: "main"
       additional_instructions: |
         (IMPORTANT) 도구를 적극적으로 사용하세요.
-    # llm:
-    #   # 에이전트별 모델/provider 오버라이드 (미설정 항목은 .env 전역값 fallback)
-    #   model: "openai/gpt-4.1-mini"
-    #   api_key: "${OPENROUTER_API_KEY}"
-    #   base_url: "https://openrouter.ai/api/v1"
-    #   temperature: 0.2
-    #   max_tokens: 1200
+    llm:
+      # 에이전트별 모델/provider 오버라이드 (미설정 항목은 .env 전역값 fallback)
+      model: "qwen/qwen3.5-35b-a3b"
+      api_key: "${OPENAI_API_KEY}"
+      base_url: "${OPENAI_BASE_URL}"
+      temperature: 0.2
+      max_tokens: 3000
 
   - name: TechLead
     role: tech_lead
@@ -135,14 +137,14 @@ agents:
 
 
   # 사용자 참여 예시 (주석 해제 시 실제 사용자가 참여 가능)
-  # - name: chulsoo
-  #   role: backend_engineer
-  #   is_human: true
-  #   responsibilities:
-  #     - 백엔드 아키텍처 의견 제시
-  #     - 기술적 리스크 검토
-  #   expertise:
-  #     - Python
-  #     - FastAPI
-  #     - PostgreSQL
-  #   phase_triggers: {}
+  - name: chulsoo
+    role: backend_engineer
+    is_human: true
+    responsibilities:
+      - 백엔드 아키텍처 의견 제시
+      - 기술적 리스크 검토
+    expertise:
+      - Python
+      - FastAPI
+      - PostgreSQL
+    phase_triggers: {}
