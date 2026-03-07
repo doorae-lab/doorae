@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import pytest
-from textual.widgets import Input, Static
+from textual.widgets import Input, Markdown, Static
 
 from thetable.config import Settings
-from thetable.interfaces.tui import HumanTurnStarted, MeetingTuiApp, SpeakerChanged
+from thetable.interfaces.tui import HumanTurnStarted, MeetingTuiApp, SpeakerChanged, SpeechBubble
 
 
 class DummyMeetingTuiApp(MeetingTuiApp):
@@ -15,9 +15,24 @@ class DummyMeetingTuiApp(MeetingTuiApp):
     async def on_mount(self) -> None:
         return
 
+    def run_meeting_worker(self) -> None:
+        return
+
+
+class RecordingInputProvider:
+    def __init__(self) -> None:
+        self.submitted: list[str] = []
+
+    def submit_input(self, value: str) -> None:
+        self.submitted.append(value)
+
 
 def _static_text(widget: Static) -> str:
     return str(widget.content)
+
+
+def _speaker_bubbles(app: MeetingTuiApp, speaker: str) -> list[SpeechBubble]:
+    return [bubble for bubble in app.query(SpeechBubble) if bubble._speaker == speaker]
 
 
 @pytest.mark.asyncio
@@ -95,3 +110,56 @@ async def test_get_current_agenda_title_fallbacks() -> None:
 
         app.current_agenda_idx = 0
         assert app._get_current_agenda_title() == "로드맵"
+
+
+@pytest.mark.asyncio
+async def test_input_submission_mounts_human_bubble_and_forwards_value() -> None:
+    app = DummyMeetingTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+    )
+
+    async with app.run_test() as pilot:
+        input_provider = RecordingInputProvider()
+        app._input_provider = input_provider
+        app.on_human_turn_started(HumanTurnStarted(username="민지"))
+        await pilot.pause()
+
+        input_widget = app.query_one("#input-area", Input)
+        app.on_input_submitted(Input.Submitted(input=input_widget, value="찬성합니다"))
+        await pilot.pause()
+
+        bubbles = _speaker_bubbles(app, "민지")
+        panel = app.query_one("#human-input-panel")
+
+        assert input_provider.submitted == ["찬성합니다"]
+        assert len(bubbles) == 1
+        assert bubbles[0]._buffer == "찬성합니다"
+        assert bubbles[0]._body is None
+        assert bubbles[0].query_one(Markdown)
+        assert "visible" not in panel.classes
+        assert app._current_human_speaker == ""
+
+
+@pytest.mark.asyncio
+async def test_blank_input_submission_skips_human_bubble() -> None:
+    app = DummyMeetingTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+    )
+
+    async with app.run_test() as pilot:
+        input_provider = RecordingInputProvider()
+        app._input_provider = input_provider
+        app.on_human_turn_started(HumanTurnStarted(username="민지"))
+        await pilot.pause()
+
+        input_widget = app.query_one("#input-area", Input)
+        app.on_input_submitted(Input.Submitted(input=input_widget, value="   "))
+        await pilot.pause()
+
+        assert input_provider.submitted == ["   "]
+        assert _speaker_bubbles(app, "민지") == []
+        assert app._current_human_speaker == ""
