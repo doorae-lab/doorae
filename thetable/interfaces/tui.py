@@ -474,6 +474,7 @@ class MeetingTuiApp(App[None]):
         self._current_bubble: SpeechBubble | None = None
         self._current_delegated_bubble: SpeechBubble | None = None
         self._current_delegated_speaker: str = ""
+        self._current_human_speaker: str = ""
         self._speaker_colors: dict[str, str] = {}
         self._meeting_start_time: float = 0.0
         self._timer_interval: Timer | None = None
@@ -760,6 +761,7 @@ class MeetingTuiApp(App[None]):
 
         self._current_delegated_bubble = None
         self._current_delegated_speaker = ""
+        self._current_human_speaker = ""
         prev_speaker = self.current_speaker
         self.current_speaker = event.speaker
         self.input_enabled = False
@@ -783,6 +785,7 @@ class MeetingTuiApp(App[None]):
     def on_human_turn_started(self, event: HumanTurnStarted) -> None:
         label = self.query_one("#human-input-label", Static)
         agenda_title = self._get_current_agenda_title()
+        self._current_human_speaker = event.username
         label.update(escape(f"[{event.username}의 차례] {agenda_title}"))
         self.post_message(ParticipantStatusChanged(event.username, "waiting_input"))
         self.input_enabled = True
@@ -827,10 +830,20 @@ class MeetingTuiApp(App[None]):
         participant_panel.update_status(event.participant_name, event.status)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        submitted_value = event.value
         if self._input_provider is not None:
-            self._input_provider.submit_input(event.value)
+            self._input_provider.submit_input(submitted_value)
+        if submitted_value.strip() and self._current_human_speaker:
+            bubble = SpeechBubble(
+                speaker=self._current_human_speaker,
+                color=self._get_speaker_color(self._current_human_speaker),
+            )
+            bubble.append_token(submitted_value)
+            self._mount_bubble(bubble)
+            self.call_after_refresh(bubble.finalize)
         event.input.clear()
         self.input_enabled = False
+        self._current_human_speaker = ""
 
     def on_meeting_ended(self, event: MeetingEnded) -> None:
         self._last_agendas = event.agendas
