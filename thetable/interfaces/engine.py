@@ -66,6 +66,35 @@ class MeetingEngineCallback(Protocol):
     async def on_tool_call(self, name: str, status: str) -> None: ...
 
 
+def _merge_profiles_for_setup(
+    base_profiles: dict[str, AgentProfile],
+    override_profiles: dict[str, AgentProfile],
+) -> dict[str, AgentProfile]:
+    """Merge runtime overrides while removing shadowed nested participants."""
+    if not override_profiles:
+        return base_profiles
+
+    shadowed_names = set(override_profiles)
+
+    def prune_shadowed_agents(profile: AgentProfile) -> AgentProfile:
+        children = [
+            prune_shadowed_agents(child)
+            for child in profile.agents or []
+            if child.name not in shadowed_names
+        ]
+        if children == list(profile.agents or []):
+            return profile
+        return profile.model_copy(update={"agents": children or None})
+
+    merged_profiles = {
+        name: prune_shadowed_agents(profile)
+        for name, profile in base_profiles.items()
+        if name not in shadowed_names
+    }
+    merged_profiles.update(override_profiles)
+    return merged_profiles
+
+
 class MeetingEngine:
     """Shared workflow setup and event dispatch surface."""
 
@@ -98,9 +127,8 @@ class MeetingEngine:
 
     def setup(self) -> MeetingEngineSetup:
         """Build the shared workflow context for one meeting run."""
-        top_profiles = load_agent_profiles(self._profiles_path)
-        if self._profiles_override:
-            top_profiles.update(self._profiles_override)
+        base_profiles = load_agent_profiles(self._profiles_path)
+        top_profiles = _merge_profiles_for_setup(base_profiles, self._profiles_override)
 
         all_profiles = flatten_all_profiles(top_profiles)
         human_names = [name for name, profile in all_profiles.items() if profile.is_human]

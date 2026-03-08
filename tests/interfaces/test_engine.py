@@ -124,6 +124,48 @@ def test_setup_builds_shared_context_with_flattened_humans() -> None:
     assert initial_state["participant_statuses"] == {"Host": "idle", "Alice": "idle", "Bob": "idle"}
 
 
+def test_setup_allows_runtime_profile_to_shadow_nested_agent_name() -> None:
+    top_profiles = {
+        "TechLead": _make_profile(
+            "TechLead",
+            children=[
+                _make_profile("Backend"),
+                _make_profile("Frontend"),
+            ],
+        )
+    }
+    override_profiles = {"Backend": _make_profile("Backend", is_human=True)}
+    mock_workflow = object()
+    initial_state = {"agendas": [], "current_agenda_idx": 0}
+
+    with patch("thetable.interfaces.engine.load_agent_profiles", return_value=top_profiles), patch(
+        "thetable.interfaces.engine.create_meeting_workflow",
+        return_value=mock_workflow,
+    ), patch(
+        "thetable.interfaces.engine.load_agendas",
+        return_value=[],
+    ), patch(
+        "thetable.interfaces.engine.build_initial_state",
+        return_value=initial_state,
+    ):
+        engine = MeetingEngine(
+            initial_message="회의를 시작합니다",
+            settings=Settings(),
+            profiles_override=override_profiles,
+        )
+        setup_state = engine.setup()
+
+    assert setup_state.all_profiles["Backend"].is_human is True
+    assert setup_state.human_names == ["Backend"]
+    assert setup_state.human_name_lookup == {"backend": "Backend"}
+    assert setup_state.top_profiles["TechLead"].get_child_names() == ["Frontend"]
+    assert engine.runtime_state.participant_statuses == {
+        "TechLead": "idle",
+        "Frontend": "idle",
+        "Backend": "idle",
+    }
+
+
 @pytest.mark.asyncio
 async def test_run_dispatches_callback_protocol_from_streamed_events() -> None:
     events = [
