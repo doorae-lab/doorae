@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import asyncio
-import colorsys
 import os
-import random
 import sys
 import time
 from pathlib import Path
@@ -21,6 +19,8 @@ from rich.table import Table
 from thetable import __version__
 from thetable.config import Settings, get_settings, setup_tracing
 from thetable.graph.constants import STATUS_EMOJI
+from thetable.interfaces.engine import MeetingEngine
+from thetable.interfaces.event_utils import random_speaker_color
 from thetable.interfaces.logging import setup_logging
 from thetable.interfaces.time_utils import format_elapsed
 
@@ -47,148 +47,96 @@ def should_use_tui(no_tui_flag: bool) -> bool:
     return True
 
 
-# 스트리밍 이벤트 핸들러
-def _handle_chain_start(event: dict, state_ref: dict) -> None:
-    """on_chain_start 이벤트 처리 - 안건 상태 표시"""
-    name = event.get("name", "")
-    if name != "process_response":
-        return
+class CliMeetingCallback:
+    """Rich console adapter for MeetingEngine events."""
 
-    data = event.get("data", {})
-    input_data = data.get("input", {})
-    current_idx = input_data.get("current_agenda_idx", 0)
-    agendas = input_data.get("agendas", [])
+    def __init__(self, start_time: float, hide_delegated: bool = False) -> None:
+        self._start_time = start_time
+        self._hide_delegated = hide_delegated
+        self._current_speaker: str | None = None
+        self._current_delegated_speaker: str | None = None
+        self._speaker_colors: dict[str, str] = {}
+        self._prev_agenda_state: tuple[int, tuple[tuple[str, str], ...]] | None = None
 
-    # 상태 변경 감지
-    current_state = (
-        current_idx,
-        tuple((agenda["title"], agenda["status"]) for agenda in agendas),
-    )
+    def _get_speaker_color(self, speaker: str) -> str:
+        if speaker not in self._speaker_colors:
+            self._speaker_colors[speaker] = random_speaker_color()
+        return self._speaker_colors[speaker]
 
-    if current_state != state_ref.get("prev_agenda_state"):
-        state_ref["prev_agenda_state"] = current_state
-        # 안건 패널 출력
-        panel = format_agenda_panel(agendas, current_idx, state_ref["start_time"])
-        console.print(panel)
-        console.print()
+    async def on_raw_event(self, event: dict) -> None:
+        _ = event
 
-
-def _random_speaker_color() -> str:
-    """터미널 다크 배경에서 읽기 좋은 랜덤 hex 색상 생성."""
-    h = random.random()
-    s = random.uniform(0.6, 1.0)
-    l = random.uniform(0.45, 0.65)
-    r, g, b = colorsys.hls_to_rgb(h, l, s)
-    return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
-
-
-def _get_speaker_color(state_ref: dict, speaker: str) -> str:
-    colors = state_ref.setdefault("speaker_colors", {})
-    if speaker not in colors:
-        colors[speaker] = _random_speaker_color()
-    return colors[speaker]
-
-
-def _is_delegated(tags: list[str]) -> bool:
-    """delegated_by: 태그 여부 확인."""
-    return any(tag.startswith("delegated_by:") for tag in tags)
-
-
-def _handle_chat_model_start(event: dict, state_ref: dict) -> None:
-    """on_chat_model_start 이벤트 처리 - 발언자 표시"""
-    tags = event.get("tags", [])
-    speaker = event.get("name")
-
-    # run_name이 없으면 tags에서 speaker: 접두사 찾기
-    if not speaker or speaker == "ChatOpenAI":
-        for tag in tags:
-            if tag.startswith("speaker:"):
-                speaker = tag.replace("speaker:", "")
-                break
-
-    if not speaker or speaker in ("ChatOpenAI", "RunnableSequence"):
-        return
-
-    if _is_delegated(tags):
-        state_ref["in_delegated"] = True
-        if not state_ref.get("hide_delegated") and speaker != state_ref.get("current_delegated_speaker"):
-            state_ref["current_delegated_speaker"] = speaker
+    async def on_speaker_changed(self, speaker: str, is_delegated: bool) -> None:
+        if is_delegated:
+            if self._hide_delegated or speaker == self._current_delegated_speaker:
+                return
+            self._current_delegated_speaker = speaker
             console.print(f"\n  [dim]↳ {speaker} (위임)[/dim]")
-    else:
-        state_ref["in_delegated"] = False
-        state_ref["current_delegated_speaker"] = None
-        if speaker != state_ref.get("current_speaker"):
-            if state_ref.get("current_speaker"):
-                console.print()  # 이전 발언 줄바꿈
-            color = _get_speaker_color(state_ref, speaker)
-            console.print(f"\n[bold {color}][{speaker}][/bold {color}]")
-            state_ref["current_speaker"] = speaker
+            return
 
+        self._current_delegated_speaker = None
+        if speaker == self._current_speaker:
+            return
+        if self._current_speaker:
+            console.print()
+        color = self._get_speaker_color(speaker)
+        console.print(f"\n[bold {color}][{speaker}][/bold {color}]")
+        self._current_speaker = speaker
 
-def _handle_chat_model_stream(event: dict, state_ref: dict) -> None:
-    """on_chat_model_stream 이벤트 처리 - 토큰 출력"""
-    tags = event.get("tags", [])
-    if "participant" not in tags:
-        return
-
-    if state_ref.get("in_delegated"):
-        if not state_ref.get("hide_delegated"):
-            chunk = event["data"]["chunk"]
-            content = getattr(chunk, "content", "")
-            if content:
+    async def on_token(self, content: str, speaker: str, is_delegated: bool) -> None:
+        _ = speaker
+        if is_delegated:
+            if not self._hide_delegated:
                 console.print(f"  [dim]{content}[/dim]", end="")
-        return
-
-    chunk = event["data"]["chunk"]
-    content = getattr(chunk, "content", "")
-    if content:
+            return
         console.print(content, end="")
 
+    async def on_turn_completed(self, speaker: str, is_delegated: bool) -> None:
+        _ = speaker
+        if is_delegated:
+            self._current_delegated_speaker = None
+            if not self._hide_delegated:
+                console.print()
+            return
+        console.print()
+        console.rule(style="dim")
 
-def _handle_chat_model_end(event: dict, state_ref: dict) -> None:
-    """on_chat_model_end 이벤트 처리 - 응답 완료"""
-    tags = event.get("tags", [])
-    if "participant" not in tags:
-        return
+    async def on_human_turn_started(self, username: str) -> None:
+        _ = username
 
-    if _is_delegated(tags):
-        state_ref["in_delegated"] = False
-        if not state_ref.get("hide_delegated"):
-            console.print()  # 줄바꿈
-        return
+    async def on_agenda_updated(self, agendas: list[dict], current_idx: int) -> None:
+        current_state = (
+            current_idx,
+            tuple(
+                (
+                    str(agenda.get("title", "")),
+                    str(agenda.get("status", "")),
+                )
+                for agenda in agendas
+            ),
+        )
+        if current_state == self._prev_agenda_state:
+            return
+        self._prev_agenda_state = current_state
+        console.print(format_agenda_panel(agendas, current_idx, self._start_time))
+        console.print()
 
-    console.print()  # 줄바꿈
-    console.rule(style="dim")
+    async def on_meeting_ended(
+        self,
+        agendas: list[dict],
+        speaker_counts: dict[str, int],
+    ) -> None:
+        _print_summary_table(agendas, speaker_counts)
 
+    async def on_pending_speakers_changed(self, pending_speakers: list[str]) -> None:
+        if pending_speakers:
+            console.print(f"[dim]다음 발언 예정: {', '.join(pending_speakers)}[/dim]")
 
-def _handle_chain_end(event: dict, state_ref: dict) -> None:
-    """on_chain_end 이벤트 처리 - pending_speakers 표시 및 상태 누적"""
-    tags = event.get("tags", [])
-    if "langgraph_node" not in tags:
-        return
+    async def on_participant_status_changed(self, participant_name: str, status: str) -> None:
+        _ = (participant_name, status)
 
-    # node_name 추출
-    try:
-        idx = tags.index("langgraph_node")
-        node_name = tags[idx + 1] if idx + 1 < len(tags) else None
-    except (ValueError, IndexError):
-        return
-
-    if node_name != "process_response":
-        return
-
-    data = event.get("data", {})
-    output_data = data.get("output", {})
-    pending = output_data.get("pending_speakers", [])
-
-    if pending:
-        console.print(f"[dim]다음 발언 예정: {', '.join(pending)}[/dim]")
-
-    # 상태 누적 (요약 테이블용)
-    if "agendas" in output_data:
-        state_ref["agendas"] = output_data["agendas"]
-    if "speaker_counts" in output_data:
-        state_ref["speaker_counts"] = output_data["speaker_counts"]
+    async def on_tool_call(self, name: str, status: str) -> None:
+        _ = (name, status)
 
 
 def _print_summary_table(agendas: Optional[List[dict]], speaker_counts: Optional[dict]) -> None:
@@ -205,12 +153,10 @@ def _print_summary_table(agendas: Optional[List[dict]], speaker_counts: Optional
     table.add_column("항목", style="cyan")
     table.add_column("값", style="yellow")
 
-    # 안건 상태
     if agendas:
         completed = sum(1 for agenda in agendas if agenda["status"] == "completed")
         table.add_row("완료된 안건", f"{completed}/{len(agendas)}")
 
-    # 발언 횟수
     if speaker_counts:
         for speaker, count in speaker_counts.items():
             table.add_row(f"{speaker} 발언 횟수", str(count))
@@ -219,50 +165,34 @@ def _print_summary_table(agendas: Optional[List[dict]], speaker_counts: Optional
     console.print(table)
 
 
-def format_agenda_panel(agendas: List[dict], current_idx: int, start_time: float) -> Panel:
-    """안건 상태를 Rich Panel로 포맷팅
-
-    Args:
-        agendas: 안건 리스트
-        current_idx: 현재 안건 인덱스
-        start_time: 회의 시작 시간 (Unix timestamp)
-
-    Returns:
-        Rich Panel 객체
-    """
+def format_agenda_panel(
+    agendas: List[dict],
+    current_idx: int,
+    start_time: float,
+) -> Panel:
+    """안건 상태를 Rich Panel로 포맷팅."""
     lines = []
 
     for i, agenda in enumerate(agendas):
-        # 상태 이모지
         status_emoji = STATUS_EMOJI.get(agenda["status"], "❓")
-
-        # owner: required_speakers의 첫 번째
         owner = agenda.get("required_speakers", [""])[0] if agenda.get("required_speakers") else ""
 
-        # 시간 계산
         time_str = ""
         if agenda["status"] == "in_progress":
-            # 진행 중: 경과 시간
             agenda_start = agenda.get("start_time") or start_time
             elapsed = time.time() - agenda_start
             time_str = f" [{format_elapsed(max(0, int(elapsed)))}]"
         elif agenda["status"] == "completed":
-            # 완료: 총 소요 시간
             agenda_start = agenda.get("start_time")
             agenda_end = agenda.get("end_time")
             if agenda_start and agenda_end:
                 elapsed = agenda_end - agenda_start
                 time_str = f" [{format_elapsed(max(0, int(elapsed)))}]"
 
-        # 현재 안건 표시
         indicator = " ← 현재" if i == current_idx else ""
-
-        # 라인 구성
         title = agenda["title"]
-        line = f"  {status_emoji} {i + 1}. {title} ({owner}){time_str}{indicator}"
-        lines.append(line)
+        lines.append(f"  {status_emoji} {i + 1}. {title} ({owner}){time_str}{indicator}")
 
-        # 결정사항 표시 (있으면)
         if agenda.get("decision"):
             lines.append(f"     └─ {agenda['decision']}")
 
@@ -309,6 +239,7 @@ def _run_command_impl(
             settings=settings,
             use_tui=use_tui,
             hide_delegated=hide_delegated,
+            app_title=app_title,
         )
     )
 
@@ -486,53 +417,18 @@ async def _initialize_mcp(settings: Settings, use_tui: bool = False) -> dict[str
         return None
 
 
-def _build_initial_state(
-    settings: Settings,
-    initial_message: str,
-    human_names: list[str],
-    agendas: list[dict],
-) -> dict:
-    """초기 상태 구성을 graph 모듈 함수에 위임."""
-    return build_initial_state(settings, initial_message, human_names, agendas)
-
-
-async def _run_streaming(workflow, state: dict, config: dict, hide_delegated: bool = False) -> None:
+async def _run_streaming(engine: MeetingEngine, hide_delegated: bool = False) -> None:
     """스트리밍 모드 실행
 
     Args:
-        workflow: 워크플로우 인스턴스
-        state: 초기 상태
-        config: LangGraph 설정
+        engine: 공통 MeetingEngine 인스턴스
         hide_delegated: 위임 발언 숨김 여부
     """
-    state_ref = {
-        "current_speaker": None,
-        "current_delegated_speaker": None,
-        "in_delegated": False,
-        "hide_delegated": hide_delegated,
-        "prev_agenda_state": None,
-        "start_time": state["start_time"],
-        "agendas": None,
-        "speaker_counts": None,
-    }
-
-    # 이벤트 핸들러 매핑 (모두 state_ref 수신)
-    event_handlers = {
-        "on_chain_start": _handle_chain_start,
-        "on_chat_model_start": _handle_chat_model_start,
-        "on_chat_model_stream": _handle_chat_model_stream,
-        "on_chat_model_end": _handle_chat_model_end,
-        "on_chain_end": _handle_chain_end,
-    }
-
-    async for event in workflow.astream_events(state, config=config, version="v2"):
-        kind = event["event"]
-        handler = event_handlers.get(kind)
-        if handler:
-            handler(event, state_ref)
-
-    # 스트리밍 완료 후 요약 테이블 출력
-    _print_summary_table(state_ref.get("agendas"), state_ref.get("speaker_counts"))
+    setup_state = engine.setup_state or engine.setup()
+    raw_start_time = setup_state.initial_state.get("start_time")
+    start_time = float(raw_start_time) if isinstance(raw_start_time, (int, float)) else time.time()
+    callback = CliMeetingCallback(start_time=start_time, hide_delegated=hide_delegated)
+    await engine.run(callback)
 
 
 async def _run_batch(workflow, state: dict, config: dict) -> dict:
@@ -550,24 +446,21 @@ async def _run_batch(workflow, state: dict, config: dict) -> dict:
     result = await workflow.ainvoke(state, config=config)
     logger.debug(f"Workflow completed. Result keys: {result.keys()}")
 
-    # 결과 출력
     console.print("\n[bold]📝 회의 기록[/bold]")
     console.rule(style="yellow")
 
-    # 참가자 목록 추출 및 색상 할당
     speaker_colors: dict[str, str] = {}
 
     for msg in result.get("messages", []):
         speaker = getattr(msg, "name", "System")
         if speaker not in speaker_colors:
-            speaker_colors[speaker] = _random_speaker_color()
+            speaker_colors[speaker] = random_speaker_color()
         color = speaker_colors[speaker]
 
         console.print(f"\n[bold {color}][{speaker}][/bold {color}]")
         console.print(msg.content)
         console.rule(style="dim")
 
-    # 메타 정보 테이블
     _print_summary_table(result.get("agendas"), result.get("speaker_counts"))
 
     return result
@@ -580,6 +473,7 @@ async def run_meeting(
     settings: Optional[Settings] = None,
     use_tui: bool = False,
     hide_delegated: bool = False,
+    app_title: str = "TheTable",
 ) -> None:
     """회의 실행.
 
@@ -589,16 +483,15 @@ async def run_meeting(
         stream: 스트리밍 모드 사용 여부
         settings: Settings 인스턴스 (None이면 기본 설정 사용)
         use_tui: TUI 모드 여부 (True면 stderr를 로그 파일로 리다이렉트)
+        hide_delegated: 위임 발언 숨김 여부
+        app_title: 사용자에게 보여줄 CLI 이름
     """
-    # 설정이 없으면 기본 설정 로드
     if settings is None:
         settings = get_settings()
 
-    # 프로필 경로 결정
     if profiles_path is None:
         profiles_path = Path(settings.agent_profiles_path)
 
-    # 회의 시작 패널
     if not use_tui:
         console.print(
             Panel(
@@ -608,7 +501,7 @@ async def run_meeting(
                 f"(온도: {settings.llm_main_temperature})\n"
                 f"Task LLM: [yellow]{settings.llm_task_model}[/yellow] "
                 f"(온도: {settings.llm_task_temperature})",
-                title="🚀 TheTable",
+                title=f"🚀 {app_title}",
                 border_style="green",
             )
         )
@@ -616,7 +509,6 @@ async def run_meeting(
     logger.debug(f"Settings loaded: {settings}")
     logger.debug(f"Profiles path: {profiles_path}")
 
-    # TUI 모드: stderr를 로그 파일로 리다이렉트 (MCP subprocess stderr 격리)
     stderr_backup = None
     stderr_file = None
     if use_tui:
@@ -625,36 +517,7 @@ async def run_meeting(
         sys.stderr = stderr_file
 
     try:
-        # MCP Tools 초기화
         mcp_tools = await _initialize_mcp(settings, use_tui=use_tui)
-
-        # Workflow 생성
-        logger.debug("Creating workflow...")
-        workflow = create_meeting_workflow(
-            profiles_path=str(profiles_path),
-            mcp_tools=mcp_tools or {},
-        )
-        logger.debug(f"Workflow created: {workflow}")
-
-        # Human 프로필 이름 추출
-        from thetable.core.profile import load_agent_profiles
-
-        profiles = load_agent_profiles(str(profiles_path))
-        human_names = [name for name, profile in profiles.items() if profile.is_human]
-        logger.debug(f"Human participants: {human_names}")
-
-        # 안건 로드
-        from thetable.core.agenda import load_agendas
-
-        agendas = load_agendas(str(settings.agendas_path))
-
-        # 초기 상태 구성
-        initial_state = _build_initial_state(settings, initial_message, human_names, agendas)
-        logger.debug(f"Initial state: {initial_state}")
-
-        # 실행
-        logger.debug(f"Running workflow (stream={stream})...")
-        graph_config = {"recursion_limit": settings.recursion_limit}
 
         if use_tui:
             from thetable.interfaces.tui import MeetingTuiApp
@@ -668,12 +531,27 @@ async def run_meeting(
             await tui_app.run_async()
             return
 
-        if stream:
-            await _run_streaming(workflow, initial_state, graph_config, hide_delegated=hide_delegated)
-        else:
-            await _run_batch(workflow, initial_state, graph_config)
+        engine = MeetingEngine(
+            initial_message=initial_message,
+            settings=settings,
+            profiles_path=str(profiles_path),
+            mcp_tools=mcp_tools or {},
+        )
+        setup_state = engine.setup()
+        logger.debug(f"Workflow created: {setup_state.workflow}")
+        logger.debug(f"Human participants: {setup_state.human_names}")
+        logger.debug(f"Initial state: {setup_state.initial_state}")
+        logger.debug(f"Running workflow (stream={stream})...")
 
-        # 회의 종료 패널
+        if stream:
+            await _run_streaming(engine, hide_delegated=hide_delegated)
+        else:
+            await _run_batch(
+                setup_state.workflow,
+                setup_state.initial_state,
+                setup_state.graph_config,
+            )
+
         console.print(
             Panel(
                 "[bold green]회의 종료[/bold green]",
@@ -681,7 +559,6 @@ async def run_meeting(
             )
         )
     finally:
-        # TUI 모드: stderr 복원
         if stderr_backup is not None:
             sys.stderr = stderr_backup
         if stderr_file is not None:
@@ -689,4 +566,4 @@ async def run_meeting(
 
 
 if __name__ == "__main__":
-    app()
+    thetable_main()

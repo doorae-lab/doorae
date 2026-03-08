@@ -194,3 +194,23 @@ def test_room_streaming_task_initial_state():
 
     assert room._streaming_task is None
     assert room.workflow is None
+
+
+@pytest.mark.asyncio
+async def test_start_workflow_streaming_with_engine_broadcasts_raw_events():
+    """MeetingEngine 경유 스트리밍도 raw event를 브로드캐스트하는지 테스트."""
+    room = Room(room_id="test-room", name="Test Room")
+    room.connection_manager.broadcast = AsyncMock()
+
+    class MockEngine:
+        async def run(self, callback):
+            await callback.on_raw_event({"event": "on_chain_start", "data": {}})
+
+    await room.start_workflow_streaming(engine=MockEngine())
+
+    assert room._streaming_task is not None
+    await room._streaming_task
+
+    room.connection_manager.broadcast.assert_called_once()
+    event_data = json.loads(room.connection_manager.broadcast.call_args[0][0])
+    assert event_data["type"] == "on_chain_start"

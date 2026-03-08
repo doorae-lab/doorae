@@ -99,6 +99,35 @@ def flatten_all_profiles(profiles: Dict[str, AgentProfile]) -> Dict[str, AgentPr
     return flat
 
 
+def merge_profiles_with_overrides(
+    base_profiles: Dict[str, AgentProfile],
+    override_profiles: Dict[str, AgentProfile] | None = None,
+) -> Dict[str, AgentProfile]:
+    """런타임 오버라이드를 병합하되, 이름이 겹치는 중첩 참여자는 shadow 처리한다."""
+    if not override_profiles:
+        return base_profiles
+
+    shadowed_names = set(override_profiles)
+
+    def prune_shadowed_agents(profile: AgentProfile) -> AgentProfile:
+        children = [
+            prune_shadowed_agents(child)
+            for child in profile.agents or []
+            if child.name not in shadowed_names
+        ]
+        if children == list(profile.agents or []):
+            return profile
+        return profile.model_copy(update={"agents": children or None})
+
+    merged_profiles = {
+        name: prune_shadowed_agents(profile)
+        for name, profile in base_profiles.items()
+        if name not in shadowed_names
+    }
+    merged_profiles.update(override_profiles)
+    return merged_profiles
+
+
 def load_agent_profiles(yaml_path: str) -> Dict[str, AgentProfile]:
     """YAML 파일에서 Agent Profile 로드"""
     with open(yaml_path, 'r', encoding='utf-8') as f:

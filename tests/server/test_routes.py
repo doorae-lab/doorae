@@ -200,7 +200,7 @@ def test_start_workflow_no_participants(client):
 
 
 def test_start_workflow_uses_unified_workflow(client, monkeypatch):
-    """워크플로우 시작 시 통합 workflow + 런타임 human 프로필을 사용한다."""
+    """워크플로우 시작 시 MeetingEngine + 런타임 human 프로필을 사용한다."""
     create_response = client.post("/api/rooms", json={"name": "Team Room"})
     room_id = create_response.json()["id"]
 
@@ -212,29 +212,12 @@ def test_start_workflow_uses_unified_workflow(client, monkeypatch):
         recursion_limit = 123
         max_turns = 1000
 
-    def mock_create_meeting_workflow(**kwargs):
-        calls["workflow_kwargs"] = kwargs
-        return object()
-
-    def mock_build_initial_state(settings, initial_message, human_names, agendas):
-        calls["initial_state_args"] = {
-            "settings": settings,
-            "initial_message": initial_message,
-            "human_names": human_names,
-            "agendas": agendas,
-        }
-        return {"messages": [], "agendas": agendas}
+    class MockEngine:
+        def __init__(self, **kwargs):
+            calls["engine_kwargs"] = kwargs
 
     monkeypatch.setattr("thetable.server.routes.get_settings", lambda: MockSettings())
-    monkeypatch.setattr("thetable.server.routes.load_agendas", lambda _path: [])
-    monkeypatch.setattr(
-        "thetable.server.routes.create_meeting_workflow",
-        mock_create_meeting_workflow,
-    )
-    monkeypatch.setattr(
-        "thetable.server.routes.build_initial_state",
-        mock_build_initial_state,
-    )
+    monkeypatch.setattr("thetable.server.routes.MeetingEngine", MockEngine)
 
     with client.websocket_connect(f"/ws/{room_id}?username=Alice") as ws:
         ws.receive_json()  # 입장 이벤트
@@ -245,12 +228,13 @@ def test_start_workflow_uses_unified_workflow(client, monkeypatch):
         response = client.post(f"/api/rooms/{room_id}/start")
         assert response.status_code == 200
 
-        workflow_kwargs = calls["workflow_kwargs"]
-        assert workflow_kwargs["profiles_path"] == "config/agent_profiles.yaml"
-        assert "input_provider" in workflow_kwargs
-        assert "profiles_override" in workflow_kwargs
-        assert "Alice" in workflow_kwargs["profiles_override"]
-        assert workflow_kwargs["profiles_override"]["Alice"].is_human is True
+        engine_kwargs = calls["engine_kwargs"]
+        assert engine_kwargs["profiles_path"] == "config/agent_profiles.yaml"
+        assert engine_kwargs["initial_message"] == "회의를 시작합니다"
+        assert "input_provider" in engine_kwargs
+        assert "profiles_override" in engine_kwargs
+        assert "Alice" in engine_kwargs["profiles_override"]
+        assert engine_kwargs["profiles_override"]["Alice"].is_human is True
 
-        assert calls["initial_state_args"]["human_names"] == ["Alice"]
         room.start_workflow_streaming.assert_awaited_once()
+        assert isinstance(room.start_workflow_streaming.await_args.kwargs["engine"], MockEngine)
