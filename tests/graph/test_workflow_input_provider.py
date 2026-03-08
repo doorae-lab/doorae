@@ -42,6 +42,68 @@ def test_workflow_accepts_input_provider_and_profiles_override():
     assert workflow is not None
 
 
+def test_workflow_runtime_profile_shadows_nested_agent_name() -> None:
+    from thetable.graph.workflow import create_meeting_workflow
+
+    mock_provider = AsyncMock(spec=InputProvider)
+    mock_model = MagicMock()
+    captured_profiles: dict[str, AgentProfile] = {}
+
+    base_profiles = {
+        "TechLead": AgentProfile(
+            name="TechLead",
+            role="lead",
+            responsibilities=["조율"],
+            expertise=["기술"],
+            agents=[
+                AgentProfile(
+                    name="Backend",
+                    role="backend",
+                    responsibilities=["백엔드 검토"],
+                    expertise=["API"],
+                ),
+                AgentProfile(
+                    name="Frontend",
+                    role="frontend",
+                    responsibilities=["프론트엔드 검토"],
+                    expertise=["UI"],
+                ),
+            ],
+        )
+    }
+    override_profiles = {
+        "Backend": AgentProfile(
+            name="Backend",
+            role="participant",
+            responsibilities=["회의 참여"],
+            expertise=["일반"],
+            is_human=True,
+        )
+    }
+
+    def _fake_create(node_type: str, **kwargs: object) -> object:
+        profile = kwargs["profile"]
+        profile_name = getattr(profile, "name", "unknown")
+        captured_profiles[str(profile_name)] = profile
+        return MagicMock(name=f"{node_type}_{profile_name}_node")
+
+    with patch("thetable.graph.workflow.create_main_llm", return_value=mock_model), patch(
+        "thetable.graph.workflow.create_task_llm", return_value=mock_model
+    ), patch("thetable.graph.workflow.load_agent_profiles", return_value=base_profiles), patch(
+        "thetable.graph.workflow.NodeRegistry.create",
+        side_effect=_fake_create,
+    ):
+        workflow = create_meeting_workflow(
+            input_provider=mock_provider,
+            profiles_override=override_profiles,
+        )
+
+    assert workflow is not None
+    assert set(captured_profiles) == {"TechLead", "Backend"}
+    assert captured_profiles["TechLead"].get_child_names() == ["Frontend"]
+    assert captured_profiles["Backend"].is_human is True
+
+
 def test_workflow_uses_create_agent_llm_for_ai_profiles():
     from thetable.graph.workflow import create_meeting_workflow
 

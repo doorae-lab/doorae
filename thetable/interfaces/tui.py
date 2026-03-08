@@ -25,6 +25,7 @@ from thetable.graph.constants import (
     PARTICIPANT_STATUS_TEXT,
     STATUS_EMOJI,
 )
+from thetable.interfaces.engine import MeetingEngine
 from thetable.interfaces.time_utils import format_elapsed
 
 if TYPE_CHECKING:
@@ -254,6 +255,56 @@ class StreamError(Message):
         self.error = error
 
 
+class TuiMeetingCallback:
+    """MeetingEngine callback adapter that reuses existing Textual messages."""
+
+    def __init__(self, app: "MeetingTuiApp") -> None:
+        self._app = app
+
+    async def on_raw_event(self, event: dict[str, object]) -> None:
+        _ = event
+
+    async def on_speaker_changed(self, speaker: str, is_delegated: bool) -> None:
+        self._app.post_message(SpeakerChanged(speaker=speaker, pending=[], is_delegated=is_delegated))
+
+    async def on_token(self, content: str, speaker: str, is_delegated: bool) -> None:
+        self._app.post_message(
+            TokenStreamed(token=content, agent_name=speaker, is_delegated=is_delegated)
+        )
+
+    async def on_turn_completed(self, speaker: str, is_delegated: bool) -> None:
+        self._app.post_message(TurnCompleted(speaker=speaker, is_delegated=is_delegated))
+
+    async def on_human_turn_started(self, username: str) -> None:
+        self._app.post_message(HumanTurnStarted(username=username))
+
+    async def on_agenda_updated(
+        self,
+        agendas: list[dict[str, object]],
+        current_idx: int,
+    ) -> None:
+        self._app.post_message(AgendaUpdated(agendas=agendas, current_idx=current_idx))
+
+    async def on_meeting_ended(
+        self,
+        agendas: list[dict[str, object]],
+        speaker_counts: dict[str, int],
+    ) -> None:
+        self._app.post_message(MeetingEnded(agendas=agendas, speaker_counts=speaker_counts))
+
+    async def on_pending_speakers_changed(self, pending_speakers: list[str]) -> None:
+        _ = pending_speakers
+
+    async def on_participant_status_changed(self, participant_name: str, status: str) -> None:
+        self._app.post_message(ParticipantStatusChanged(participant_name, status))
+
+    async def on_tool_call(self, name: str, status: str) -> None:
+        if status == "started":
+            self._app.post_message(ToolCallStarted(tool_name=name))
+        elif status == "ended":
+            self._app.post_message(ToolCallEnded(tool_name=name))
+
+
 class AgendaPanel(Static):
     """안건 진행 상태 패널."""
 
@@ -464,6 +515,7 @@ class MeetingTuiApp(App[None]):
         self._profiles_path = profiles_path
         self._initial_message = initial_message
         self._mcp_tools = mcp_tools
+        self._engine: MeetingEngine | None = None
         self._workflow: Any = None
         self._initial_state: dict[str, object] = {}
         self._graph_config: Any = {}
@@ -479,6 +531,7 @@ class MeetingTuiApp(App[None]):
         self._meeting_start_time: float = 0.0
         self._timer_interval: Timer | None = None
         self._participant_statuses: dict[str, str] = {}
+        self._full_text: str = ""
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -494,37 +547,33 @@ class MeetingTuiApp(App[None]):
         yield Footer()
 
     async def on_mount(self) -> None:
-        from thetable.core.agenda import load_agendas
-        from thetable.core.profile import flatten_all_profiles, load_agent_profiles
         from thetable.graph.input_provider import TuiInputProvider
-        from thetable.graph.workflow import build_initial_state, create_meeting_workflow
 
         self._input_provider = TuiInputProvider()
-        self._workflow = create_meeting_workflow(
+        self._engine = MeetingEngine(
+            initial_message=self._initial_message,
+            settings=self._settings,
             profiles_path=self._profiles_path,
             mcp_tools=self._mcp_tools or {},
             input_provider=self._input_provider,
         )
+        setup_state = self._engine.setup()
+        self._workflow = setup_state.workflow
+        self._initial_state = setup_state.initial_state
+        self._graph_config = setup_state.graph_config
+        self._human_names = [name.lower() for name in setup_state.human_names]
 
-        profiles = load_agent_profiles(self._profiles_path)
-        all_profiles = flatten_all_profiles(profiles)
-        self._human_names = [name.lower() for name, p in all_profiles.items() if p.is_human]
         participant_panel = self.query_one("#participant-panel", ParticipantPanel)
-        participant_panel.initialize(profiles, all_profiles)
-        self._participant_statuses = {name: "idle" for name in all_profiles}
-
-        agendas = load_agendas(str(self._settings.agendas_path))
-        self._initial_state = build_initial_state(
-            self._settings, self._initial_message, self._human_names, agendas
-        )
+        participant_panel.initialize(setup_state.top_profiles, setup_state.all_profiles)
+        self._participant_statuses = dict(self._engine.runtime_state.participant_statuses)
         self._initial_state["participant_statuses"] = dict(self._participant_statuses)
+
         raw_start_time = self._initial_state.get("start_time")
         if isinstance(raw_start_time, (int, float)):
             self._meeting_start_time = float(raw_start_time)
         else:
             self._meeting_start_time = time.time()
             self._initial_state["start_time"] = self._meeting_start_time
-        self._graph_config = {"recursion_limit": self._settings.recursion_limit}
         initial_agendas = self._initial_state.get("agendas", [])
         if isinstance(initial_agendas, list):
             self._last_agendas = cast(list[dict[str, object]], initial_agendas)
@@ -539,142 +588,14 @@ class MeetingTuiApp(App[None]):
     @work(exclusive=True)
     async def run_meeting_worker(self) -> None:
         try:
-            if self._workflow is None:
+            if self._engine is None:
                 return
             self.meeting_status = "running"
-            async for event in self._workflow.astream_events(
-                self._initial_state,
-                config=cast(Any, self._graph_config),
-                version="v2",
-            ):
-                kind = event["event"]
-                if kind == "on_chain_start":
-                    self._handle_worker_chain_start(event)
-                elif kind == "on_chat_model_start":
-                    self._handle_worker_chat_model_start(event)
-                elif kind == "on_chat_model_stream":
-                    self._handle_worker_chat_model_stream(event)
-                elif kind == "on_chat_model_end":
-                    self._handle_worker_chat_model_end(event)
-                elif kind == "on_chain_end":
-                    self._handle_worker_chain_end(event)
-                elif kind == "on_tool_start":
-                    self._handle_worker_tool_start(event)
-                elif kind == "on_tool_end":
-                    self._handle_worker_tool_end(event)
-            self.post_message(
-                MeetingEnded(
-                    agendas=self._last_agendas,
-                    speaker_counts=self._last_speaker_counts,
-                )
-            )
+            await self._engine.run(TuiMeetingCallback(self))
         except WorkerCancelled:
             pass  # Ctrl+C/Q 종료 시 정상 취소 — 무시
         except Exception as e:
             self.post_message(StreamError(error=str(e)))
-
-    def _handle_worker_chain_start(self, event: Any) -> None:
-        if event.get("name") == "process_response":
-            input_data = event.get("data", {}).get("input", {})
-            agendas = input_data.get("agendas", [])
-            current_idx = input_data.get("current_agenda_idx", 0)
-            self.post_message(AgendaUpdated(agendas=agendas, current_idx=current_idx))
-
-        event_name = str(event.get("name", ""))
-        if event_name.lower() in self._human_names:
-            self.post_message(HumanTurnStarted(username=event_name))
-
-    def _handle_worker_chat_model_start(self, event: Any) -> None:
-        tags = event.get("tags", [])
-        speaker = event.get("name")
-        if not speaker or speaker == "ChatOpenAI":
-            for tag in tags:
-                if tag.startswith("speaker:"):
-                    speaker = tag.replace("speaker:", "")
-                    break
-
-        if not speaker or speaker in ("ChatOpenAI", "RunnableSequence"):
-            return
-
-        if _is_delegated(tags):
-            if speaker != self._current_delegated_speaker:
-                self.post_message(SpeakerChanged(speaker=speaker, pending=[], is_delegated=True))
-        else:
-            if speaker != self.current_speaker:
-                self.post_message(SpeakerChanged(speaker=speaker, pending=[]))
-
-    def _handle_worker_chat_model_stream(self, event: Any) -> None:
-        tags = event.get("tags", [])
-        if "participant" not in tags:
-            return
-
-        delegated = _is_delegated(tags)
-        chunk = event.get("data", {}).get("chunk")
-        content = getattr(chunk, "content", "")
-        if not content:
-            return
-
-        if delegated:
-            agent_name = next(
-                (tag.replace("speaker:", "") for tag in tags if tag.startswith("speaker:")),
-                self.current_speaker,
-            )
-        else:
-            agent_name = self.current_speaker
-
-        self.post_message(TokenStreamed(token=content, agent_name=agent_name, is_delegated=delegated))
-
-    def _handle_worker_chat_model_end(self, event: Any) -> None:
-        tags = event.get("tags", [])
-        if "participant" in tags:
-            delegated = _is_delegated(tags)
-            if delegated:
-                speaker = next(
-                    (tag.replace("speaker:", "") for tag in tags if tag.startswith("speaker:")),
-                    self._current_delegated_speaker,
-                )
-            else:
-                speaker = self.current_speaker
-            self.post_message(TurnCompleted(speaker=speaker, is_delegated=delegated))
-
-    def _handle_worker_chain_end(self, event: Any) -> None:
-        tags = event.get("tags", [])
-        if "langgraph_node" not in tags:
-            return
-
-        try:
-            idx = tags.index("langgraph_node")
-            node_name = tags[idx + 1] if idx + 1 < len(tags) else None
-        except (ValueError, IndexError):
-            return
-
-        if node_name != "process_response":
-            return
-
-        output_data = event.get("data", {}).get("output", {})
-        pending = output_data.get("pending_speakers", [])
-        self._last_agendas = output_data.get("agendas", self._last_agendas)
-        self._last_speaker_counts = output_data.get("speaker_counts", self._last_speaker_counts)
-        raw_statuses = output_data.get("participant_statuses")
-        if isinstance(raw_statuses, dict):
-            for name, status in raw_statuses.items():
-                if (
-                    isinstance(name, str)
-                    and isinstance(status, str)
-                    and self._participant_statuses.get(name) != status
-                ):
-                    self.post_message(ParticipantStatusChanged(name, status))
-        _ = pending
-
-    def _handle_worker_tool_start(self, event: Any) -> None:
-        tool_name = event.get("name", "")
-        if tool_name:
-            self.post_message(ToolCallStarted(tool_name=tool_name))
-
-    def _handle_worker_tool_end(self, event: Any) -> None:
-        tool_name = event.get("name", "")
-        if tool_name:
-            self.post_message(ToolCallEnded(tool_name=tool_name))
 
     def _get_speaker_color(self, speaker: str) -> str:
         if speaker not in self._speaker_colors:
@@ -859,7 +780,10 @@ class MeetingTuiApp(App[None]):
             self._timer_interval.stop()
             self._timer_interval = None
         self.meeting_status = "ended"
-        scroll = self.query_one("#conversation-scroll", VerticalScroll)
+        self._full_text = f"⚠ 오류: {event.error}"
+        scroll = self._get_conversation_scroll()
+        if scroll is None:
+            return
         scroll.mount(Static(f"[bold yellow]⚠ 오류: {event.error}[/bold yellow]"))
         scroll.scroll_end(animate=False)
 
@@ -922,8 +846,11 @@ class MeetingTuiApp(App[None]):
             if duration:
                 lines.append(f"  - 소요: {duration}")
         lines.extend(["", "*Ctrl+C로 종료*"])
-        scroll = self.query_one("#conversation-scroll", VerticalScroll)
-        scroll.mount(Markdown("\n".join(lines)))
+        self._full_text = "\n".join(lines)
+        scroll = self._get_conversation_scroll()
+        if scroll is None:
+            return
+        scroll.mount(Markdown(self._full_text))
         scroll.scroll_end(animate=False)
 
     def _get_current_agenda_title(self) -> str:
@@ -933,3 +860,9 @@ class MeetingTuiApp(App[None]):
             return "안건 미지정"
         title = self._last_agendas[self.current_agenda_idx].get("title")
         return str(title) if title else "안건 미지정"
+
+    def _get_conversation_scroll(self) -> VerticalScroll | None:
+        try:
+            return self.query_one("#conversation-scroll", VerticalScroll)
+        except Exception:
+            return None

@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 from fastapi import WebSocket
+from thetable.interfaces.engine import MeetingEngine
 from thetable.server.connection_manager import ConnectionManager
 from thetable.server.events import (
     event_to_dict,
@@ -15,6 +16,51 @@ from thetable.server.events import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ServerMeetingCallback:
+    """Broadcast raw MeetingEngine events to all room participants."""
+
+    def __init__(self, connection_manager: ConnectionManager) -> None:
+        self._connection_manager = connection_manager
+
+    async def on_raw_event(self, event: dict) -> None:
+        await self._connection_manager.broadcast(json.dumps(event_to_dict(event)))
+
+    async def on_speaker_changed(self, speaker: str, is_delegated: bool) -> None:
+        _ = (speaker, is_delegated)
+
+    async def on_token(self, content: str, speaker: str, is_delegated: bool) -> None:
+        _ = (content, speaker, is_delegated)
+
+    async def on_turn_completed(self, speaker: str, is_delegated: bool) -> None:
+        _ = (speaker, is_delegated)
+
+    async def on_human_turn_started(self, username: str) -> None:
+        _ = username
+
+    async def on_agenda_updated(
+        self,
+        agendas: list[dict],
+        current_idx: int,
+    ) -> None:
+        _ = (agendas, current_idx)
+
+    async def on_meeting_ended(
+        self,
+        agendas: list[dict],
+        speaker_counts: dict[str, int],
+    ) -> None:
+        _ = (agendas, speaker_counts)
+
+    async def on_pending_speakers_changed(self, pending_speakers: list[str]) -> None:
+        _ = pending_speakers
+
+    async def on_participant_status_changed(self, participant_name: str, status: str) -> None:
+        _ = (participant_name, status)
+
+    async def on_tool_call(self, name: str, status: str) -> None:
+        _ = (name, status)
 
 
 class Room:
@@ -156,7 +202,13 @@ class Room:
         message_event = format_message_event(content=content, sender=username)
         await self.connection_manager.broadcast(json.dumps(message_event))
 
-    async def start_workflow_streaming(self, workflow, initial_state: dict, config: dict):
+    async def start_workflow_streaming(
+        self,
+        workflow=None,
+        initial_state: dict | None = None,
+        config: dict | None = None,
+        engine: MeetingEngine | None = None,
+    ):
         """워크플로우 스트리밍을 백그라운드 태스크로 시작.
 
         astream_events로 워크플로우를 실행하고, 각 이벤트를 JSON 변환하여
@@ -166,7 +218,16 @@ class Room:
             workflow: 컴파일된 LangGraph 워크플로우
             initial_state: 워크플로우 초기 상태
             config: LangGraph 실행 설정
+            engine: 공통 MeetingEngine 인스턴스
         """
+        if engine is not None:
+            self.workflow = engine
+            self._streaming_task = asyncio.create_task(self._stream_engine_events(engine))
+            return
+
+        if workflow is None or initial_state is None or config is None:
+            raise ValueError("workflow, initial_state, config 또는 engine이 필요합니다.")
+
         self.workflow = workflow
         self._streaming_task = asyncio.create_task(
             self._stream_workflow_events(workflow, initial_state, config)
@@ -186,6 +247,17 @@ class Room:
             ):
                 ws_event = event_to_dict(event)
                 await self.connection_manager.broadcast(json.dumps(ws_event))
+        except asyncio.CancelledError:
+            logger.info(f"Workflow streaming cancelled for room {self.id}")
+        except Exception as e:
+            logger.error(f"Workflow streaming error in room {self.id}: {e}")
+            error_event = format_error_event(f"워크플로우 오류: {e}")
+            await self.connection_manager.broadcast(json.dumps(error_event))
+
+    async def _stream_engine_events(self, engine: MeetingEngine):
+        """MeetingEngine 이벤트를 스트리밍하여 브로드캐스트."""
+        try:
+            await engine.run(ServerMeetingCallback(self.connection_manager))
         except asyncio.CancelledError:
             logger.info(f"Workflow streaming cancelled for room {self.id}")
         except Exception as e:
