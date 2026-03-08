@@ -4,10 +4,9 @@ import json
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Query
 from thetable.config import get_settings
-from thetable.core.agenda import load_agendas
 from thetable.core.profile import AgentProfile
 from thetable.graph.input_provider import QueueInputProvider
-from thetable.graph.workflow import build_initial_state, create_meeting_workflow
+from thetable.interfaces.engine import MeetingEngine
 from thetable.server.models import RoomCreate, RoomInfo
 from thetable.server.room_manager import get_room_manager
 from thetable.server.events import format_system_event
@@ -173,25 +172,14 @@ async def start_room_workflow(room_id: str):
 
     input_provider = QueueInputProvider(queue_getter=room.get_user_queue)
     runtime_profiles = _build_runtime_human_profiles(participants)
-    workflow = create_meeting_workflow(
+    engine = MeetingEngine(
+        initial_message="회의를 시작합니다",
+        settings=settings,
         profiles_path=settings.agent_profiles_path,
         input_provider=input_provider,
         profiles_override=runtime_profiles,
     )
-
-    agendas = load_agendas(settings.agendas_path)
-    initial_state = build_initial_state(
-        settings=settings,
-        initial_message="회의를 시작합니다",
-        human_names=participants,
-        agendas=agendas,
-    )
-
-    await room.start_workflow_streaming(
-        workflow=workflow,
-        initial_state=initial_state,
-        config={"recursion_limit": settings.recursion_limit},
-    )
+    await room.start_workflow_streaming(engine=engine)
 
     # 시작 알림 브로드캐스트
     start_event = format_system_event("AI 워크플로우가 시작되었습니다.")
