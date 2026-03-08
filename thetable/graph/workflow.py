@@ -17,7 +17,7 @@ from langgraph.graph import StateGraph, END
 
 from thetable.config import create_agent_llm, create_main_llm, create_task_llm, get_settings
 from thetable.graph.state import MeetingState
-from thetable.core.profile import AgentProfile, load_agent_profiles
+from thetable.core.profile import AgentProfile, load_agent_profiles, merge_profiles_with_overrides
 from thetable.graph.input_provider import CliInputProvider, InputProvider
 from thetable.graph.nodes import (
     NodeRegistry,
@@ -65,9 +65,10 @@ def create_meeting_workflow(
         input_provider = CliInputProvider()
 
     # 1. 프로필 로드 (+ 런타임 오버라이드)
-    profiles = load_agent_profiles(profiles_path)
-    if profiles_override:
-        profiles.update(profiles_override)
+    profiles = merge_profiles_with_overrides(
+        load_agent_profiles(profiles_path),
+        profiles_override,
+    )
 
     # 2. StateGraph 생성
     workflow = StateGraph(MeetingState)
