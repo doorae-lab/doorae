@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""TheTable CLI - AI-powered team meeting system"""
+"""Doorae/TheTable CLI entrypoints."""
+
+from __future__ import annotations
+
+import asyncio
 import colorsys
 import os
 import random
 import sys
-import asyncio
 import time
 from pathlib import Path
 from typing import List, Optional
@@ -17,24 +20,18 @@ from rich.table import Table
 
 from thetable import __version__
 from thetable.config import Settings, get_settings, setup_tracing
-from thetable.graph.workflow import build_initial_state, create_meeting_workflow
 from thetable.graph.constants import STATUS_EMOJI
 from thetable.interfaces.logging import setup_logging
 from thetable.interfaces.time_utils import format_elapsed
 
-
-app = typer.Typer(
-    name="thetable",
-    help="TheTable - AI-powered team meeting system",
-    add_completion=False,
-)
+DEFAULT_MESSAGE = "회의를 시작합니다"
 console = Console()
 
 
 def should_use_tui(no_tui_flag: bool) -> bool:
     """TUI 모드 사용 여부를 결정한다.
 
-    Returns True only when: TTY detected AND terminal >= 80×24 AND --no-tui not set.
+    Returns True only when: TTY detected AND terminal >= 80x24 AND --no-tui not set.
     """
     if no_tui_flag:
         return False
@@ -65,7 +62,7 @@ def _handle_chain_start(event: dict, state_ref: dict) -> None:
     # 상태 변경 감지
     current_state = (
         current_idx,
-        tuple((a["title"], a["status"]) for a in agendas)
+        tuple((agenda["title"], agenda["status"]) for agenda in agendas),
     )
 
     if current_state != state_ref.get("prev_agenda_state"):
@@ -210,7 +207,7 @@ def _print_summary_table(agendas: Optional[List[dict]], speaker_counts: Optional
 
     # 안건 상태
     if agendas:
-        completed = sum(1 for a in agendas if a["status"] == "completed")
+        completed = sum(1 for agenda in agendas if agenda["status"] == "completed")
         table.add_row("완료된 안건", f"{completed}/{len(agendas)}")
 
     # 발언 횟수
@@ -222,11 +219,7 @@ def _print_summary_table(agendas: Optional[List[dict]], speaker_counts: Optional
     console.print(table)
 
 
-def format_agenda_panel(
-    agendas: List[dict],
-    current_idx: int,
-    start_time: float
-) -> Panel:
+def format_agenda_panel(agendas: List[dict], current_idx: int, start_time: float) -> Panel:
     """안건 상태를 Rich Panel로 포맷팅
 
     Args:
@@ -266,7 +259,7 @@ def format_agenda_panel(
 
         # 라인 구성
         title = agenda["title"]
-        line = f"  {status_emoji} {i+1}. {title} ({owner}){time_str}{indicator}"
+        line = f"  {status_emoji} {i + 1}. {title} ({owner}){time_str}{indicator}"
         lines.append(line)
 
         # 결정사항 표시 (있으면)
@@ -276,112 +269,29 @@ def format_agenda_panel(
     return Panel(
         "\n".join(lines),
         title="📋 안건 진행 상태",
-        border_style="magenta"
+        border_style="magenta",
     )
 
 
-@app.command()
-def main(
-    message: str = typer.Option(
-        "회의를 시작합니다",
-        "--message",
-        "-m",
-        help="회의 시작 메시지",
-    ),
-    profiles: Optional[Path] = typer.Option(
-        None,
-        "--profiles",
-        "-p",
-        help="Agent 프로필 YAML 파일 경로",
-        exists=True,
-        dir_okay=False,
-    ),
-    no_stream: bool = typer.Option(
-        False,
-        "--no-stream",
-        help="스트리밍 모드 비활성화 (배치 모드 사용)",
-    ),
-    no_tui: bool = typer.Option(
-        False,
-        "--no-tui",
-        help="TUI 모드 비활성화 (클래식 CLI 출력 사용)",
-    ),
-    config: Optional[Path] = typer.Option(
-        None,
-        "--config",
-        "-c",
-        help=".env 설정 파일 경로",
-        exists=True,
-        dir_okay=False,
-    ),
-    verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        "-v",
-        help="상세 출력 (DEBUG 레벨)",
-    ),
-    quiet: bool = typer.Option(
-        False,
-        "--quiet",
-        "-q",
-        help="최소 출력 (WARNING 레벨만)",
-    ),
-    version: bool = typer.Option(
-        False,
-        "--version",
-        "-V",
-        help="버전 정보 출력",
-    ),
-    trace: Optional[bool] = typer.Option(
-        None,
-        "--trace",
-        "-t",
-        help="LangSmith 추적 활성화",
-    ),
-    hide_delegated: bool = typer.Option(
-        False,
-        "--hide-delegated",
-        help="서브 에이전트(위임) 발언 숨김 (CLI 모드)",
-    ),
+def _run_command_impl(
+    *,
+    message: str,
+    profiles: Optional[Path],
+    no_stream: bool,
+    no_tui: bool,
+    config: Optional[Path],
+    verbose: bool,
+    quiet: bool,
+    trace: Optional[bool],
+    hide_delegated: bool,
+    app_title: str,
 ) -> None:
-    """TheTable CLI - AI 기반 팀 회의 시스템
-
-    Examples:
-
-        # 기본 메시지로 회의 시작
-
-        thetable
-
-        # 커스텀 메시지로 회의 시작
-
-        thetable --message "오늘 스프린트 회의를 시작합니다"
-        thetable -m "긴급 회의"
-
-        # 다른 옵션과 함께 사용
-
-        thetable --message "회의 시작" -v
-        thetable --profiles config/custom.yaml
-
-        # 배치 모드 사용 (스트리밍 비활성화)
-
-        thetable --no-stream
-    """
-    # 버전 출력
-    if version:
-        console.print(f"TheTable version: {__version__}")
-        raise typer.Exit(code=0)
-
-    # 로깅 설정
     use_tui = should_use_tui(no_tui)
     setup_logging(verbose=verbose, quiet=quiet, use_tui=use_tui)
 
-    # 스트리밍 모드 계산 (--no-stream 플래그의 반대)
     stream = not no_stream
-
-    # 설정 로드
     settings = get_settings(config_path=config)
 
-    # CLI 플래그가 None이면 환경변수 값 사용
     tracing_enabled = trace if trace is not None else settings.langchain_tracing_v2
     setup_tracing(
         enabled=tracing_enabled,
@@ -390,31 +300,171 @@ def main(
         endpoint=settings.langchain_endpoint,
     )
 
-    # 비동기 실행
-    asyncio.run(run_meeting(
-        initial_message=message,
-        profiles_path=profiles,
-        stream=stream,
-        settings=settings,
-        use_tui=use_tui,
-        hide_delegated=hide_delegated,
-    ))
+    logger.debug(f"Starting {app_title} CLI run")
+    asyncio.run(
+        run_meeting(
+            initial_message=message,
+            profiles_path=profiles,
+            stream=stream,
+            settings=settings,
+            use_tui=use_tui,
+            hide_delegated=hide_delegated,
+        )
+    )
+
+
+def _not_implemented(command_name: str) -> None:
+    typer.echo(f"`{command_name}` 명령은 예정되어 있지만 아직 구현되지 않았습니다.")
+    raise typer.Exit(code=1)
+
+
+def _build_cli_app(command_name: str, display_name: str) -> typer.Typer:
+    cli = typer.Typer(
+        name=command_name,
+        help=f"{display_name} - AI-powered team meeting system",
+        add_completion=False,
+    )
+    project_app = typer.Typer(help=f"{display_name} 프로젝트 관리")
+    cli.add_typer(project_app, name="project")
+
+    @cli.callback(invoke_without_command=True)
+    def root(
+        ctx: typer.Context,
+        message: str = typer.Option(DEFAULT_MESSAGE, "--message", "-m", help="회의 시작 메시지"),
+        profiles: Optional[Path] = typer.Option(
+            None,
+            "--profiles",
+            "-p",
+            help="Agent 프로필 YAML 파일 경로",
+            exists=True,
+            dir_okay=False,
+        ),
+        no_stream: bool = typer.Option(False, "--no-stream", help="스트리밍 모드 비활성화 (배치 모드 사용)"),
+        no_tui: bool = typer.Option(False, "--no-tui", help="TUI 모드 비활성화 (클래식 CLI 출력 사용)"),
+        config: Optional[Path] = typer.Option(
+            None,
+            "--config",
+            "-c",
+            help=".env 설정 파일 경로",
+            exists=True,
+            dir_okay=False,
+        ),
+        verbose: bool = typer.Option(False, "--verbose", "-v", help="상세 출력 (DEBUG 레벨)"),
+        quiet: bool = typer.Option(False, "--quiet", "-q", help="최소 출력 (WARNING 레벨만)"),
+        version: bool = typer.Option(False, "--version", "-V", help="버전 정보 출력"),
+        trace: Optional[bool] = typer.Option(None, "--trace", "-t", help="LangSmith 추적 활성화"),
+        hide_delegated: bool = typer.Option(False, "--hide-delegated", help="서브 에이전트(위임) 발언 숨김 (CLI 모드)"),
+    ) -> None:
+        if version:
+            console.print(f"{display_name} version: {__version__}")
+            raise typer.Exit(code=0)
+        if ctx.invoked_subcommand is not None:
+            return
+        _run_command_impl(
+            message=message,
+            profiles=profiles,
+            no_stream=no_stream,
+            no_tui=no_tui,
+            config=config,
+            verbose=verbose,
+            quiet=quiet,
+            trace=trace,
+            hide_delegated=hide_delegated,
+            app_title=display_name,
+        )
+
+    @cli.command("run", help="설정된 회의 워크플로우 실행")
+    def run_command(
+        message: str = typer.Option(DEFAULT_MESSAGE, "--message", "-m", help="회의 시작 메시지"),
+        profiles: Optional[Path] = typer.Option(
+            None,
+            "--profiles",
+            "-p",
+            help="Agent 프로필 YAML 파일 경로",
+            exists=True,
+            dir_okay=False,
+        ),
+        no_stream: bool = typer.Option(False, "--no-stream", help="스트리밍 모드 비활성화 (배치 모드 사용)"),
+        no_tui: bool = typer.Option(False, "--no-tui", help="TUI 모드 비활성화 (클래식 CLI 출력 사용)"),
+        config: Optional[Path] = typer.Option(
+            None,
+            "--config",
+            "-c",
+            help=".env 설정 파일 경로",
+            exists=True,
+            dir_okay=False,
+        ),
+        verbose: bool = typer.Option(False, "--verbose", "-v", help="상세 출력 (DEBUG 레벨)"),
+        quiet: bool = typer.Option(False, "--quiet", "-q", help="최소 출력 (WARNING 레벨만)"),
+        trace: Optional[bool] = typer.Option(None, "--trace", "-t", help="LangSmith 추적 활성화"),
+        hide_delegated: bool = typer.Option(False, "--hide-delegated", help="서브 에이전트(위임) 발언 숨김 (CLI 모드)"),
+    ) -> None:
+        _run_command_impl(
+            message=message,
+            profiles=profiles,
+            no_stream=no_stream,
+            no_tui=no_tui,
+            config=config,
+            verbose=verbose,
+            quiet=quiet,
+            trace=trace,
+            hide_delegated=hide_delegated,
+            app_title=display_name,
+        )
+
+    @cli.command("init", help="로컬 워크스페이스 초기화 (예정)")
+    def init_command(
+        force: bool = typer.Option(False, "--force", help="기존 워크스페이스가 있으면 덮어씁니다."),
+    ) -> None:
+        _ = force
+        _not_implemented(f"{command_name} init")
+
+    @project_app.command("create", help="새 프로젝트 스캐폴드를 생성합니다 (예정)")
+    def project_create_command(
+        name: str = typer.Argument(..., help="프로젝트 이름"),
+        slug: Optional[str] = typer.Option(None, "--slug", help="명시적으로 사용할 프로젝트 슬러그"),
+        template: str = typer.Option("default", "--template", help="프로젝트 템플릿 이름"),
+        mcp: Optional[List[str]] = typer.Option(None, "--mcp", help="프로젝트 설정에 기록할 MCP 서버"),
+        set_current: bool = typer.Option(False, "--set-current", help="새 프로젝트를 현재 워크스페이스 프로젝트로 설정합니다."),
+    ) -> None:
+        _ = (name, slug, template, mcp, set_current)
+        _not_implemented(f"{command_name} project create")
+
+    return cli
+
+
+doorae_app = _build_cli_app(command_name="doorae", display_name="Doorae")
+app = _build_cli_app(command_name="thetable", display_name="TheTable")
+legacy_app = app
+
+
+def doorae_main() -> None:
+    """Run the primary Doorae CLI entrypoint."""
+    doorae_app()
+
+
+def thetable_main() -> None:
+    """Run the legacy TheTable CLI entrypoint."""
+    app()
 
 
 async def _initialize_mcp(settings: Settings, use_tui: bool = False) -> dict[str, list] | None:
     """MCP 도구 초기화
+
     Args:
         settings: Settings 인스턴스
         use_tui: TUI 모드 여부 (True면 console 출력 억제)
+
     Returns:
         서버별 MCP 도구 딕셔너리 또는 None
     """
     logger.debug("Initializing MCP tools...")
     from thetable.graph.workflow import initialize_mcp_tools
+
     try:
         mcp_tools = await initialize_mcp_tools()
         if mcp_tools:
-            total = sum(len(t) for t in mcp_tools.values())
+            total = sum(len(tools) for tools in mcp_tools.values())
             logger.info(f"MCP 도구 로드 완료: {total}개 도구 ({len(mcp_tools)}개 서버)")
             if not use_tui:
                 console.print(f"[green]✅ MCP 도구 로드 완료: {total}개 도구 ({len(mcp_tools)}개 서버)[/green]")
@@ -426,10 +476,10 @@ async def _initialize_mcp(settings: Settings, use_tui: bool = False) -> dict[str
                 console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
                 console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
         return mcp_tools
-    except Exception as e:
-        logger.warning(f"MCP 초기화 실패: {e}")
+    except Exception as exc:
+        logger.warning(f"MCP 초기화 실패: {exc}")
         if not use_tui:
-            console.print(f"[yellow]⚠️  MCP 초기화 실패: {e}[/yellow]")
+            console.print(f"[yellow]⚠️  MCP 초기화 실패: {exc}[/yellow]")
             console.print("[yellow]   확인 사항:[/yellow]")
             console.print("[yellow]   1. config/mcp_servers.json 파일 존재 여부[/yellow]")
             console.print("[yellow]   2. .env 파일의 GITHUB_PERSONAL_ACCESS_TOKEN 설정 여부[/yellow]")
@@ -440,7 +490,7 @@ def _build_initial_state(
     settings: Settings,
     initial_message: str,
     human_names: list[str],
-    agendas: list[dict]
+    agendas: list[dict],
 ) -> dict:
     """초기 상태 구성을 graph 모듈 함수에 위임."""
     return build_initial_state(settings, initial_message, human_names, agendas)
@@ -582,18 +632,20 @@ async def run_meeting(
         logger.debug("Creating workflow...")
         workflow = create_meeting_workflow(
             profiles_path=str(profiles_path),
-            mcp_tools=mcp_tools or {}
+            mcp_tools=mcp_tools or {},
         )
         logger.debug(f"Workflow created: {workflow}")
 
         # Human 프로필 이름 추출
         from thetable.core.profile import load_agent_profiles
+
         profiles = load_agent_profiles(str(profiles_path))
-        human_names = [name for name, p in profiles.items() if p.is_human]
+        human_names = [name for name, profile in profiles.items() if profile.is_human]
         logger.debug(f"Human participants: {human_names}")
 
         # 안건 로드
         from thetable.core.agenda import load_agendas
+
         agendas = load_agendas(str(settings.agendas_path))
 
         # 초기 상태 구성

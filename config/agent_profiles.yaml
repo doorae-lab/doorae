@@ -17,7 +17,7 @@ agents:
     # mcp_tools:
     #   - github
     metadata:
-      # target_repository: "yaklevel/thetable"
+      # target_repository: "doorae-lab/doorae"
       additional_instructions: |
         ## 회의 종료 프로토콜 (CRITICAL)
         
@@ -54,7 +54,7 @@ agents:
     mcp_tools:
       - github
     metadata:
-      target_repository: "yaklevel/thetable"
+      target_repository: "doorae-lab/doorae"
       # default_branch: "main"
       additional_instructions: |
         (IMPORTANT) 도구를 적극적으로 사용하세요.
@@ -81,7 +81,7 @@ agents:
     mcp_tools:
       - github
     metadata:
-      target_repository: "yaklevel/thetable"
+      target_repository: "doorae-lab/doorae"
       additional_instructions: |
         (IMPORTANT) 도구를 적극적으로 사용하세요.
       # additional_instructions: |

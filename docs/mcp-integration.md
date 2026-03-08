@@ -118,7 +118,7 @@ graph TB
 ```
 Host:
 - 사용 도구: github
-- 저장소: yaklevel/thetable
+- 저장소: doorae-lab/doorae
 
 PM:
 - 사용 도구: github
