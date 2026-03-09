@@ -1,5 +1,4 @@
 """CLI 테스트"""
-from pathlib import Path
 from typer.testing import CliRunner
 
 from doorae.interfaces.cli import app

@@ -1,7 +1,7 @@
 """NodeRegistry 테스트"""
 
 import pytest
-from doorae.graph.nodes.base import BaseNode, NodeType
+from doorae.graph.nodes.base import BaseNode
 from doorae.graph.nodes.registry import NodeRegistry, register_node
 from doorae.graph.state import MeetingState
 
