@@ -170,7 +170,7 @@ GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your_token
   사용 도구:
     - github
   추가 정보:
-    저장소: yaklevel/thetable
+    저장소: doorae-lab/doorae
 ```
 
 ### 필수 항목
@@ -239,7 +239,7 @@ GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your_token
 사용 도구:
   - github
 추가 정보:
-  저장소: yaklevel/thetable
+  저장소: doorae-lab/doorae
   추가 지시사항: |
     GitHub 이슈와 PR 상태를 자주 확인하세요.
     데이터 기반으로 발언하세요.

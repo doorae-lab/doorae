@@ -1,13 +1,13 @@
-# TheTable
+# Doorae
 
 AI-powered team meeting system built on [LangGraph](https://github.com/langchain-ai/langgraph). Autonomous AI agents with distinct roles participate in structured meetings, discuss agendas, and produce actionable outcomes — all from your terminal.
 
 ## Overview
 
-TheTable creates realistic team meetings where AI agents collaborate like real team members. Each agent has a defined role, responsibilities, and expertise. A Host facilitates, a PM tracks progress, a TechLead makes architecture decisions — and they all discuss your agenda items with context-aware responses.
+Doorae creates realistic team meetings where AI agents collaborate like real team members. Each agent has a defined role, responsibilities, and expertise. A Host facilitates, a PM tracks progress, a TechLead makes architecture decisions — and they all discuss your agenda items with context-aware responses.
 
 ```
-$ thetable --message "Start the sprint meeting"
+$ doorae --message "Start the sprint meeting"
 ```
 
 ```
@@ -47,9 +47,23 @@ Let me share the current project status. Based on the GitHub issues...
 ### 1. Install
 
 ```bash
-git clone https://github.com/yaklevel/thetable.git
-cd thetable
+git clone https://github.com/doorae-lab/doorae.git
+cd doorae
 uv sync
+uv run doorae --help
+```
+
+For an isolated CLI install that exposes `doorae` on your PATH:
+
+```bash
+uv tool install .
+uv tool update-shell
+```
+
+Open a new terminal and verify the install:
+
+```bash
+doorae --help
 ```
 
 ### 2. Configure
@@ -74,32 +88,32 @@ LLM_TASK_MODEL=google/gemini-2.5-flash
 ### 3. Run
 
 ```bash
-uv run thetable
+uv run doorae
 ```
 
 ## Usage
 
 ```bash
 # Default meeting
-uv run thetable
+uv run doorae
 
 # Custom message
-uv run thetable -m "Emergency bug response meeting"
+uv run doorae -m "Emergency bug response meeting"
 
 # Classic CLI (no TUI)
-uv run thetable --no-tui
+uv run doorae --no-tui
 
 # Batch mode (non-streaming)
-uv run thetable --no-stream
+uv run doorae --no-stream
 
 # Custom profiles & config
-uv run thetable --profiles config/custom_profiles.yaml --config .env.prod
+uv run doorae --profiles config/custom_profiles.yaml --config .env.prod
 
 # With LangSmith tracing
-uv run thetable --trace
+uv run doorae --trace
 
 # Verbose logging
-uv run thetable -v
+uv run doorae -v
 ```
 
 ## Configuration
