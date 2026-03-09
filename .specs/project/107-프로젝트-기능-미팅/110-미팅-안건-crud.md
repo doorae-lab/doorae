@@ -124,5 +124,5 @@ GET /api/agendas/templates
 
 ## 관련 코드
 
-- `thetable/core/agenda.py`
-- `thetable/graph/nodes/process.py`
+- `doorae/core/agenda.py`
+- `doorae/graph/nodes/process.py`

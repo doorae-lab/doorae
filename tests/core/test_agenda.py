@@ -2,7 +2,7 @@
 import pytest
 import tempfile
 import os
-from thetable.core.agenda import load_agendas
+from doorae.core.agenda import load_agendas
 
 
 def test_load_agendas_success():

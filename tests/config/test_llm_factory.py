@@ -2,8 +2,8 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from thetable.config.llm_factory import create_agent_llm, create_main_llm, create_task_llm
-from thetable.core.profile import AgentLLMConfig, AgentProfile
+from doorae.config.llm_factory import create_agent_llm, create_main_llm, create_task_llm
+from doorae.core.profile import AgentLLMConfig, AgentProfile
 
 
 @pytest.fixture
@@ -29,8 +29,8 @@ def mock_settings():
 
 def test_create_main_llm_default(mock_settings):
     """Main LLM 기본 생성 테스트"""
-    with patch("thetable.config.llm_factory.get_settings", return_value=mock_settings):
-        with patch("thetable.config.llm_factory.ChatOpenAI") as mock_chat:
+    with patch("doorae.config.llm_factory.get_settings", return_value=mock_settings):
+        with patch("doorae.config.llm_factory.ChatOpenAI") as mock_chat:
             create_main_llm()
 
             # ChatOpenAI 호출 확인
@@ -48,8 +48,8 @@ def test_create_main_llm_default(mock_settings):
 
 def test_create_main_llm_with_streaming(mock_settings):
     """Main LLM 스트리밍 활성화 테스트"""
-    with patch("thetable.config.llm_factory.get_settings", return_value=mock_settings):
-        with patch("thetable.config.llm_factory.ChatOpenAI") as mock_chat:
+    with patch("doorae.config.llm_factory.get_settings", return_value=mock_settings):
+        with patch("doorae.config.llm_factory.ChatOpenAI") as mock_chat:
             create_main_llm(streaming=True)
 
             call_kwargs = mock_chat.call_args[1]
@@ -60,8 +60,8 @@ def test_create_main_llm_with_base_url(mock_settings):
     """Main LLM base_url 설정 테스트"""
     mock_settings.main_base_url = "https://custom.api.com"
 
-    with patch("thetable.config.llm_factory.get_settings", return_value=mock_settings):
-        with patch("thetable.config.llm_factory.ChatOpenAI") as mock_chat:
+    with patch("doorae.config.llm_factory.get_settings", return_value=mock_settings):
+        with patch("doorae.config.llm_factory.ChatOpenAI") as mock_chat:
             create_main_llm()
 
             call_kwargs = mock_chat.call_args[1]
@@ -70,8 +70,8 @@ def test_create_main_llm_with_base_url(mock_settings):
 
 def test_create_task_llm(mock_settings):
     """Task LLM 생성 테스트"""
-    with patch("thetable.config.llm_factory.get_settings", return_value=mock_settings):
-        with patch("thetable.config.llm_factory.ChatOpenAI") as mock_chat:
+    with patch("doorae.config.llm_factory.get_settings", return_value=mock_settings):
+        with patch("doorae.config.llm_factory.ChatOpenAI") as mock_chat:
             create_task_llm()
 
             # ChatOpenAI 호출 확인
@@ -90,8 +90,8 @@ def test_create_task_llm_with_base_url(mock_settings):
     """Task LLM base_url 설정 테스트"""
     mock_settings.task_base_url = "https://task.api.com"
 
-    with patch("thetable.config.llm_factory.get_settings", return_value=mock_settings):
-        with patch("thetable.config.llm_factory.ChatOpenAI") as mock_chat:
+    with patch("doorae.config.llm_factory.get_settings", return_value=mock_settings):
+        with patch("doorae.config.llm_factory.ChatOpenAI") as mock_chat:
             create_task_llm()
 
             call_kwargs = mock_chat.call_args[1]
@@ -114,7 +114,7 @@ def test_create_agent_llm_uses_agent_overrides(mock_settings):
         ),
     )
 
-    with patch("thetable.config.llm_factory.ChatOpenAI") as mock_chat:
+    with patch("doorae.config.llm_factory.ChatOpenAI") as mock_chat:
         create_agent_llm(profile=profile, settings=mock_settings, streaming=True)
 
         call_kwargs = mock_chat.call_args[1]
@@ -143,7 +143,7 @@ def test_create_agent_llm_field_by_field_fallback(mock_settings):
 
     mock_settings.main_base_url = "https://global.api.com"
 
-    with patch("thetable.config.llm_factory.ChatOpenAI") as mock_chat:
+    with patch("doorae.config.llm_factory.ChatOpenAI") as mock_chat:
         create_agent_llm(profile=profile, settings=mock_settings)
 
         call_kwargs = mock_chat.call_args[1]
@@ -163,7 +163,7 @@ def test_create_agent_llm_without_llm_config_uses_global(mock_settings):
         expertise=["Python"],
     )
 
-    with patch("thetable.config.llm_factory.ChatOpenAI") as mock_chat:
+    with patch("doorae.config.llm_factory.ChatOpenAI") as mock_chat:
         create_agent_llm(profile=profile, settings=mock_settings)
 
         call_kwargs = mock_chat.call_args[1]

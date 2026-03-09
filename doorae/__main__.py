@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-"""Doorae package entry point."""
-
-from thetable.interfaces.cli import doorae_main
-
+"""Doorae package entry point"""
+from doorae.interfaces.cli import app
 
 if __name__ == "__main__":
-    doorae_main()
+    app()

@@ -1,6 +1,6 @@
 """안건 관리 Tool 단위 테스트"""
 
-from thetable.graph.agenda_tools import (
+from doorae.graph.agenda_tools import (
     create_propose_tool,
     create_approve_tool,
     create_reject_tool,

@@ -1,9 +1,9 @@
 """NodeRegistry 테스트"""
 
 import pytest
-from thetable.graph.nodes.base import BaseNode, NodeType
-from thetable.graph.nodes.registry import NodeRegistry, register_node
-from thetable.graph.state import MeetingState
+from doorae.graph.nodes.base import BaseNode
+from doorae.graph.nodes.registry import NodeRegistry, register_node
+from doorae.graph.state import MeetingState
 
 
 @pytest.fixture(autouse=True)

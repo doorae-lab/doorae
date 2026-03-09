@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
-from thetable.server.app import create_app
-from thetable.server.room_manager import get_room_manager
+from doorae.server.app import create_app
+from doorae.server.room_manager import get_room_manager
 
 
 @pytest.fixture
@@ -216,8 +216,8 @@ def test_start_workflow_uses_unified_workflow(client, monkeypatch):
         def __init__(self, **kwargs):
             calls["engine_kwargs"] = kwargs
 
-    monkeypatch.setattr("thetable.server.routes.get_settings", lambda: MockSettings())
-    monkeypatch.setattr("thetable.server.routes.MeetingEngine", MockEngine)
+    monkeypatch.setattr("doorae.server.routes.get_settings", lambda: MockSettings())
+    monkeypatch.setattr("doorae.server.routes.MeetingEngine", MockEngine)
 
     with client.websocket_connect(f"/ws/{room_id}?username=Alice") as ws:
         ws.receive_json()  # 입장 이벤트

@@ -2,7 +2,7 @@
 
 import inspect
 import pytest
-from thetable.graph.nodes.process import ProcessResponseNode, NodeType
+from doorae.graph.nodes.process import ProcessResponseNode, NodeType
 
 
 class TestProcessResponseNode:

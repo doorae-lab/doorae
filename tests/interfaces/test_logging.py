@@ -3,7 +3,7 @@ import sys
 from io import StringIO
 from loguru import logger
 
-from thetable.interfaces.logging import setup_logging
+from doorae.interfaces.logging import setup_logging
 
 
 def test_setup_logging_verbose():

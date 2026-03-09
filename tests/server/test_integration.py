@@ -3,8 +3,8 @@
 import pytest
 import json
 from fastapi.testclient import TestClient
-from thetable.server.app import create_app
-from thetable.server.room_manager import get_room_manager
+from doorae.server.app import create_app
+from doorae.server.room_manager import get_room_manager
 
 
 @pytest.fixture

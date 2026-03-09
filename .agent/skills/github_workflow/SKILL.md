@@ -79,7 +79,7 @@ run_command("git checkout -b feat/new-feature && git push -u origin feat/new-fea
 # 2. Create Issue
 issue = await mcp_client.call_tool("github", "create_issue", {
     "owner": "yaklevel",
-    "repo": "thetable",
+    "repo": "doorae",
     "title": "Add New Feature",
     "body": "Implementing specific functionality..."
 })
@@ -88,7 +88,7 @@ issue_number = issue.number
 # 3. Create PR
 await mcp_client.call_tool("github", "create_pull_request", {
     "owner": "yaklevel",
-    "repo": "thetable",
+    "repo": "doorae",
     "title": "Add New Feature",
     "body": f"Closes #{issue_number}\n\nImplementation details...",
     "head": "feat/new-feature",

@@ -4,7 +4,7 @@ import json
 
 from langchain_core.messages import HumanMessage
 
-from thetable.server.events import event_to_dict
+from doorae.server.events import event_to_dict
 
 
 def test_event_to_dict_serializes_nested_human_message():

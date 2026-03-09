@@ -2,12 +2,12 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from thetable.core.profile import AgentLLMConfig, AgentProfile
-from thetable.graph.input_provider import InputProvider
+from doorae.core.profile import AgentLLMConfig, AgentProfile
+from doorae.graph.input_provider import InputProvider
 
 
 def test_workflow_accepts_input_provider_and_profiles_override():
-    from thetable.graph.workflow import create_meeting_workflow
+    from doorae.graph.workflow import create_meeting_workflow
 
     mock_provider = AsyncMock(spec=InputProvider)
     mock_model = MagicMock()
@@ -31,9 +31,9 @@ def test_workflow_accepts_input_provider_and_profiles_override():
         )
     }
 
-    with patch("thetable.graph.workflow.create_main_llm", return_value=mock_model), patch(
-        "thetable.graph.workflow.create_task_llm", return_value=mock_model
-    ), patch("thetable.graph.workflow.load_agent_profiles", return_value=base_profiles):
+    with patch("doorae.graph.workflow.create_main_llm", return_value=mock_model), patch(
+        "doorae.graph.workflow.create_task_llm", return_value=mock_model
+    ), patch("doorae.graph.workflow.load_agent_profiles", return_value=base_profiles):
         workflow = create_meeting_workflow(
             input_provider=mock_provider,
             profiles_override=override_profiles,
@@ -43,7 +43,7 @@ def test_workflow_accepts_input_provider_and_profiles_override():
 
 
 def test_workflow_runtime_profile_shadows_nested_agent_name() -> None:
-    from thetable.graph.workflow import create_meeting_workflow
+    from doorae.graph.workflow import create_meeting_workflow
 
     mock_provider = AsyncMock(spec=InputProvider)
     mock_model = MagicMock()
@@ -87,10 +87,10 @@ def test_workflow_runtime_profile_shadows_nested_agent_name() -> None:
         captured_profiles[str(profile_name)] = profile
         return MagicMock(name=f"{node_type}_{profile_name}_node")
 
-    with patch("thetable.graph.workflow.create_main_llm", return_value=mock_model), patch(
-        "thetable.graph.workflow.create_task_llm", return_value=mock_model
-    ), patch("thetable.graph.workflow.load_agent_profiles", return_value=base_profiles), patch(
-        "thetable.graph.workflow.NodeRegistry.create",
+    with patch("doorae.graph.workflow.create_main_llm", return_value=mock_model), patch(
+        "doorae.graph.workflow.create_task_llm", return_value=mock_model
+    ), patch("doorae.graph.workflow.load_agent_profiles", return_value=base_profiles), patch(
+        "doorae.graph.workflow.NodeRegistry.create",
         side_effect=_fake_create,
     ):
         workflow = create_meeting_workflow(
@@ -105,7 +105,7 @@ def test_workflow_runtime_profile_shadows_nested_agent_name() -> None:
 
 
 def test_workflow_uses_create_agent_llm_for_ai_profiles():
-    from thetable.graph.workflow import create_meeting_workflow
+    from doorae.graph.workflow import create_meeting_workflow
 
     mock_provider = AsyncMock(spec=InputProvider)
     mock_main_model = MagicMock(name="main_model")
@@ -137,10 +137,10 @@ def test_workflow_uses_create_agent_llm_for_ai_profiles():
         ),
     }
 
-    with patch("thetable.graph.workflow.create_main_llm", return_value=mock_main_model), patch(
-        "thetable.graph.workflow.create_task_llm", return_value=mock_task_model
-    ), patch("thetable.graph.workflow.load_agent_profiles", return_value=base_profiles), patch(
-        "thetable.graph.workflow.create_agent_llm",
+    with patch("doorae.graph.workflow.create_main_llm", return_value=mock_main_model), patch(
+        "doorae.graph.workflow.create_task_llm", return_value=mock_task_model
+    ), patch("doorae.graph.workflow.load_agent_profiles", return_value=base_profiles), patch(
+        "doorae.graph.workflow.create_agent_llm",
         return_value=mock_pm_model,
     ) as mock_create_agent_llm:
         workflow = create_meeting_workflow(input_provider=mock_provider)
@@ -157,7 +157,7 @@ def test_workflow_uses_create_agent_llm_for_ai_profiles():
 
 
 def test_workflow_reuses_main_model_when_profile_llm_not_set() -> None:
-    from thetable.graph.workflow import create_meeting_workflow
+    from doorae.graph.workflow import create_meeting_workflow
 
     mock_provider = AsyncMock(spec=InputProvider)
     mock_main_model = MagicMock(name="provided_main_model")
@@ -194,13 +194,13 @@ def test_workflow_reuses_main_model_when_profile_llm_not_set() -> None:
         return captured, _fake_create
 
     captured_models, fake_create = _capture_node_models()
-    with patch("thetable.graph.workflow.create_task_llm", return_value=mock_task_model), patch(
-        "thetable.graph.workflow.load_agent_profiles", return_value=base_profiles
+    with patch("doorae.graph.workflow.create_task_llm", return_value=mock_task_model), patch(
+        "doorae.graph.workflow.load_agent_profiles", return_value=base_profiles
     ), patch(
-        "thetable.graph.workflow.create_agent_llm",
+        "doorae.graph.workflow.create_agent_llm",
         return_value=mock_pm_model,
     ) as mock_create_agent_llm, patch(
-        "thetable.graph.workflow.NodeRegistry.create",
+        "doorae.graph.workflow.NodeRegistry.create",
         side_effect=fake_create,
     ):
         workflow = create_meeting_workflow(

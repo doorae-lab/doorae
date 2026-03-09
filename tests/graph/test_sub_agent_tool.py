@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
-from thetable.core.profile import AgentProfile
-from thetable.graph.sub_agent_tool import create_sub_agent_tool
+from doorae.core.profile import AgentProfile
+from doorae.graph.sub_agent_tool import create_sub_agent_tool
 
 
 def test_create_sub_agent_tool_name_and_description():

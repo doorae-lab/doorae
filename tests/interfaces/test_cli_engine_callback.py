@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from thetable.interfaces.cli import CliMeetingCallback, _run_streaming
+from doorae.interfaces.cli import CliMeetingCallback, _run_streaming
 
 
 @pytest.mark.asyncio
@@ -29,7 +29,7 @@ async def test_run_streaming_builds_cli_callback_from_engine_state() -> None:
 async def test_cli_callback_prints_pending_speakers(monkeypatch: pytest.MonkeyPatch) -> None:
     printed: list[str] = []
     monkeypatch.setattr(
-        "thetable.interfaces.cli.console.print",
+        "doorae.interfaces.cli.console.print",
         lambda message="", *args, **kwargs: printed.append(str(message)),
     )
     callback = CliMeetingCallback(start_time=100.0)

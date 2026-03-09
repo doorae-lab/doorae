@@ -25,9 +25,8 @@ dependencies = [
 ]
 
 [project.scripts]
-doorae = "thetable.interfaces.cli:doorae_main"
-thetable = "thetable.interfaces.cli:thetable_main"
-thetable-server = "thetable.server:main"
+doorae = "doorae.interfaces.cli:app"
+doorae-server = "doorae.server:main"
 
 [project.optional-dependencies]
 server = [
@@ -49,9 +48,6 @@ markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
     "langsmith>=0.1.0",
 ]
-
-[tool.hatch.build.targets.wheel]
-packages = ["doorae", "thetable"]
 
 [dependency-groups]
 dev = [

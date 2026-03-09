@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.messages import HumanMessage
 
-from thetable.core.profile import AgentProfile
+from doorae.core.profile import AgentProfile
 
 
 def _make_profile(name="TestUser"):
@@ -37,7 +37,7 @@ def _make_state():
 class TestHumanNodeWithInputProvider:
     @pytest.mark.asyncio
     async def test_execute_with_user_input(self):
-        from thetable.graph.nodes.human import HumanNode
+        from doorae.graph.nodes.human import HumanNode
 
         mock_provider = AsyncMock()
         mock_provider.get_input.return_value = "안녕하세요"
@@ -52,7 +52,7 @@ class TestHumanNodeWithInputProvider:
 
     @pytest.mark.asyncio
     async def test_execute_with_empty_input_skips(self):
-        from thetable.graph.nodes.human import HumanNode
+        from doorae.graph.nodes.human import HumanNode
 
         mock_provider = AsyncMock()
         mock_provider.get_input.return_value = ""
@@ -63,7 +63,7 @@ class TestHumanNodeWithInputProvider:
 
     @pytest.mark.asyncio
     async def test_execute_without_provider_raises(self):
-        from thetable.graph.nodes.human import HumanNode
+        from doorae.graph.nodes.human import HumanNode
 
         node = HumanNode(profile=_make_profile())
         with pytest.raises(RuntimeError, match="InputProvider가 설정되지 않았습니다"):

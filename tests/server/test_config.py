@@ -2,7 +2,7 @@
 
 import os
 import pytest
-from thetable.server.config import ServerSettings, get_server_settings
+from doorae.server.config import ServerSettings, get_server_settings
 
 
 def test_server_settings_defaults():

@@ -2,7 +2,7 @@
 
 import re
 
-from thetable.interfaces.event_utils import (
+from doorae.interfaces.event_utils import (
     extract_node_name,
     extract_speaker,
     is_delegated,

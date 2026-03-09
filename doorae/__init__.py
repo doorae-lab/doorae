@@ -1,5 +1,8 @@
-"""Doorae compatibility package."""
+"""Doorae - AI 기반 자동화 회의 시스템"""
 
-from thetable import PROJECT_ROOT, __version__
+from pathlib import Path
 
-__all__ = ["PROJECT_ROOT", "__version__"]
+__version__ = "0.1.0"
+
+# 프로젝트 루트 경로 상수
+PROJECT_ROOT = Path(__file__).resolve().parent.parent

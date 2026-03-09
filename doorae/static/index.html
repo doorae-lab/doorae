@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doorae - 채팅 서버</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 800px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        /* 닉네임 입력 화면 */
+        .login-screen {
+            padding: 60px 40px;
+            text-align: center;
+        }
+
+        .login-screen h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 2.5em;
+        }
+
+        .login-screen p {
+            color: #666;
+            margin-bottom: 40px;
+        }
+
+        .login-screen input {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1em;
+            margin-bottom: 20px;
+            transition: border-color 0.3s;
+        }
+
+        .login-screen input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .login-screen button {
+            width: 100%;
+            padding: 15px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .login-screen button:hover {
+            background: #5568d3;
+        }
+
+        /* 채팅 화면 */
+        .chat-screen {
+            display: none;
+            height: 600px;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            padding: 20px;
+            background: #667eea;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-header h2 {
+            font-size: 1.5em;
+        }
+
+        .chat-header .username {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f5f5f5;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 10px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+
+        .message.system {
+            background: #e3f2fd;
+            color: #1976d2;
+            margin: 10px auto;
+            text-align: center;
+            max-width: 80%;
+            font-size: 0.9em;
+        }
+
+        .message.sent {
+            background: #667eea;
+            color: white;
+            margin-left: auto;
+        }
+
+        .message.received {
+            background: white;
+            color: #333;
+        }
+
+        .message .sender {
+            font-weight: 600;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+
+        .message .content {
+            line-height: 1.4;
+        }
+
+        .message .time {
+            font-size: 0.75em;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-area input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1em;
+        }
+
+        .input-area input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .input-area button {
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .input-area button:hover {
+            background: #5568d3;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 닉네임 입력 화면 -->
+        <div class="login-screen" id="loginScreen">
+            <h1>Doorae</h1>
+            <p>닉네임을 입력하고 채팅에 참여하세요</p>
+            <input
+                type="text"
+                id="usernameInput"
+                placeholder="닉네임 입력..."
+                maxlength="20"
+            />
+            <button onclick="joinChat()">참여하기</button>
+        </div>
+
+        <!-- 채팅 화면 -->
+        <div class="chat-screen" id="chatScreen">
+            <div class="chat-header">
+                <h2>채팅방</h2>
+                <div class="username" id="currentUsername"></div>
+            </div>
+            <div class="messages" id="messages"></div>
+            <div class="input-area">
+                <input
+                    type="text"
+                    id="messageInput"
+                    placeholder="메시지 입력..."
+                    onkeypress="handleKeyPress(event)"
+                />
+                <button onclick="sendMessage()">전송</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let username = '';
+        let roomId = 'default-room'; // TODO: 회의방 선택 기능
+
+        // 채팅 참여
+        async function joinChat() {
+            const input = document.getElementById('usernameInput');
+            username = input.value.trim();
+
+            if (!username) {
+                alert('닉네임을 입력해주세요');
+                return;
+            }
+
+            // 회의방 생성 또는 조회
+            try {
+                const response = await fetch('/api/rooms');
+                const rooms = await response.json();
+
+                if (rooms.length === 0) {
+                    // 회의방이 없으면 생성
+                    const createResponse = await fetch('/api/rooms', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: '기본 회의방',
+                            agenda: null
+                        })
+                    });
+                    const newRoom = await createResponse.json();
+                    roomId = newRoom.id;
+                } else {
+                    // 첫 번째 회의방 사용
+                    roomId = rooms[0].id;
+                }
+
+                // WebSocket 연결
+                connectWebSocket();
+
+                // 화면 전환
+                document.getElementById('loginScreen').classList.add('hidden');
+                document.getElementById('chatScreen').style.display = 'flex';
+                document.getElementById('currentUsername').textContent = username;
+
+            } catch (error) {
+                alert('서버 연결 실패: ' + error.message);
+            }
+        }
+
+        // WebSocket 연결
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}?username=${encodeURIComponent(username)}`;
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket 연결됨');
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket 에러:', error);
+                addSystemMessage('연결 오류가 발생했습니다');
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket 연결 종료');
+                addSystemMessage('연결이 종료되었습니다');
+            };
+        }
+
+        // 메시지 처리
+        function handleMessage(data) {
+            if (data.type === 'system') {
+                addSystemMessage(data.data.message);
+            } else if (data.type === 'message') {
+                addChatMessage(
+                    data.data.sender,
+                    data.data.content,
+                    data.data.sender === username
+                );
+            } else if (data.type === 'error') {
+                addSystemMessage('오류: ' + data.data.error);
+            }
+        }
+
+        // 메시지 전송
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const content = input.value.trim();
+
+            if (!content || !ws) return;
+
+            ws.send(JSON.stringify({ content }));
+            input.value = '';
+        }
+
+        // Enter 키 처리
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        // 채팅 메시지 추가
+        function addChatMessage(sender, content, isSent) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+
+            const time = new Date().toLocaleTimeString('ko-KR', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            messageDiv.innerHTML = `
+                ${!isSent ? `<div class="sender">${sender}</div>` : ''}
+                <div class="content">${escapeHtml(content)}</div>
+                <div class="time">${time}</div>
+            `;
+
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // 시스템 메시지 추가
+        function addSystemMessage(message) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message system';
+            messageDiv.textContent = message;
+
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // HTML 이스케이프
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Enter 키로 채팅 참여
+        document.getElementById('usernameInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') joinChat();
+        });
+    </script>
+</body>
+</html>

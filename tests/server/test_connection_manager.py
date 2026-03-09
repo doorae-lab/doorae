@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import Mock, AsyncMock
-from thetable.server.connection_manager import ConnectionManager
+from doorae.server.connection_manager import ConnectionManager
 
 
 def test_connection_manager_init():

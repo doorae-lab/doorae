@@ -1,5 +1,5 @@
 """Tests for MeetingState definition"""
-from thetable.graph.state import MeetingState, AgentInfo
+from doorae.graph.state import MeetingState, AgentInfo
 from langgraph.graph import MessagesState
 
 

@@ -2,8 +2,8 @@
 
 import pytest
 import asyncio
-from thetable.server.room import Room
-from thetable.server.room_manager import RoomManager, get_room_manager
+from doorae.server.room import Room
+from doorae.server.room_manager import RoomManager, get_room_manager
 
 
 def test_room_creation():

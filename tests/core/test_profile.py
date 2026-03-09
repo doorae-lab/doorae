@@ -1,5 +1,5 @@
 import pytest
-from thetable.core.profile import (
+from doorae.core.profile import (
     AgentLLMConfig,
     AgentProfile,
     flatten_all_profiles,

@@ -1,6 +1,6 @@
 """Tests for interface time formatting helpers."""
 
-from thetable.interfaces.time_utils import format_elapsed
+from doorae.interfaces.time_utils import format_elapsed
 
 
 def test_format_elapsed_under_one_hour() -> None:

@@ -9,7 +9,7 @@
 """
 
 import pytest
-from thetable.graph.nodes.utils import initialize_mcp_tools
+from doorae.graph.nodes.utils import initialize_mcp_tools
 
 
 class TestInitializeMCPTools:

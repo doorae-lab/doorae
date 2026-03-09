@@ -10,5 +10,5 @@ Main LLM (대화용, 고품질) + Task LLM (분석용, 저비용) 이중 구조.
 
 ## 관련 코드
 
-- `thetable/config/settings.py`
-- `thetable/config/llm_factory.py`
+- `doorae/config/settings.py`
+- `doorae/config/llm_factory.py`

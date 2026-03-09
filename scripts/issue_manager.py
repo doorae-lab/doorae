@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN") or os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
-REPO_OWNER = "yaklevel" # Hardcoded for now based on context, can be parameterized
-REPO_NAME = "thetable"
+REPO_OWNER = "doorae-lab" # Hardcoded for now based on context, can be parameterized
+REPO_NAME = "doorae"
 
 if not GITHUB_TOKEN:
     print("Error: GITHUB_TOKEN or GITHUB_PERSONAL_ACCESS_TOKEN is not set in .env")

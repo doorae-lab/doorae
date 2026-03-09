@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from thetable.interfaces.tui import AgendaPanel, MeetingEnded, MeetingTuiApp, StreamError
+from doorae.interfaces.tui import AgendaPanel, MeetingEnded, MeetingTuiApp, StreamError
 
 
 class CapturingAgendaPanel(AgendaPanel):
@@ -37,7 +37,7 @@ def test_agenda_panel_renders_total_and_agenda_elapsed_time() -> None:
         {"title": "B", "status": "completed", "start_time": 60.0, "end_time": 90.0},
     ]
 
-    with patch("thetable.interfaces.tui.time.time", return_value=180.0):
+    with patch("doorae.interfaces.tui.time.time", return_value=180.0):
         panel.update_agendas(agendas, 0)
 
     assert "⏱ 총 경과: 00:42" in panel.last_rendered
@@ -51,7 +51,7 @@ def test_tick_timer_updates_panel_with_formatted_elapsed() -> None:
     panel = CapturingAgendaPanel()
     app.query_one = lambda *_args, **_kwargs: panel  # type: ignore[method-assign]
 
-    with patch("thetable.interfaces.tui.time.time", return_value=165.0):
+    with patch("doorae.interfaces.tui.time.time", return_value=165.0):
         app._tick_timer()
 
     assert "⏱ 총 경과: 01:05" in panel.last_rendered
@@ -94,7 +94,7 @@ def test_render_summary_includes_total_and_agenda_durations() -> None:
     ]
     app._update_conversation = lambda: None  # type: ignore[method-assign]
 
-    with patch("thetable.interfaces.tui.time.time", return_value=190.0):
+    with patch("doorae.interfaces.tui.time.time", return_value=190.0):
         app._render_summary()
 
     assert "⏱ 총 경과: 01:30" in app._full_text

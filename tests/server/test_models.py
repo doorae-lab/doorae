@@ -3,7 +3,7 @@
 from datetime import datetime
 import pytest
 from pydantic import ValidationError
-from thetable.server.models import RoomCreate, RoomInfo
+from doorae.server.models import RoomCreate, RoomInfo
 
 
 def test_room_create_valid():

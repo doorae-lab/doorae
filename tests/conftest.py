@@ -8,5 +8,5 @@ def setup_test_env(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-api-key")
 
     # Settings 캐시 초기화
-    from thetable.config.settings import _get_cached_settings
+    from doorae.config.settings import _get_cached_settings
     _get_cached_settings.cache_clear()
