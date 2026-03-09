@@ -3,8 +3,8 @@ import tempfile
 from pathlib import Path
 import pytest
 from pydantic import ValidationError
-from thetable.config import Settings, get_settings
-from thetable.config.settings import _get_cached_settings
+from doorae.config import Settings, get_settings
+from doorae.config.settings import _get_cached_settings
 
 
 class TestSettings:

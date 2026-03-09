@@ -15,7 +15,7 @@ from rich.panel import Panel
 import os
 sys.path.append(os.getcwd())
 
-from thetable.config import get_settings
+from doorae.config import get_settings
 
 console = Console()
 
@@ -84,7 +84,7 @@ async def benchmark_model(model_name: str, base_url: str = None, api_key: str = 
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="LLM Benchmark for TheTable")
+    parser = argparse.ArgumentParser(description="LLM Benchmark for Doorae")
     parser.add_argument("--model", type=str, default="gpt-4o-mini", help="Model name")
     parser.add_argument("--base-url", type=str, help="Custom Base URL")
     parser.add_argument("--api-key", type=str, help="API Key")

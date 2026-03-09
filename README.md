@@ -50,20 +50,6 @@ Let me share the current project status. Based on the GitHub issues...
 git clone https://github.com/doorae-lab/doorae.git
 cd doorae
 uv sync
-uv run doorae --help
-```
-
-For an isolated CLI install that exposes `doorae` on your PATH:
-
-```bash
-uv tool install .
-uv tool update-shell
-```
-
-Open a new terminal and verify the install:
-
-```bash
-doorae --help
 ```
 
 ### 2. Configure
@@ -204,11 +190,11 @@ User ──► CLI/TUI ──► LangGraph StateGraph
 
 ## WebSocket Server
 
-For web integrations, TheTable also provides a FastAPI WebSocket server:
+For web integrations, Doorae also provides a FastAPI WebSocket server:
 
 ```bash
 uv sync --extra server
-uv run thetable-server
+uv run doorae-server
 ```
 
 ## Development

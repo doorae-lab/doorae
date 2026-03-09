@@ -1,11 +1,11 @@
 """Tests for prompt builders"""
 
 import pytest
-from thetable.graph.prompts import (
+from doorae.graph.prompts import (
     build_handoff_tools_section,
     build_supervisor_prompt
 )
-from thetable.core.profile import AgentProfile
+from doorae.core.profile import AgentProfile
 
 
 def test_build_handoff_tools_section():

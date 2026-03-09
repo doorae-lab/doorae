@@ -4,9 +4,9 @@ from typing import cast
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from thetable.core.profile import AgentProfile
-from thetable.graph.nodes.agent import AgentNode
-from thetable.graph.state import MeetingState
+from doorae.core.profile import AgentProfile
+from doorae.graph.nodes.agent import AgentNode
+from doorae.graph.state import MeetingState
 
 
 def _create_node(name: str, role: str) -> tuple[AgentNode, AsyncMock]:

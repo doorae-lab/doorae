@@ -4,7 +4,7 @@ import asyncio
 import json
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
-from thetable.server.room import Room
+from doorae.server.room import Room
 
 
 @pytest.mark.asyncio

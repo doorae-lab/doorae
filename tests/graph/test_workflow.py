@@ -1,8 +1,8 @@
 """Tests for agenda-based workflow"""
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-from thetable.graph.nodes import condition_router
-from thetable.graph.state import MeetingState
+from doorae.graph.nodes import condition_router
+from doorae.graph.state import MeetingState
 
 
 # 이동된 함수들의 테스트:
@@ -69,7 +69,7 @@ def test_condition_router_all_agendas_completed():
 @pytest.mark.skip(reason="Requires OpenAI API key - needs Mock update for agenda extraction")
 async def test_process_response_basic():
     """process_response 기본 동작 테스트"""
-    from thetable.graph.workflow import process_response
+    from doorae.graph.workflow import process_response
     from langchain_openai import ChatOpenAI
 
     model = ChatOpenAI(model="gpt-4o-mini")
@@ -101,7 +101,7 @@ async def test_process_response_basic():
 @pytest.mark.skip(reason="Requires OpenAI API key - needs Mock update for agenda extraction")
 async def test_process_response_agenda_completion():
     """안건 완료 처리 테스트"""
-    from thetable.graph.workflow import process_response
+    from doorae.graph.workflow import process_response
     from langchain_openai import ChatOpenAI
 
     model = ChatOpenAI(model="gpt-4o-mini")
@@ -133,7 +133,7 @@ async def test_process_response_agenda_completion():
 
 def test_create_meeting_workflow_integration():
     """create_meeting_workflow 통합 테스트"""
-    from thetable.graph.workflow import create_meeting_workflow
+    from doorae.graph.workflow import create_meeting_workflow
 
     # 워크플로우 생성
     workflow = create_meeting_workflow()

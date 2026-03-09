@@ -10,5 +10,5 @@ JSON 설정에서 MCP 서버 로드, 환경변수 치환, transport 자동 추�
 
 ## 관련 코드
 
-- `thetable/mcp/__init__.py`
+- `doorae/mcp/__init__.py`
 - `config/mcp_servers.json`

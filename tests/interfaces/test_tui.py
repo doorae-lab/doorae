@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from textual.widgets import Input, Markdown, Static
 
-from thetable.config import Settings
-from thetable.interfaces.tui import HumanTurnStarted, MeetingTuiApp, SpeakerChanged, SpeechBubble
+from doorae.config import Settings
+from doorae.interfaces.tui import HumanTurnStarted, MeetingTuiApp, SpeakerChanged, SpeechBubble
 
 
 class DummyMeetingTuiApp(MeetingTuiApp):

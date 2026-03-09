@@ -9,13 +9,13 @@ import pytest
 class TestCliInputProvider:
     @pytest.mark.asyncio
     async def test_get_input_returns_user_text(self):
-        from thetable.graph.input_provider import CliInputProvider
+        from doorae.graph.input_provider import CliInputProvider
 
         provider = CliInputProvider()
         state = {"messages": [], "agendas": [], "current_agenda_idx": 0}
 
         with patch(
-            "thetable.graph.input_provider.asyncio.to_thread",
+            "doorae.graph.input_provider.asyncio.to_thread",
             new_callable=AsyncMock,
         ) as mock_thread:
             mock_thread.return_value = "테스트 입력"
@@ -27,7 +27,7 @@ class TestCliInputProvider:
 class TestQueueInputProvider:
     @pytest.mark.asyncio
     async def test_get_input_returns_queued_message(self):
-        from thetable.graph.input_provider import QueueInputProvider
+        from doorae.graph.input_provider import QueueInputProvider
 
         queue = asyncio.Queue()
         await queue.put("큐 입력")
@@ -39,7 +39,7 @@ class TestQueueInputProvider:
 
     @pytest.mark.asyncio
     async def test_get_input_none_returns_empty(self):
-        from thetable.graph.input_provider import QueueInputProvider
+        from doorae.graph.input_provider import QueueInputProvider
 
         queue = asyncio.Queue()
         await queue.put(None)
@@ -51,7 +51,7 @@ class TestQueueInputProvider:
 
     @pytest.mark.asyncio
     async def test_get_input_uses_queue_getter(self):
-        from thetable.graph.input_provider import QueueInputProvider
+        from doorae.graph.input_provider import QueueInputProvider
 
         alice_queue = asyncio.Queue()
         bob_queue = asyncio.Queue()

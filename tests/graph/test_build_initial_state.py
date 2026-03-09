@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 from langchain_core.messages import HumanMessage
 
-from thetable.graph.workflow import build_initial_state
+from doorae.graph.workflow import build_initial_state
 
 
 def test_returns_required_keys():

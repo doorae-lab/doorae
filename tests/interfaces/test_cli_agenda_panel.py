@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from thetable.interfaces.cli import format_agenda_panel
+from doorae.interfaces.cli import format_agenda_panel
 
 
 def test_format_agenda_panel_uses_shared_time_format() -> None:
@@ -22,7 +22,7 @@ def test_format_agenda_panel_uses_shared_time_format() -> None:
         },
     ]
 
-    with patch("thetable.interfaces.cli.time.time", return_value=165.0):
+    with patch("doorae.interfaces.cli.time.time", return_value=165.0):
         panel = format_agenda_panel(agendas=agendas, current_idx=0, start_time=100.0)
 
     text = str(panel.renderable)

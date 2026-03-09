@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from thetable.config import Settings
-from thetable.core.profile import AgentProfile
-from thetable.interfaces.engine import MeetingEngine
+from doorae.config import Settings
+from doorae.core.profile import AgentProfile
+from doorae.interfaces.engine import MeetingEngine
 
 
 class RecordingCallback:
@@ -92,14 +92,14 @@ def test_setup_builds_shared_context_with_flattened_humans() -> None:
         recursion_limit=321,
     )
 
-    with patch("thetable.interfaces.engine.load_agent_profiles", return_value=top_profiles), patch(
-        "thetable.interfaces.engine.create_meeting_workflow",
+    with patch("doorae.interfaces.engine.load_agent_profiles", return_value=top_profiles), patch(
+        "doorae.interfaces.engine.create_meeting_workflow",
         return_value=mock_workflow,
     ) as mock_create_workflow, patch(
-        "thetable.interfaces.engine.load_agendas",
+        "doorae.interfaces.engine.load_agendas",
         return_value=[{"title": "안건", "status": "pending"}],
     ), patch(
-        "thetable.interfaces.engine.build_initial_state",
+        "doorae.interfaces.engine.build_initial_state",
         return_value=initial_state,
     ) as mock_build_initial_state:
         engine = MeetingEngine(
@@ -138,14 +138,14 @@ def test_setup_allows_runtime_profile_to_shadow_nested_agent_name() -> None:
     mock_workflow = object()
     initial_state = {"agendas": [], "current_agenda_idx": 0}
 
-    with patch("thetable.interfaces.engine.load_agent_profiles", return_value=top_profiles), patch(
-        "thetable.interfaces.engine.create_meeting_workflow",
+    with patch("doorae.interfaces.engine.load_agent_profiles", return_value=top_profiles), patch(
+        "doorae.interfaces.engine.create_meeting_workflow",
         return_value=mock_workflow,
     ), patch(
-        "thetable.interfaces.engine.load_agendas",
+        "doorae.interfaces.engine.load_agendas",
         return_value=[],
     ), patch(
-        "thetable.interfaces.engine.build_initial_state",
+        "doorae.interfaces.engine.build_initial_state",
         return_value=initial_state,
     ):
         engine = MeetingEngine(

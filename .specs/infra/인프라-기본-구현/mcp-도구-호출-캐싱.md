@@ -18,6 +18,6 @@
 
 ## 관련 코드
 
-- `thetable/mcp/cache.py`
-- `thetable/graph/nodes/utils.py`
+- `doorae/mcp/cache.py`
+- `doorae/graph/nodes/utils.py`
 - `tests/mcp/test_cache.py`

@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 from collections.abc import Callable, Mapping, Sequence
 from typing import cast
 
-from thetable.core.profile import AgentProfile
-from thetable.graph.nodes.agent import AgentNode
+from doorae.core.profile import AgentProfile
+from doorae.graph.nodes.agent import AgentNode
 
 
 def _create_node() -> AgentNode:

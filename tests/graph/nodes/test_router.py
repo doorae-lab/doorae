@@ -2,8 +2,8 @@
 
 import pytest
 from langgraph.graph import END
-from thetable.graph.nodes.router import condition_router
-from thetable.graph.state import MeetingState
+from doorae.graph.nodes.router import condition_router
+from doorae.graph.state import MeetingState
 
 
 class TestConditionRouter:

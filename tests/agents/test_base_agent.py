@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage
-from thetable.agents.base_agent import BaseAgent
-from thetable.core.profile import AgentProfile
+from doorae.agents.base_agent import BaseAgent
+from doorae.core.profile import AgentProfile
 
 
 @pytest.fixture
@@ -33,8 +33,8 @@ def agent_profile():
 async def test_base_agent_generate_response(agent_profile):
     """BaseAgent 응답 생성 테스트"""
     # Mock the entire chain execution
-    with patch('thetable.agents.base_agent.ChatPromptTemplate') as mock_prompt_class:
-        with patch('thetable.agents.base_agent.StrOutputParser') as mock_parser_class:
+    with patch('doorae.agents.base_agent.ChatPromptTemplate') as mock_prompt_class:
+        with patch('doorae.agents.base_agent.StrOutputParser') as mock_parser_class:
             # Setup mock chain
             mock_chain = AsyncMock()
             mock_chain.ainvoke = AsyncMock(return_value="Test response")

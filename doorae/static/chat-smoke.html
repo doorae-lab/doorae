@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Doorae Chat Smoke Test</title>
+  <style>
+    :root {
+      --bg: #f7fafc;
+      --panel: #ffffff;
+      --line: #d9e2ec;
+      --text: #102a43;
+      --muted: #486581;
+      --accent: #1f7a8c;
+      --accent-2: #bfdbf7;
+      --danger: #d64545;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans KR", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 20%, #d4f1f4 0%, transparent 40%),
+        radial-gradient(circle at 85% 80%, #fde2e4 0%, transparent 35%),
+        var(--bg);
+    }
+    .wrap { max-width: 980px; margin: 24px auto; padding: 0 12px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 8px 24px rgba(16, 42, 67, 0.08);
+      margin-bottom: 12px;
+    }
+    h1 { margin: 0 0 10px; font-size: 22px; }
+    .grid { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    @media (max-width: 860px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 14px;
+      background: #fff;
+    }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #fff;
+      background: var(--accent);
+    }
+    button.secondary { background: #334e68; }
+    button.warn { background: var(--danger); }
+    .status { margin-top: 10px; font-size: 13px; color: var(--muted); }
+    .log {
+      height: 360px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0b1f33;
+      color: #dbeafe;
+      padding: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Doorae Web Chat Smoke</h1>
+      <div class="grid">
+        <div>
+          <label for="apiBase">API Base</label>
+          <input id="apiBase" value="" placeholder="기본값: 현재 origin" />
+        </div>
+        <div>
+          <label for="roomName">Room Name</label>
+          <input id="roomName" value="Smoke Room" />
+        </div>
+        <div>
+          <label for="roomId">Room ID</label>
+          <input id="roomId" placeholder="생성 후 자동 입력" />
+        </div>
+        <div>
+          <label for="username">Username</label>
+          <input id="username" value="alice" />
+        </div>
+      </div>
+      <div class="actions">
+        <button id="btnCreate">1) 방 생성</button>
+        <button id="btnConnect">2) WebSocket 연결</button>
+        <button id="btnStart" class="secondary">3) 워크플로우 시작</button>
+        <button id="btnDisconnect" class="warn">연결 종료</button>
+      </div>
+      <div class="actions">
+        <input id="message" placeholder="메시지 입력 후 전송" />
+        <button id="btnSend">메시지 전송</button>
+      </div>
+      <div class="status" id="status">대기 중</div>
+      <div class="hint">권장 순서: 방 생성 -> WebSocket 연결 -> 메시지 전송 -> 워크플로우 시작</div>
+    </div>
+    <div class="card">
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <script>
+    let ws = null;
+    const $ = (id) => document.getElementById(id);
+
+    function baseUrl() {
+      const raw = $("apiBase").value.trim();
+      return raw || window.location.origin;
+    }
+    function log(line, obj) {
+      const prefix = `[${new Date().toLocaleTimeString()}] ${line}`;
+      const payload = obj ? `\n${JSON.stringify(obj, null, 2)}` : "";
+      $("log").textContent += `${prefix}${payload}\n`;
+      $("log").scrollTop = $("log").scrollHeight;
+    }
+    function setStatus(text) { $("status").textContent = text; }
+
+    async function createRoom() {
+      const url = `${baseUrl()}/api/rooms`;
+      const body = { name: $("roomName").value || "Smoke Room" };
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "room create failed");
+      $("roomId").value = data.id;
+      setStatus(`방 생성 완료: ${data.id}`);
+      log("ROOM_CREATED", data);
+    }
+
+    function connectWs() {
+      const roomId = $("roomId").value.trim();
+      const username = $("username").value.trim();
+      if (!roomId || !username) throw new Error("roomId/username 필요");
+
+      const wsBase = baseUrl().replace(/^http/, "ws");
+      ws = new WebSocket(`${wsBase}/ws/${encodeURIComponent(roomId)}?username=${encodeURIComponent(username)}`);
+      ws.onopen = () => { setStatus("WebSocket 연결됨"); log("WS_OPEN"); };
+      ws.onclose = () => { setStatus("WebSocket 연결 종료"); log("WS_CLOSE"); };
+      ws.onerror = () => { setStatus("WebSocket 에러"); log("WS_ERROR"); };
+      ws.onmessage = (event) => {
+        let payload = event.data;
+        try { payload = JSON.parse(event.data); } catch {}
+        log("WS_MESSAGE", payload);
+      };
+    }
+
+    function sendMessage() {
+      const msg = $("message").value;
+      if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error("WS 미연결");
+      ws.send(JSON.stringify({ content: msg }));
+      log("WS_SEND", { content: msg });
+      $("message").value = "";
+    }
+
+    async function startWorkflow() {
+      const roomId = $("roomId").value.trim();
+      if (!roomId) throw new Error("roomId 필요");
+      const url = `${baseUrl()}/api/rooms/${encodeURIComponent(roomId)}/start`;
+      const res = await fetch(url, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "workflow start failed");
+      setStatus("워크플로우 시작됨");
+      log("WORKFLOW_STARTED", data);
+    }
+
+    function disconnect() { if (ws) ws.close(); }
+
+    async function guarded(fn) {
+      try { await fn(); }
+      catch (err) { setStatus(`오류: ${err.message}`); log("ERROR", { message: err.message }); }
+    }
+
+    $("btnCreate").addEventListener("click", () => guarded(createRoom));
+    $("btnConnect").addEventListener("click", () => guarded(connectWs));
+    $("btnSend").addEventListener("click", () => guarded(sendMessage));
+    $("btnStart").addEventListener("click", () => guarded(startWorkflow));
+    $("btnDisconnect").addEventListener("click", () => guarded(disconnect));
+  </script>
+</body>
+</html>

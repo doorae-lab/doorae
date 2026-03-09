@@ -1,16 +1,16 @@
 # 개발 로드맵
 
-> TheTable이 어떤 순서로 발전할지 단계별로 알아봐요.
+> Doorae이 어떤 순서로 발전할지 단계별로 알아봐요.
 
 ---
 
 ## 4단계 개발 계획
 
-TheTable은 **4단계 (Phase)**로 나눠서 발전해요.
+Doorae은 **4단계 (Phase)**로 나눠서 발전해요.
 
 ```mermaid
 gantt
-    title TheTable 개발 일정
+    title Doorae 개발 일정
     dateFormat YYYY-MM
     section Phase 1
     회의록 저장           :p1a, 2026-02, 1M
@@ -105,10 +105,10 @@ gantt
 **사용 방법**
 ```
 # 과거 회의록 목록 보기
-thetable --list-meetings
+doorae --list-meetings
 
 # 특정 회의록 보기
-thetable --view-meeting 2026-02-10-morning
+doorae --view-meeting 2026-02-10-morning
 ```
 
 ---

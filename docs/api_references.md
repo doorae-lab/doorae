@@ -82,7 +82,7 @@ Base URL: `/api`
 
 ## 6. 회의방 (Room)
 
-> 구현: `thetable/server/routes.py`, `thetable/server/room.py`
+> 구현: `doorae/server/routes.py`, `doorae/server/room.py`
 
 | 메서드 | 엔드포인트 | 설명 | 상태 |
 |--------|-----------|------|------|
@@ -124,7 +124,7 @@ Base URL: `/api`
 
 ## 7. WebSocket
 
-> 구현: `thetable/server/routes.py`, `thetable/server/connection_manager.py`
+> 구현: `doorae/server/routes.py`, `doorae/server/connection_manager.py`
 
 ### 접속
 
@@ -216,7 +216,7 @@ JSON 텍스트 메시지:
 
 ## 8. 서버 설정
 
-> 구현: `thetable/server/config.py`
+> 구현: `doorae/server/config.py`
 
 환경 변수 prefix: `SERVER_`
 

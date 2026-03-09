@@ -10,4 +10,4 @@ LangSmith 기반 LLM 호출 추적. 환경변수로 활성화/비활성화, 프�
 
 ## 관련 코드
 
-- `thetable/config/tracing.py`
+- `doorae/config/tracing.py`

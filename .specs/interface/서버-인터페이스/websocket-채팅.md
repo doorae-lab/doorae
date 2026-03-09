@@ -10,10 +10,10 @@ WebSocket 기반 실시간 채팅 인터페이스. 회의방 참가자 간 메�
 
 ## 관련 코드
 
-- `thetable/server/routes.py` - WebSocket 엔드포인트
-- `thetable/server/room.py` - 메시지 처리, 워크플로우 스트리밍
-- `thetable/server/connection_manager.py` - 연결 관리, broadcast
-- `thetable/server/events.py` - 이벤트 변환 유틸리티
+- `doorae/server/routes.py` - WebSocket 엔드포인트
+- `doorae/server/room.py` - 메시지 처리, 워크플로우 스트리밍
+- `doorae/server/connection_manager.py` - 연결 관리, broadcast
+- `doorae/server/events.py` - 이벤트 변환 유틸리티
 
 ## 접속
 

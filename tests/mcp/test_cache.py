@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 from langchain_mcp_adapters.interceptors import MCPToolCallRequest
 from mcp.types import CallToolResult, TextContent
 
-from thetable.mcp.cache import (
+from doorae.mcp.cache import (
     CachingInterceptor,
     ToolResultCache,
     _is_cacheable,

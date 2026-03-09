@@ -1,8 +1,8 @@
 """BaseNode 및 NodeType 테스트"""
 
 import pytest
-from thetable.graph.nodes.base import BaseNode, NodeType
-from thetable.graph.state import MeetingState
+from doorae.graph.nodes.base import BaseNode, NodeType
+from doorae.graph.state import MeetingState
 
 
 class TestNodeType:

@@ -2,8 +2,8 @@
 
 import pytest
 from unittest.mock import MagicMock
-from thetable.graph.nodes.summarize import SummarizationNode, NodeType
-from thetable.graph.state import MeetingState
+from doorae.graph.nodes.summarize import SummarizationNode, NodeType
+from doorae.graph.state import MeetingState
 
 
 class TestSummarizationNode:
@@ -28,7 +28,7 @@ class TestSummarizationNode:
     async def test_no_summarization_when_few_messages(self, monkeypatch):
         """메시지가 적으면 요약하지 않음"""
         monkeypatch.setattr(
-            "thetable.graph.nodes.summarize.get_settings",
+            "doorae.graph.nodes.summarize.get_settings",
             lambda: MagicMock(max_messages_before_summary=10),
         )
 

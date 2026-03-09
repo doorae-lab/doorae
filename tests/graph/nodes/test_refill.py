@@ -1,8 +1,8 @@
 """RefillSpeakersNode 테스트"""
 
 import pytest
-from thetable.graph.nodes.refill import RefillSpeakersNode
-from thetable.graph.state import MeetingState
+from doorae.graph.nodes.refill import RefillSpeakersNode
+from doorae.graph.state import MeetingState
 
 
 class TestRefillSpeakersNode:

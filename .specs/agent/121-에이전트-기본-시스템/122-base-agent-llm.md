@@ -11,4 +11,4 @@ BaseAgent 클래스: 시스템/유저 프롬프트 빌더, LLM 응답 생성, �
 
 ## 관련 코드
 
-- `thetable/agents/base_agent.py`
+- `doorae/agents/base_agent.py`

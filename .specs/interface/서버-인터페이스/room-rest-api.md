@@ -10,11 +10,11 @@
 
 ## 관련 코드
 
-- `thetable/server/routes.py`
-- `thetable/server/room.py`
-- `thetable/server/room_manager.py`
-- `thetable/server/models.py`
-- `thetable/server/config.py`
+- `doorae/server/routes.py`
+- `doorae/server/room.py`
+- `doorae/server/room_manager.py`
+- `doorae/server/models.py`
+- `doorae/server/config.py`
 
 ## 엔드포인트
 
