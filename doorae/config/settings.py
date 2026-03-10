@@ -29,7 +29,8 @@ class Settings(BaseSettings):
     llm_task_base_url: Optional[str] = None  # Task LLM 전용 (None이면 openai_base_url 사용)
     llm_task_model: str = "gpt-4o-mini"  # 나중에 gpt-3.5-turbo 등으로 변경 가능
     llm_task_temperature: float = 0.0    # 일관된 결과 위해 낮게
-    llm_task_max_tokens: int = 2048  # Task LLM은 더 짧은 응답
+    llm_task_max_tokens: int = 256  # Task LLM은 짧은 응답 위주
+    mention_extraction_max_tokens: int = 64  # Human fallback 멘션 추출 상한
 
     # LLM 연결 설정
     llm_timeout: float = 60.0  # 초 단위
@@ -47,7 +48,7 @@ class Settings(BaseSettings):
     tui_enabled: bool = True  # --no-tui 플래그로 비활성화 가능
 
     # 대화 요약 설정
-    max_messages_before_summary: int = 5  # 이 개수 초과 시 요약
+    max_messages_before_summary: int = 8  # 이 개수 초과 시 요약
     keep_recent_messages: int = 3  # 최근 몇 개 유지
     summary_max_tokens: int = 3000  # 요약 최대 토큰
 

@@ -90,6 +90,9 @@ class SummarizationNode(BaseNode):
             name = getattr(msg, "name", "Unknown")
             formatted_messages.append(HumanMessage(content=f"[{name}]: {content}"))
 
+        if len(formatted_messages) < 3:
+            return {}
+
         # 요약 프롬프트 추가
         formatted_messages.append(HumanMessage(content=summary_prompt))
 
