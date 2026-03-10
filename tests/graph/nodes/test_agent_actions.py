@@ -16,6 +16,33 @@ def _create_node() -> AgentNode:
     return AgentNode(profile=profile, model=MagicMock())
 
 
+def _create_prompt_node() -> AgentNode:
+    host = AgentProfile(
+        name="Host",
+        role="host",
+        responsibilities=["facilitate"],
+        expertise=["coordination"],
+    )
+    pm = AgentProfile(
+        name="PM",
+        role="pm",
+        responsibilities=["plan"],
+        expertise=["roadmap"],
+    )
+    techlead = AgentProfile(
+        name="TechLead",
+        role="tech_lead",
+        responsibilities=["review"],
+        expertise=["architecture"],
+    )
+    return AgentNode(
+        profile=host,
+        model=MagicMock(),
+        all_agent_names=["Host", "PM", "TechLead"],
+        all_profiles={"Host": host, "PM": pm, "TechLead": techlead},
+    )
+
+
 def _apply_actions(
     node: AgentNode,
     actions: Sequence[Mapping[str, object]],
@@ -156,3 +183,13 @@ def test_apply_agenda_actions_duplicate_approve_same_index_adds_once():
 
     assert result["agendas"] == [*agendas, proposal]  # 1번만 추가
     assert result["pending_proposals"] == []  # 제거는 정상
+
+
+def test_build_agent_prompt_requires_at_mentions():
+    node = _create_prompt_node()
+
+    prompt = node._build_agent_prompt()
+
+    assert "@PM" in prompt
+    assert "@TechLead" in prompt
+    assert "반드시 @이름 형식" in prompt

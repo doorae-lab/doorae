@@ -45,6 +45,9 @@ class TestSettings:
         assert settings.llm_main_temperature == 0.7
         assert settings.llm_task_model == "gpt-4o-mini"
         assert settings.llm_task_temperature == 0.0
+        assert settings.llm_task_max_tokens == 256
+        assert settings.mention_extraction_max_tokens == 64
+        assert settings.max_messages_before_summary == 8
         assert settings.agent_profiles_path == "config/agent_profiles.yaml"
 
     def test_missing_api_key(self, monkeypatch):

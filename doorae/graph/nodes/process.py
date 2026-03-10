@@ -1,9 +1,12 @@
 """ProcessResponseNode - 에이전트 응답 처리"""
 
+import re
 import time
 from typing import Dict, Any
+from langchain_core.messages import AIMessage, HumanMessage
 from loguru import logger
 
+from doorae.config import get_settings
 from doorae.graph.nodes.base import BaseNode, NodeType
 from doorae.graph.nodes.registry import register_node
 from doorae.graph.state import MeetingState
@@ -38,15 +41,63 @@ class ProcessResponseNode(BaseNode):
         self.model = model
         self.valid_speakers = valid_speakers
 
-    async def _extract_mentions(self, content: str) -> list[str]:
-        """LLM 기반 멘션 추출
+    def _extract_at_mentions(self, content: str) -> list[str]:
+        """`@Name` prefix 기반 멘션 추출."""
+        if not content or not self.valid_speakers:
+            return []
 
-        Args:
-            content: 발언 내용
+        ordered_speakers = sorted(self.valid_speakers, key=len, reverse=True)
+        pattern = re.compile(
+            r"@(" + "|".join(re.escape(speaker) for speaker in ordered_speakers) + r")"
+        )
 
-        Returns:
-            언급된 참여자 이름 리스트
-        """
+        mentions: list[str] = []
+        for match in pattern.finditer(content):
+            speaker = match.group(1)
+            if speaker not in mentions:
+                mentions.append(speaker)
+        return mentions
+
+    def _extract_natural_name_mentions(self, content: str) -> list[str]:
+        """HumanMessage 호환용 자연어 이름 멘션 추출."""
+        if not content or not self.valid_speakers:
+            return []
+
+        ordered_speakers = sorted(self.valid_speakers, key=len, reverse=True)
+        pattern = re.compile(
+            "|".join(re.escape(speaker) for speaker in ordered_speakers)
+        )
+
+        mentions: list[str] = []
+        for match in pattern.finditer(content):
+            speaker = match.group(0)
+            if speaker not in mentions:
+                mentions.append(speaker)
+        return mentions
+
+    def _looks_like_delegation_without_mentions(self, content: str) -> bool:
+        """AI 응답이 멘션 없이 위임/호명을 시도하는지 추정."""
+        if not content:
+            return False
+
+        request_cues = [
+            "의견",
+            "검토",
+            "부탁",
+            "생각",
+            "말씀",
+            "답변",
+            "확인",
+            "주시겠",
+            "해주세요",
+        ]
+        if any(speaker in content for speaker in self.valid_speakers):
+            return True
+        return any(cue in content for cue in request_cues)
+
+    async def _extract_mentions_with_llm(self, content: str) -> list[str]:
+        """HumanMessage fallback용 제한된 LLM 멘션 추출."""
+        settings = get_settings()
         prompt = f"""다음 발언에서 언급하거나 의견을 요청하는 참여자를 추출하세요.
 
 발언: "{content}"
@@ -56,7 +107,8 @@ class ProcessResponseNode(BaseNode):
 언급된 참여자 이름만 쉼표로 구분하여 출력 (없으면 "없음"):"""
 
         try:
-            response = await self.model.ainvoke(prompt)
+            response_model = self.model.bind(max_tokens=settings.mention_extraction_max_tokens)
+            response = await response_model.ainvoke(prompt)
             result = response.content.strip()
 
             if result == "없음":
@@ -64,8 +116,34 @@ class ProcessResponseNode(BaseNode):
 
             return [s.strip() for s in result.split(",") if s.strip() in self.valid_speakers]
         except Exception as e:
-            logger.warning(f"⚠️ 멘션 추출 LLM 호출 실패 (발언: {content[:30]}...): {type(e).__name__}: {e}")
+            logger.warning(
+                f"⚠️ 멘션 추출 LLM 호출 실패 (발언: {content[:30]}...): {type(e).__name__}: {e}"
+            )
             return []
+
+    async def _extract_mentions(self, message: Any) -> list[str]:
+        """메시지 유형별 멘션 추출."""
+        content = getattr(message, "content", "") or ""
+        at_mentions = self._extract_at_mentions(content)
+        if at_mentions:
+            return at_mentions
+
+        if isinstance(message, AIMessage):
+            if self._looks_like_delegation_without_mentions(content):
+                logger.warning(
+                    "⚠️ AI response attempted delegation without @mention "
+                    f"(speaker={getattr(message, 'name', '')}, content={content[:80]!r})"
+                )
+            return []
+
+        natural_mentions = self._extract_natural_name_mentions(content)
+        if natural_mentions:
+            return natural_mentions
+
+        if isinstance(message, HumanMessage) and self._looks_like_delegation_without_mentions(content):
+            return await self._extract_mentions_with_llm(content)
+
+        return []
 
     def _detect_agenda_completion(self, content: str) -> bool:
         """Host 발언에서 안건 완료 키워드 감지
@@ -124,7 +202,7 @@ class ProcessResponseNode(BaseNode):
 회의 종료 의도가 명확하면 "예", 아니면 "아니오"로만 답하세요:"""
 
         try:
-            response = await self.model.ainvoke(prompt)
+            response = await self.model.bind(max_tokens=16).ainvoke(prompt)
             result = response.content.strip()
 
             return result == "예"
@@ -162,7 +240,7 @@ class ProcessResponseNode(BaseNode):
         new_counts[speaker_name] = new_counts.get(speaker_name, 0) + 1
 
         # 3. 멘션 추출 (LLM 기반)
-        mentions = await self._extract_mentions(content)
+        mentions = await self._extract_mentions(last_msg)
 
         # 4. 새 멘션을 pending에 추가 (중복 제외)
         for m in mentions:

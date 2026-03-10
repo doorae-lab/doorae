@@ -250,9 +250,11 @@ class AgentNode(BaseNode):
 다른 참여자: {', '.join(formatted_participants)}
 (* 표시는 실제 사용자입니다)
 
-다른 참여자의 의견이 필요하면 자연스럽게 언급하세요.
-예: "Designer님의 의견도 듣고 싶습니다"
-"""
+다른 참여자의 응답이 필요하면 반드시 @이름 형식으로 호출하세요.
+예: "@PM 의견 부탁드립니다"
+여러 명을 호출할 때는 "@PM @TechLead 검토 부탁드립니다"처럼 작성하세요.
+조사나 존칭은 붙여도 되지만, 반드시 @이름 prefix를 포함해야 합니다.
+                """
 
         # metadata 섹션 생성
         metadata_section = ""

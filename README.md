@@ -157,6 +157,8 @@ agendas:
 | `LLM_TASK_MODEL` | Utility task model | `gpt-4o-mini` |
 | `LLM_MAIN_TEMPERATURE` | Main LLM temperature | `0.7` |
 | `LLM_TASK_TEMPERATURE` | Task LLM temperature | `0.0` |
+| `LLM_TASK_MAX_TOKENS` | Utility task token cap | `256` |
+| `MENTION_EXTRACTION_MAX_TOKENS` | Human mention fallback token cap | `64` |
 | `MAX_TURNS` | Max meeting turns | `1000` |
 | `AGENT_PROFILES_PATH` | Path to profiles YAML | `config/agent_profiles.yaml` |
 
@@ -187,6 +189,8 @@ User ──► CLI/TUI ──► LangGraph StateGraph
 - **ProcessResponseNode** — Extracts mentions, detects agenda completion, manages speaker queue
 - **RefillSpeakersNode** — Ensures required speakers participate in each agenda item
 - **SummarizationNode** — Compresses conversation history to stay within context limits
+
+AI participants must call other participants with `@Name` prefixes such as `@PM` or `@TechLead`. The routing layer treats AI responses without `@Name` as non-routing text and only keeps natural-language fallback for human input during the migration period.
 
 ## WebSocket Server
 
