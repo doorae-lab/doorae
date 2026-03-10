@@ -224,3 +224,4 @@ specs/
 .agents/
 
 .agent/skills/create-readme
+skills-lock.json
