@@ -35,5 +35,8 @@ PARTICIPANT_STATUS_TEXT = {
 # Host 역할 이름
 HOST_ROLE_NAME = "Host"
 
+# AI Host가 회의를 종료할 때 출력해야 하는 마지막 줄 토큰
+HOST_END_MEETING_COMMAND = "[[HOST_END_MEETING]]"
+
 # 에이전트 색상 (동적 할당용)
 AGENT_COLORS = ["green", "blue", "yellow", "cyan", "magenta", "bright_white"]

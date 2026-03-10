@@ -3,6 +3,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import cast
 
 from doorae.core.profile import AgentProfile
+from doorae.graph.constants import HOST_END_MEETING_COMMAND
 from doorae.graph.nodes.agent import AgentNode
 
 
@@ -37,6 +38,33 @@ def _create_prompt_node() -> AgentNode:
     )
     return AgentNode(
         profile=host,
+        model=MagicMock(),
+        all_agent_names=["Host", "PM", "TechLead"],
+        all_profiles={"Host": host, "PM": pm, "TechLead": techlead},
+    )
+
+
+def _create_non_host_prompt_node() -> AgentNode:
+    host = AgentProfile(
+        name="Host",
+        role="host",
+        responsibilities=["facilitate"],
+        expertise=["coordination"],
+    )
+    pm = AgentProfile(
+        name="PM",
+        role="pm",
+        responsibilities=["plan"],
+        expertise=["roadmap"],
+    )
+    techlead = AgentProfile(
+        name="TechLead",
+        role="tech_lead",
+        responsibilities=["review"],
+        expertise=["architecture"],
+    )
+    return AgentNode(
+        profile=pm,
         model=MagicMock(),
         all_agent_names=["Host", "PM", "TechLead"],
         all_profiles={"Host": host, "PM": pm, "TechLead": techlead},
@@ -193,3 +221,22 @@ def test_build_agent_prompt_requires_at_mentions():
     assert "@PM" in prompt
     assert "@TechLead" in prompt
     assert "반드시 @이름 형식" in prompt
+
+
+def test_build_agent_prompt_includes_host_end_command_contract():
+    node = _create_prompt_node()
+
+    prompt = node._build_agent_prompt()
+
+    assert HOST_END_MEETING_COMMAND in prompt
+    assert "회의를 종료할 때만 마지막 줄에" in prompt
+    assert "마지막 비어있지 않은 줄" in prompt
+
+
+def test_build_agent_prompt_excludes_host_end_command_for_non_host():
+    node = _create_non_host_prompt_node()
+
+    prompt = node._build_agent_prompt()
+
+    assert HOST_END_MEETING_COMMAND not in prompt
+    assert "회의를 종료할 때만 마지막 줄에" not in prompt

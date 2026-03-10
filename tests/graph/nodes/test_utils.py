@@ -4,7 +4,7 @@
 - extract_mentions_llm → ProcessResponseNode._extract_mentions (통합 테스트로 커버)
 - detect_agenda_completion → ProcessResponseNode._detect_agenda_completion (통합 테스트로 커버)
 - detect_meeting_end_keyword → ProcessResponseNode._detect_meeting_end_keyword (통합 테스트로 커버)
-- detect_meeting_end_llm → ProcessResponseNode._detect_meeting_end_llm (통합 테스트로 커버)
+- detect_meeting_end_command → ProcessResponseNode._detect_meeting_end_command (통합 테스트로 커버)
 - get_remaining_speakers → RefillSpeakersNode._get_remaining_speakers (통합 테스트로 커버)
 """
 

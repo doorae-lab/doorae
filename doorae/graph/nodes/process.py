@@ -10,7 +10,7 @@ from doorae.config import get_settings
 from doorae.graph.nodes.base import BaseNode, NodeType
 from doorae.graph.nodes.registry import register_node
 from doorae.graph.state import MeetingState
-from doorae.graph.constants import HOST_ROLE_NAME
+from doorae.graph.constants import HOST_ROLE_NAME, HOST_END_MEETING_COMMAND
 
 
 @register_node("process_response", category="utility")
@@ -184,31 +184,16 @@ class ProcessResponseNode(BaseNode):
         ]
         return any(kw in content for kw in end_keywords)
 
-    async def _detect_meeting_end_llm(self, content: str) -> bool:
-        """LLM으로 회의 종료 의도 분석
-
-        키워드 미감지 시 fallback으로 사용됩니다.
-
-        Args:
-            content: 발언 내용
-
-        Returns:
-            회의 종료 의도가 감지되면 True
-        """
-        prompt = f"""다음 Host의 발언이 회의를 종료하려는 의도인지 판단하세요.
-
-발언: "{content}"
-
-회의 종료 의도가 명확하면 "예", 아니면 "아니오"로만 답하세요:"""
-
-        try:
-            response = await self.model.bind(max_tokens=16).ainvoke(prompt)
-            result = response.content.strip()
-
-            return result == "예"
-        except Exception as e:
-            logger.warning(f"⚠️ 회의 종료 감지 LLM 호출 실패 (발언: {content[:30]}...): {type(e).__name__}: {e}")
+    def _detect_meeting_end_command(self, content: str) -> bool:
+        """마지막 비어있지 않은 줄이 종료 커맨드와 정확히 일치하는지 확인."""
+        if not content:
             return False
+
+        non_empty_lines = [line.strip() for line in content.splitlines() if line.strip()]
+        if not non_empty_lines:
+            return False
+
+        return non_empty_lines[-1] == HOST_END_MEETING_COMMAND
 
     async def execute(self, state: MeetingState) -> Dict[str, Any]:
         """에이전트 응답 처리
@@ -265,22 +250,13 @@ class ProcessResponseNode(BaseNode):
 
         # 6. Host 회의 종료 발언 감지 (안건 상태 무관)
         if speaker_name == HOST_ROLE_NAME:
-            # 1단계: 키워드 감지 (최우선, 안건 상태 무관)
-            if self._detect_meeting_end_keyword(content):
-                meeting_ended = True
-
-            # 2단계: LLM 분석 (키워드 미감지 + 안건 대부분 완료)
-            elif len(new_agendas) > 0:
-                completed_count = sum(
-                    1
-                    for a in new_agendas
-                    if a["status"] in ["completed", "deferred"]
+            if isinstance(last_msg, AIMessage):
+                meeting_ended = self._detect_meeting_end_command(content)
+            else:
+                meeting_ended = (
+                    self._detect_meeting_end_command(content)
+                    or self._detect_meeting_end_keyword(content)
                 )
-                completion_rate = completed_count / len(new_agendas)
-
-                # 80% 이상 완료 시에만 LLM 분석 (토큰 절약)
-                if completion_rate >= 0.8:
-                    meeting_ended = await self._detect_meeting_end_llm(content)
 
         # 턴 카운트 증가
         turn_count = state.get("turn_count", 0) + 1
