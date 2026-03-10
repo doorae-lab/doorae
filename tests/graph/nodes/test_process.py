@@ -4,6 +4,7 @@ import inspect
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from unittest.mock import AsyncMock, MagicMock
+from doorae.graph.constants import HOST_END_MEETING_COMMAND
 from doorae.graph.nodes.process import ProcessResponseNode, NodeType
 
 
@@ -147,20 +148,38 @@ class TestProcessResponseNode:
         model.bind.assert_called_once_with(max_tokens=64)
         response_model.ainvoke.assert_awaited_once()
 
-    @pytest.mark.asyncio
-    async def test_detect_meeting_end_llm_uses_small_token_cap(self):
-        response_model = MagicMock()
-        response_model.ainvoke = AsyncMock(return_value=MagicMock(content="예"))
+    def test_process_response_node_has_no_meeting_end_llm_fallback(self):
+        """회의 종료 LLM fallback이 제거되었는지 확인"""
+        assert not hasattr(ProcessResponseNode, "_detect_meeting_end_llm")
 
-        model = MagicMock()
-        model.bind.return_value = response_model
-        node = ProcessResponseNode(model=model, valid_speakers=["Host"])
+    def test_detect_meeting_end_command_matches_exact_last_non_empty_line(self):
+        """종료 커맨드는 마지막 비어있지 않은 줄과 정확히 일치해야 함"""
+        node = ProcessResponseNode(model=MagicMock(), valid_speakers=["Host"])
 
-        result = await node._detect_meeting_end_llm("회의를 마칠까요?")
-
-        assert result is True
-        model.bind.assert_called_once_with(max_tokens=16)
-        response_model.ainvoke.assert_awaited_once()
+        assert (
+            node._detect_meeting_end_command(
+                f"오늘 논의는 여기까지 하겠습니다.\n{HOST_END_MEETING_COMMAND}"
+            )
+            is True
+        )
+        assert (
+            node._detect_meeting_end_command(
+                f"오늘 논의는 여기까지 하겠습니다.\n{HOST_END_MEETING_COMMAND}\n"
+            )
+            is True
+        )
+        assert (
+            node._detect_meeting_end_command(
+                f"{HOST_END_MEETING_COMMAND} 감사합니다."
+            )
+            is False
+        )
+        assert (
+            node._detect_meeting_end_command(
+                f"오늘 논의는 여기까지 하겠습니다. {HOST_END_MEETING_COMMAND}"
+            )
+            is False
+        )
 
     @pytest.mark.asyncio
     async def test_execute_routes_ai_mentions_into_pending_queue(self):
@@ -178,3 +197,83 @@ class TestProcessResponseNode:
 
         assert result["pending_speakers"] == ["PM"]
         assert result["speaker_counts"] == {"Host": 1}
+
+    @pytest.mark.asyncio
+    async def test_execute_ends_meeting_when_host_ai_message_has_explicit_command(self):
+        model = MagicMock()
+        node = ProcessResponseNode(model=model, valid_speakers=["Host", "PM"])
+        state = {
+            "messages": [
+                AIMessage(
+                    content=(
+                        "오늘 회의는 여기까지 정리하겠습니다.\n"
+                        f"{HOST_END_MEETING_COMMAND}"
+                    ),
+                    name="Host",
+                )
+            ],
+            "agendas": [{"title": "Test", "status": "in_progress"}],
+            "current_agenda_idx": 0,
+            "pending_speakers": ["Host"],
+            "speaker_counts": {},
+            "turn_count": 0,
+        }
+
+        result = await node.execute(state)
+
+        assert result["meeting_ended"] is True
+        model.bind.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_execute_does_not_end_meeting_when_non_host_uses_explicit_command(self):
+        model = MagicMock()
+        node = ProcessResponseNode(model=model, valid_speakers=["Host", "PM"])
+        state = {
+            "messages": [AIMessage(content=HOST_END_MEETING_COMMAND, name="PM")],
+            "agendas": [{"title": "Test", "status": "in_progress"}],
+            "current_agenda_idx": 0,
+            "pending_speakers": ["PM"],
+            "speaker_counts": {},
+            "turn_count": 0,
+        }
+
+        result = await node.execute(state)
+
+        assert result["meeting_ended"] is False
+        model.bind.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_execute_does_not_end_meeting_when_host_ai_message_has_only_keyword(self):
+        model = MagicMock()
+        node = ProcessResponseNode(model=model, valid_speakers=["Host", "PM"])
+        state = {
+            "messages": [AIMessage(content="회의를 마치겠습니다.", name="Host")],
+            "agendas": [{"title": "Test", "status": "completed"}],
+            "current_agenda_idx": 1,
+            "pending_speakers": ["Host"],
+            "speaker_counts": {},
+            "turn_count": 3,
+        }
+
+        result = await node.execute(state)
+
+        assert result["meeting_ended"] is False
+        model.bind.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_execute_allows_human_host_keyword_fallback(self):
+        model = MagicMock()
+        node = ProcessResponseNode(model=model, valid_speakers=["Host", "PM"])
+        state = {
+            "messages": [HumanMessage(content="회의를 마치겠습니다.", name="Host")],
+            "agendas": [{"title": "Test", "status": "completed"}],
+            "current_agenda_idx": 1,
+            "pending_speakers": ["Host"],
+            "speaker_counts": {},
+            "turn_count": 3,
+        }
+
+        result = await node.execute(state)
+
+        assert result["meeting_ended"] is True
+        model.bind.assert_not_called()

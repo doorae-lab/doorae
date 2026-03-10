@@ -9,7 +9,12 @@ from doorae.agents.base_agent import BaseAgent
 from doorae.graph.nodes.base import BaseNode, NodeType
 from doorae.graph.nodes.registry import register_node
 from doorae.graph.state import MeetingState, ParticipantStatus
-from doorae.graph.constants import STATUS_EMOJI, STATUS_TEXT, HOST_ROLE_NAME
+from doorae.graph.constants import (
+    STATUS_EMOJI,
+    STATUS_TEXT,
+    HOST_ROLE_NAME,
+    HOST_END_MEETING_COMMAND,
+)
 from doorae.graph.agenda_tools import (
     create_propose_tool,
     create_approve_tool,
@@ -276,6 +281,20 @@ class AgentNode(BaseNode):
 
             metadata_section = "\n".join(metadata_lines)
 
+        host_end_protocol_section = ""
+        if self.profile.name == HOST_ROLE_NAME:
+            host_end_protocol_section = f"""
+
+## 회의 종료 프로토콜
+회의를 종료할 때만 마지막 줄에 아래 종료 커맨드를 정확히 한 줄로 출력하세요.
+마지막 비어있지 않은 줄은 반드시 이 토큰과 정확히 일치해야 합니다.
+평소 발언이나 안건 전환 중에는 이 토큰을 절대 출력하지 마세요.
+
+예시:
+오늘 회의는 여기까지 정리하겠습니다. 후속 작업은 문서로 공유드리겠습니다.
+{HOST_END_MEETING_COMMAND}
+            """
+
         return f"""당신은 {self.profile.name}, {self.profile.role}입니다.
 
 ## 책임
@@ -283,7 +302,7 @@ class AgentNode(BaseNode):
 
 ## 전문 분야
 {chr(10).join(f'- {e}' for e in self.profile.expertise)}
-{participants_section}{metadata_section}
+{participants_section}{metadata_section}{host_end_protocol_section}
 간결하고 전문적으로 한국어로 응답하세요."""
 
     def _format_agenda_context(
