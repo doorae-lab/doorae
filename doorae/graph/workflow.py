@@ -3,7 +3,7 @@
 아키텍처:
 - pending_speakers 큐 기반 라우팅 (LLM 호출 최소화)
 - 안건(Agenda) 중심의 구조화된 회의 진행
-- LLM 기반 멘션 추출 및 의도 분석
+- summarize ∥ process_response 병렬 실행 (fan-out/fan-in)
 - Host 명시적 안건 완료 선언
 - AI 자동 안건 관리 (추가/수정/제거)
 """
@@ -110,34 +110,40 @@ def create_meeting_workflow(
         )
         workflow.add_node(name.lower(), node)
 
-    # 7. 진입점: refill_speakers
+    # 7. route_next 패스쓰루 노드 (fan-in join point)
+    workflow.add_node("route_next", lambda state: {})
+
+    # 8. 진입점: refill_speakers
     workflow.set_entry_point("refill_speakers")
 
-    # 8. 에이전트 → summarize → process_response
+    # 9. 에이전트 → [summarize ∥ process_response] (fan-out, 병렬 실행)
     for name in profiles.keys():
         workflow.add_edge(name.lower(), "summarize")
+        workflow.add_edge(name.lower(), "process_response")
 
-    workflow.add_edge("summarize", "process_response")
+    # 10. [summarize, process_response] → route_next (fan-in)
+    workflow.add_edge("summarize", "route_next")
+    workflow.add_edge("process_response", "route_next")
 
-    # 9. process_response → condition_router
+    # 11. route_next → condition_router
     available_targets = {name.lower(): name.lower() for name in profiles.keys()}
     available_targets["refill_speakers"] = "refill_speakers"
     available_targets[END] = END
 
     workflow.add_conditional_edges(
-        "process_response",
+        "route_next",
         condition_router,
         available_targets
     )
 
-    # 10. refill_speakers → condition_router
+    # 12. refill_speakers → condition_router
     workflow.add_conditional_edges(
         "refill_speakers",
         condition_router,
         available_targets
     )
 
-    # 11. 컴파일
+    # 13. 컴파일
     return workflow.compile()
 
 
