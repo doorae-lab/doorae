@@ -221,7 +221,5 @@ CLAUDE.md
 specs/
 .codex/
 
-.agents/
-
-.agent/skills/create-readme
-skills-lock.json
+.agent/skills/
+.agent/workflows/
