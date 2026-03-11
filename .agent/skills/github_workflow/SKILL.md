@@ -1,97 +1,88 @@
 ---
-name: GitHub Workflow
-description: Automates the process of creating a feature branch, pushing changes, creating an issue, and opening a linked pull request using GitHub MCP tools.
+name: github-workflow
+description: Use when turning local work into a GitHub-backed change in this repository. Covers branch creation, issue linkage, push, and PR creation using local git plus scripts/issue_manager.py or direct GitHub API access.
 ---
 
-# GitHub Workflow Skill
+# GitHub Workflow
 
-This skill guides you through the standard development workflow: creating a branch, pushing changes, creating a tracking issue, and opening a pull request linked to that issue.
+Use this skill when the user wants to move local work through the repository workflow.
 
-## Prerequisites
+## Primary path
 
-- **GitHub MCP Server** must be active and authenticated.
-- **Git CLI** must be configured locally.
-- You must be inside a git repository.
+1. Inspect repo context.
+2. Create or reuse a GitHub issue.
+3. Create a branch.
+4. Make the change.
+5. Commit and push.
+6. Open a PR linked to the issue.
 
-## Workflow Steps
+## Tools
 
-### 1. Identify Context
+- local `git`
+- `scripts/issue_manager.py`
+- direct GitHub REST calls when the script does not expose the action
 
-Before starting, determine the following:
-- **Repository Name**: Check `config/agent_profiles.yaml` (metadata.target_repository) or run `git remote get-url origin` to parse `owner/repo`.
-- **Base Branch**: Usually `main` or `master`. Check `git branch -r | grep HEAD`.
-- **Feature Branch Name**: Generate a concise, descriptive name (e.g., `feat/agenda-extraction`, `fix/mcp-connection`).
+Do not assume GitHub MCP is available.
 
-### 2. Local Git Operations
+## Repository checks
 
-1.  **Create and Switch to Branch**:
-    ```bash
-    git checkout -b <branch_name>
-    ```
-2.  **Stage and Commit Changes** (if not already done):
-    ```bash
-    git add .
-    git commit -m "<descriptive commit message>"
-    ```
-3.  **Push Branch**:
-    ```bash
-    git push -u origin <branch_name>
-    ```
+Before starting:
 
-### 3. Create GitHub Issue
+- confirm the remote with `git remote -v`
+- confirm the current branch and base branch
+- check for unrelated dirty changes before committing
+- prefer non-interactive git commands only
 
-Use the **GitHub MCP tool** `create_issue` to track the work.
+## Branch rules
 
-- **Tool**: `github.create_issue` (or `create_issue` depending on client context)
-- **Arguments**:
-  - `owner`: Repository owner
-  - `repo`: Repository name
-  - `title`: Concise summary of the work
-  - `body`: Detailed description of changes, context, and goals.
+- one issue per branch
+- use descriptive names
+- keep branches short-lived
+- do not mix multiple unrelated fixes into one PR
 
-**IMPORTANT**: Note the **Issue Number** returned by this tool (e.g., `15`).
+## Issue linkage rules
 
-### 4. Create Pull Request
+- check for an existing issue before creating a new one
+- use the issue number in commit or PR context when useful
+- use `Closes #<issue_number>` in the PR body when the change should close the issue
 
-Use the **GitHub MCP tool** `create_pull_request` to submit the changes.
+## Issue write path
 
-- **Tool**: `github.create_pull_request`
-- **Arguments**:
-  - `owner`: Repository owner
-  - `repo`: Repository name
-  - `title`: Same as issue title or slightly more technical
-  - `body`:
-    ```markdown
-    Closes #<issue_number>
-    
-    ## Description
-    <Brief summary of changes>
-    ```
-  - `head`: `<branch_name>` (The branch you just pushed)
-  - `base`: `main` (or the target base branch)
+When creating or updating an issue with Korean or other non-ASCII text:
 
-## Example Usage
+1. Choose a UTF-8-safe write path before the first POST or PATCH.
+2. Prefer `scripts/issue_manager.py` only when it targets the correct repository for this workspace.
+3. Otherwise serialize the REST payload as explicit UTF-8 bytes or a UTF-8 JSON file, then send it once.
+4. Read the response back and confirm the returned title/body before reporting success.
+5. Do not create mojibake first and plan to fix it afterward.
 
-```python
-# 1. Push local branch
-run_command("git checkout -b feat/new-feature && git push -u origin feat/new-feature")
+## PR creation path
 
-# 2. Create Issue
-issue = await mcp_client.call_tool("github", "create_issue", {
-    "owner": "yaklevel",
-    "repo": "doorae",
-    "title": "Add New Feature",
-    "body": "Implementing specific functionality..."
-})
-issue_number = issue.number
+Preferred order:
 
-# 3. Create PR
-await mcp_client.call_tool("github", "create_pull_request", {
-    "owner": "yaklevel",
-    "repo": "doorae",
-    "title": "Add New Feature",
-    "body": f"Closes #{issue_number}\n\nImplementation details...",
-    "head": "feat/new-feature",
-    "base": "main"
-})
+1. `git checkout -b <branch>`
+2. `git add <files>`
+3. `git commit -m "<message>"`
+4. `git push -u origin <branch>`
+5. create the PR with `scripts/issue_manager.py create-pr` or direct REST if needed
+
+## Safety
+
+- do not create a PR before the branch exists remotely
+- do not assume `main` blindly; inspect the repo first
+- if the issue title/body contains Korean or other non-ASCII text, follow the UTF-8-safe write rules from `issue-management` before creating the issue
+- if the user only asked for issue work, do not create a PR automatically
+
+## Example
+
+```bash
+git checkout -b codex/doorae-cli-entrypoint
+git add pyproject.toml thetable/interfaces/cli.py
+git commit -m "Add doorae CLI entrypoint"
+git push -u origin codex/doorae-cli-entrypoint
+python scripts/issue_manager.py create-pr \
+  --title "Add doorae CLI entrypoint" \
+  --body "Closes #204\n\nAdd the doorae entrypoint and restructure CLI commands." \
+  --head codex/doorae-cli-entrypoint \
+  --base main
 ```
