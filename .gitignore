@@ -227,6 +227,7 @@ specs/
 # Temp directories
 .tmp/
 tmp/
+skills-lock.json
 
 # Project-owned skills only
 .agents/skills/*
