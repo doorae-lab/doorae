@@ -227,3 +227,9 @@ specs/
 
 .agents/skills/worktree-plan/
 .agents/skills/worktree-impl/
+
+# Measure skill
+# Track: rubrics/ (project convention), criteria.yaml (reusable scoring criteria)
+# Ignore: eval/compare JSON results (local, generated per-run)
+.metrics/**/*-eval.json
+.metrics/**/*-compare.json
