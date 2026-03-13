@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest.mock import MagicMock
 from collections.abc import Callable, Mapping, Sequence
 from typing import cast
@@ -5,6 +6,22 @@ from typing import cast
 from doorae.core.profile import AgentProfile
 from doorae.graph.constants import HOST_END_MEETING_COMMAND
 from doorae.graph.nodes.agent import AgentNode
+
+
+WEEKDAYS = {
+    0: "월요일",
+    1: "화요일",
+    2: "수요일",
+    3: "목요일",
+    4: "금요일",
+    5: "토요일",
+    6: "일요일",
+}
+
+
+def _expected_today_context() -> str:
+    now = datetime.now()
+    return f"오늘은 {now.year}년 {now.month}월 {now.day}일 ({WEEKDAYS[now.weekday()]})입니다."
 
 
 def _create_node() -> AgentNode:
@@ -240,3 +257,11 @@ def test_build_agent_prompt_excludes_host_end_command_for_non_host():
 
     assert HOST_END_MEETING_COMMAND not in prompt
     assert "회의를 종료할 때만 마지막 줄에" not in prompt
+
+
+def test_build_agent_prompt_includes_today_context():
+    node = _create_non_host_prompt_node()
+
+    prompt = node._build_agent_prompt()
+
+    assert _expected_today_context() in prompt

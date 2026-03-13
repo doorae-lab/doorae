@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 from loguru import logger
 
+from doorae.core.date_context import format_today_context
 from doorae.core.profile import AgentProfile
 from doorae.agents.base_agent import BaseAgent
 from doorae.graph.nodes.base import BaseNode, NodeType
@@ -296,6 +297,8 @@ class AgentNode(BaseNode):
             """
 
         return f"""당신은 {self.profile.name}, {self.profile.role}입니다.
+
+{format_today_context()}
 
 ## 책임
 {chr(10).join(f'- {r}' for r in self.profile.responsibilities)}

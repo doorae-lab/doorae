@@ -1,8 +1,25 @@
+from datetime import datetime
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage
 from doorae.agents.base_agent import BaseAgent
 from doorae.core.profile import AgentProfile
+
+
+WEEKDAYS = {
+    0: "월요일",
+    1: "화요일",
+    2: "수요일",
+    3: "목요일",
+    4: "금요일",
+    5: "토요일",
+    6: "일요일",
+}
+
+
+def _expected_today_context() -> str:
+    now = datetime.now()
+    return f"오늘은 {now.year}년 {now.month}월 {now.day}일 ({WEEKDAYS[now.weekday()]})입니다."
 
 
 @pytest.fixture
@@ -67,3 +84,13 @@ async def test_base_agent_generate_response(agent_profile):
 
             assert response == "Test response"
             assert mock_chain.ainvoke.called
+
+
+def test_base_agent_system_prompt_includes_today_context(agent_profile):
+    agent = BaseAgent(
+        name="TestAgent",
+        profile=agent_profile,
+        llm=MagicMock(),
+    )
+
+    assert _expected_today_context() in agent._system_prompt

@@ -10,6 +10,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from doorae.agents.base_agent import BaseAgent
+from doorae.core.date_context import format_today_context
 from doorae.core.profile import AgentProfile
 
 
@@ -58,6 +59,7 @@ def create_sub_agent_tool(
                 content=(
                     f"당신은 {sub_profile.name}({sub_profile.role})입니다. "
                     f"상위 에이전트 {parent_name}의 위임을 받아 답변합니다. "
+                    f"{format_today_context()} "
                     "핵심만 간결하게 한국어로 답하세요."
                 )
             ),
