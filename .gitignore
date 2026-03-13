@@ -224,9 +224,18 @@ specs/
 .agent/skills/
 .agent/workflows/
 
+# Temp directories
+.tmp/
+tmp/
 
-.agents/skills/worktree-plan/
-.agents/skills/worktree-impl/
+# Project-owned skills only
+.agents/skills/*
+!.agents/skills/github-notion-project-ops/
+!.agents/skills/github_workflow/
+!.agents/skills/issue_management/
+!.agents/skills/notion_edit_safety/
+!.agents/skills/pr_workflow/
+!.agents/skills/spec_creation/
 
 # Measure skill (local development tool output)
 .metrics/
