@@ -8,19 +8,19 @@ from doorae.graph.sub_agent_tool import create_sub_agent_tool
 
 
 WEEKDAYS = {
-    0: "월요일",
-    1: "화요일",
-    2: "수요일",
-    3: "목요일",
-    4: "금요일",
-    5: "토요일",
-    6: "일요일",
+    0: "Monday",
+    1: "Tuesday",
+    2: "Wednesday",
+    3: "Thursday",
+    4: "Friday",
+    5: "Saturday",
+    6: "Sunday",
 }
 
 
 def _expected_today_context() -> str:
     now = datetime.now()
-    return f"오늘은 {now.year}년 {now.month}월 {now.day}일 ({WEEKDAYS[now.weekday()]})입니다."
+    return f"Today is {now.year:04d}-{now.month:02d}-{now.day:02d} ({WEEKDAYS[now.weekday()]})."
 
 
 def test_create_sub_agent_tool_name_and_description():

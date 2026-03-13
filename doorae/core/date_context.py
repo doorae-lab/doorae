@@ -6,18 +6,18 @@ from datetime import datetime
 
 
 _WEEKDAYS = {
-    0: "월요일",
-    1: "화요일",
-    2: "수요일",
-    3: "목요일",
-    4: "금요일",
-    5: "토요일",
-    6: "일요일",
+    0: "Monday",
+    1: "Tuesday",
+    2: "Wednesday",
+    3: "Thursday",
+    4: "Friday",
+    5: "Saturday",
+    6: "Sunday",
 }
 
 
 def format_today_context(now: datetime | None = None) -> str:
-    """Return today's date in a Korean natural-language format."""
+    """Return today's date in an English prompt-friendly format."""
     current = now or datetime.now()
     weekday = _WEEKDAYS[current.weekday()]
-    return f"오늘은 {current.year}년 {current.month}월 {current.day}일 ({weekday})입니다."
+    return f"Today is {current.year:04d}-{current.month:02d}-{current.day:02d} ({weekday})."
