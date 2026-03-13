@@ -1,8 +1,25 @@
+from datetime import datetime
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage
 from doorae.agents.base_agent import BaseAgent
 from doorae.core.profile import AgentProfile
+
+
+WEEKDAYS = {
+    0: "Monday",
+    1: "Tuesday",
+    2: "Wednesday",
+    3: "Thursday",
+    4: "Friday",
+    5: "Saturday",
+    6: "Sunday",
+}
+
+
+def _expected_today_context() -> str:
+    now = datetime.now()
+    return f"Today is {now.year:04d}-{now.month:02d}-{now.day:02d} ({WEEKDAYS[now.weekday()]})."
 
 
 @pytest.fixture
@@ -67,3 +84,13 @@ async def test_base_agent_generate_response(agent_profile):
 
             assert response == "Test response"
             assert mock_chain.ainvoke.called
+
+
+def test_base_agent_system_prompt_includes_today_context(agent_profile):
+    agent = BaseAgent(
+        name="TestAgent",
+        profile=agent_profile,
+        llm=MagicMock(),
+    )
+
+    assert _expected_today_context() in agent._system_prompt

@@ -8,6 +8,7 @@ from openai import LengthFinishReasonError
 from loguru import logger
 
 from doorae.config import create_main_llm
+from doorae.core.date_context import format_today_context
 from doorae.core.profile import AgentProfile
 
 
@@ -29,6 +30,8 @@ class BaseAgent:
     def _build_system_prompt(self) -> str:
         """시스템 프롬프트 생성"""
         prompt = f"""You are {self.name}, a {self.profile.role}.
+
+{format_today_context()}
 
 Your responsibilities:
 {chr(10).join(f'- {r}' for r in self.profile.responsibilities)}
