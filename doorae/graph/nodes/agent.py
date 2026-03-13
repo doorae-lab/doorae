@@ -296,6 +296,30 @@ class AgentNode(BaseNode):
 {HOST_END_MEETING_COMMAND}
             """
 
+        # role_defaults 로드 및 적용
+        role_defaults_section = ""
+        try:
+            import yaml as _yaml
+            import os
+            defaults_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+                "config", "role_defaults.yaml"
+            )
+            if os.path.exists(defaults_path):
+                with open(defaults_path, 'r', encoding='utf-8') as f:
+                    defaults_config = _yaml.safe_load(f)
+                defaults = defaults_config.get("role_defaults", {})
+
+                # _all 규칙 + 역할별 규칙 결합
+                rules = list(defaults.get("_all", []))
+                role_rules = defaults.get(self.profile.role, [])
+                rules.extend(role_rules)
+
+                if rules:
+                    role_defaults_section = "\n\n## 역할 행동 규칙\n" + "\n".join(f"- {r}" for r in rules)
+        except Exception:
+            pass
+
         return f"""당신은 {self.profile.name}, {self.profile.role}입니다.
 
 {format_today_context()}
@@ -305,7 +329,7 @@ class AgentNode(BaseNode):
 
 ## 전문 분야
 {chr(10).join(f'- {e}' for e in self.profile.expertise)}
-{participants_section}{metadata_section}{host_end_protocol_section}
+{participants_section}{metadata_section}{host_end_protocol_section}{role_defaults_section}
 간결하고 전문적으로 한국어로 응답하세요."""
 
     def _format_agenda_context(
@@ -361,10 +385,39 @@ class AgentNode(BaseNode):
             if current_agenda.get("decision"):
                 agenda_lines.append(f"**결정사항**: {current_agenda['decision']}")
 
+            # 안건 scope 경계 자동 생성
+            scope_notes = []
+
+            # 이전 안건과의 관계
+            if current_idx > 0:
+                prev_agenda = agendas[current_idx - 1]
+                prev_title = prev_agenda.get("title", "")
+                if prev_agenda.get("status") == "completed":
+                    scope_notes.append(f"'{prev_title}'에서 이미 논의된 내용은 반복하지 마세요. 새로운 관점만 추가하세요.")
+
+            # 다음 안건과의 관계
+            if current_idx < len(agendas) - 1:
+                next_agenda = agendas[current_idx + 1]
+                next_title = next_agenda.get("title", "")
+                scope_notes.append(f"'{next_title}'에서 다룰 내용은 이 안건에서 논의하지 마세요.")
+
+            # 안건 유형별 자동 지시사항
+            title_lower = current_agenda.get("title", "").lower()
+            if "리뷰" in title_lower or "현황" in title_lower:
+                scope_notes.append("리뷰/현황 안건: MCP 도구로 데이터를 조회한 후 수치 기반으로 논의하세요. 이슈/PR 전수 나열은 피하고 핵심 지표 3-5개로 요약하세요.")
+            if "계획" in title_lower or "플래닝" in title_lower:
+                scope_notes.append("계획 안건: 구체적인 일정, 담당자, 완료 기준을 포함하세요. 추상적인 방향만 제시하지 마세요.")
+            if "로드맵" in title_lower or "우선순위" in title_lower:
+                scope_notes.append("로드맵 안건: '무엇을 할 것인가'(목표, 우선순위)에 집중하세요. 구체적 일정/데드라인은 별도 계획 안건에서 다룹니다.")
+
             agenda_lines.append("")
-            agenda_lines.append(
-                "💡 **지침**: 현재 안건에 집중하여 관련된 의견을 제시하세요."
-            )
+
+            if scope_notes:
+                agenda_lines.append("## 🎯 현재 안건 지침")
+                for note in scope_notes:
+                    agenda_lines.append(f"- {note}")
+            else:
+                agenda_lines.append("💡 **지침**: 현재 안건에 집중하여 관련된 의견을 제시하세요.")
 
         return "\n".join(agenda_lines)
 
