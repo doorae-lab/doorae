@@ -223,3 +223,7 @@ specs/
 
 .agent/skills/
 .agent/workflows/
+
+
+.agents/skills/worktree-plan/
+.agents/skills/worktree-impl/
