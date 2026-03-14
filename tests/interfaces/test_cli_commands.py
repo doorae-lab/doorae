@@ -158,3 +158,28 @@ def test_rooms_command_shows_empty_state(monkeypatch: pytest.MonkeyPatch) -> Non
 
     assert result.exit_code == 0
     assert "등록된 회의방이 없습니다." in result.stdout
+
+
+def test_rooms_command_fails_for_malformed_room_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MockAsyncClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> "MockAsyncClient":
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+        async def get(self, path: str) -> MockResponse:
+            assert path == "/api/rooms"
+            return MockResponse(200, [{"name": "broken"}])
+
+    monkeypatch.setattr("doorae.interfaces.cli.httpx.AsyncClient", MockAsyncClient)
+
+    result = runner.invoke(app, ["rooms", "-s", "localhost:8000"])
+
+    assert result.exit_code == 1
+    assert "회의방 목록 응답의 1번째 항목 형식이 올바르지 않습니다" in result.stdout

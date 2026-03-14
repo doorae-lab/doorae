@@ -15,16 +15,22 @@ from urllib.parse import quote, urlsplit, urlunsplit
 import httpx
 import typer
 from loguru import logger
+from pydantic import ValidationError
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
 from doorae import __version__
 from doorae.config import Settings, get_settings, setup_tracing
+from doorae.core.server_address import (
+    ServerAddressParseError,
+    parse_server_address,
+)
 from doorae.interfaces.event_utils import random_speaker_color
 from doorae.interfaces.logging import setup_logging
 from doorae.interfaces.time_utils import format_elapsed
 from doorae.project import WorkspaceError, init_workspace
+from doorae.server.models import RoomInfo
 
 if TYPE_CHECKING:
     from doorae.interfaces.engine import MeetingEngine
@@ -625,32 +631,20 @@ def _require_server_address(server: str | None, *, command_name: str) -> str:
     )
 
 
-def _format_host_port_netloc(host: str, port: int) -> str:
-    rendered_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
-    return f"{rendered_host}:{port}"
-
-
 def _parse_host_port(server_address: str) -> tuple[str, int, str]:
-    normalized = server_address.strip()
-    if not normalized:
-        raise RuntimeError(f"서버 주소를 입력하세요.\n  → 예: {DEFAULT_SERVER_EXAMPLE}")
-
-    candidate = normalized if "://" in normalized else f"http://{normalized}"
-    parsed = urlsplit(candidate)
-    if not parsed.hostname:
-        raise RuntimeError(f"서버 주소에 호스트가 없습니다.\n  → 예: {DEFAULT_SERVER_EXAMPLE}")
-    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
-        raise RuntimeError(f"host:port 형식의 서버 주소만 사용할 수 있습니다.\n  → 예: {DEFAULT_SERVER_EXAMPLE}")
-
     try:
-        port = parsed.port
-    except ValueError as exc:
-        raise RuntimeError(f"포트 번호가 올바르지 않습니다.\n  → 예: {DEFAULT_SERVER_EXAMPLE}") from exc
-    if port is None:
-        raise RuntimeError(f"서버 주소에 포트가 없습니다.\n  → 예: {DEFAULT_SERVER_EXAMPLE}")
+        parsed = parse_server_address(server_address)
+    except ServerAddressParseError as exc:
+        message_by_reason = {
+            "empty": f"서버 주소를 입력하세요.\n  → 예: {DEFAULT_SERVER_EXAMPLE}",
+            "missing_host": f"서버 주소에 호스트가 없습니다.\n  → 예: {DEFAULT_SERVER_EXAMPLE}",
+            "invalid_format": f"host:port 형식의 서버 주소만 사용할 수 있습니다.\n  → 예: {DEFAULT_SERVER_EXAMPLE}",
+            "invalid_port": f"포트 번호가 올바르지 않습니다.\n  → 예: {DEFAULT_SERVER_EXAMPLE}",
+            "missing_port": f"서버 주소에 포트가 없습니다.\n  → 예: {DEFAULT_SERVER_EXAMPLE}",
+        }
+        raise RuntimeError(message_by_reason[exc.reason]) from exc
 
-    host = parsed.hostname
-    return host, port, _format_host_port_netloc(host, port)
+    return parsed.host, parsed.port, parsed.netloc
 
 
 def _render_cli_server_address(server_address: str) -> str:
@@ -709,13 +703,38 @@ def _extract_error_detail(response: httpx.Response) -> str:
 
 
 def _format_room_created_at(value: object) -> str:
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return "-"
+        return text.replace("T", " ").replace("+00:00", "Z")
+
+    iso = getattr(value, "isoformat", None)
+    if callable(iso):
+        return iso(sep=" ", timespec="seconds").replace("+00:00", "Z")
+
     text = str(value).strip()
-    if not text:
-        return "-"
-    return text.replace("T", " ").replace("+00:00", "Z")
+    return text or "-"
 
 
-def _print_rooms_table(rooms: list[dict[str, object]]) -> None:
+def _parse_room_list_payload(payload: object) -> list[RoomInfo]:
+    if not isinstance(payload, list):
+        raise RuntimeError("회의방 목록 응답 형식이 올바르지 않습니다.")
+
+    validated_rooms: list[RoomInfo] = []
+    for index, item in enumerate(payload, start=1):
+        if not isinstance(item, dict):
+            raise RuntimeError(f"회의방 목록 응답의 {index}번째 항목 형식이 올바르지 않습니다.")
+        try:
+            validated_rooms.append(RoomInfo.model_validate(item))
+        except ValidationError as exc:
+            raise RuntimeError(
+                f"회의방 목록 응답의 {index}번째 항목 형식이 올바르지 않습니다: {exc.errors()[0]['loc']}"
+            ) from exc
+    return validated_rooms
+
+
+def _print_rooms_table(rooms: list[RoomInfo]) -> None:
     if not rooms:
         console.print("등록된 회의방이 없습니다.")
         return
@@ -728,10 +747,10 @@ def _print_rooms_table(rooms: list[dict[str, object]]) -> None:
 
     for room in rooms:
         table.add_row(
-            str(room.get("id", "-")),
-            str(room.get("name", "-")),
-            str(room.get("participants_count", 0)),
-            _format_room_created_at(room.get("created_at", "")),
+            room.id,
+            room.name,
+            str(room.participants_count),
+            _format_room_created_at(room.created_at),
         )
 
     console.print(table)
@@ -761,11 +780,7 @@ async def _list_server_rooms(server_address: str) -> None:
             f"\n  → 서버가 실행 중인지 확인하세요: uv run doorae serve -s {_render_cli_server_address(server_address)}"
         ) from exc
 
-    if not isinstance(payload, list):
-        raise RuntimeError("회의방 목록 응답 형식이 올바르지 않습니다.")
-
-    normalized_rooms = [room for room in payload if isinstance(room, dict)]
-    _print_rooms_table(normalized_rooms)
+    _print_rooms_table(_parse_room_list_payload(payload))
 
 
 async def _setup_server_room(

@@ -1,37 +1,30 @@
 """서버 설정 관리 모듈."""
 
 from functools import lru_cache
-from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
-def _format_host_port(host: str, port: int) -> str:
-    rendered_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
-    return f"{rendered_host}:{port}"
+from doorae.core.server_address import (
+    ServerAddressParseError,
+    format_host_port,
+    parse_server_address,
+)
 
 
 def _parse_bind_address(server_address: str) -> tuple[str, int]:
-    normalized = server_address.strip()
-    if not normalized:
-        raise ValueError("DOORAE_SERVER는 비워둘 수 없습니다.")
-
-    candidate = normalized if "://" in normalized else f"http://{normalized}"
-    parsed = urlsplit(candidate)
-    if not parsed.hostname:
-        raise ValueError("DOORAE_SERVER에 호스트가 없습니다.")
-    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
-        raise ValueError("DOORAE_SERVER는 host:port 형식만 지원합니다.")
-
     try:
-        port = parsed.port
-    except ValueError as exc:
-        raise ValueError("DOORAE_SERVER의 포트 번호가 올바르지 않습니다.") from exc
-    if port is None:
-        raise ValueError("DOORAE_SERVER에 포트가 없습니다.")
-
-    return parsed.hostname, port
+        parsed = parse_server_address(server_address)
+    except ServerAddressParseError as exc:
+        message_by_reason = {
+            "empty": "DOORAE_SERVER는 비워둘 수 없습니다.",
+            "missing_host": "DOORAE_SERVER에 호스트가 없습니다.",
+            "invalid_format": "DOORAE_SERVER는 host:port 형식만 지원합니다.",
+            "invalid_port": "DOORAE_SERVER의 포트 번호가 올바르지 않습니다.",
+            "missing_port": "DOORAE_SERVER에 포트가 없습니다.",
+        }
+        raise ValueError(message_by_reason[exc.reason]) from exc
+    return parsed.host, parsed.port
 
 
 class ServerSettings(BaseSettings):
@@ -64,7 +57,7 @@ class ServerSettings(BaseSettings):
 
     @property
     def server_address(self) -> str:
-        return _format_host_port(self.host, self.port)
+        return format_host_port(self.host, self.port)
 
 
 @lru_cache
