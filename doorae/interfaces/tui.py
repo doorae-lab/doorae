@@ -864,10 +864,20 @@ class MeetingTuiApp(App[None]):
         label = self.query_one("#human-input-label", Static)
         agenda_title = self._get_current_agenda_title()
         self._current_human_speaker = event.username
-        label.update(escape(f"[{event.username}의 차례] {agenda_title}"))
         self.post_message(ParticipantStatusChanged(event.username, "waiting_input"))
-        self.input_enabled = True
         scroll = self.query_one("#conversation-scroll", VerticalScroll)
+
+        # 서버 모드: 자신의 차례가 아니면 입력 비활성화
+        if self._server_url is not None and event.username != self._server_username:
+            label.update(escape(f"[{event.username}님이 입력 중...] {agenda_title}"))
+            scroll.mount(
+                Static(f"[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]")
+            )
+            scroll.scroll_end(animate=False)
+            return
+
+        label.update(escape(f"[{event.username}의 차례] {agenda_title}"))
+        self.input_enabled = True
         scroll.mount(
             Static(f"[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]")
         )

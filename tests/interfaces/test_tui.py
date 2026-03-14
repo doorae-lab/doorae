@@ -366,3 +366,88 @@ async def test_blank_input_submission_skips_human_bubble() -> None:
         assert input_provider.submitted == ["   "]
         assert _speaker_bubbles(app, "민지") == []
         assert app._current_human_speaker == ""
+
+
+# ── 서버 모드: 다른 사용자 차례일 때 입력 비활성화 테스트 ──
+
+
+@pytest.mark.asyncio
+async def test_server_mode_other_user_turn_does_not_enable_input() -> None:
+    """서버 모드에서 다른 사용자 차례일 때 input_enabled는 False."""
+    app = DummyMeetingTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+        server_url="ws://localhost:8000/ws/room-123?username=alice",
+        server_username="alice",
+    )
+
+    async with app.run_test() as pilot:
+        app._last_agendas = [{"title": "안건1", "status": "pending"}]
+        app.current_agenda_idx = 0
+
+        # 다른 사용자(Bob)의 차례 이벤트
+        app.on_human_turn_started(HumanTurnStarted(username="Bob"))
+        await pilot.pause()
+
+        panel = app.query_one("#human-input-panel")
+        label = app.query_one("#human-input-label", Static)
+
+        # 입력 패널이 활성화되지 않아야 함
+        assert app.input_enabled is False
+        assert "visible" not in panel.classes
+        # "입력 중" 표시
+        label_text = _static_text(label)
+        assert "Bob" in label_text
+        assert "입력 중" in label_text
+
+
+@pytest.mark.asyncio
+async def test_server_mode_own_turn_enables_input() -> None:
+    """서버 모드에서 자신의 차례일 때 input_enabled는 True."""
+    app = DummyMeetingTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+        server_url="ws://localhost:8000/ws/room-123?username=alice",
+        server_username="alice",
+    )
+
+    async with app.run_test() as pilot:
+        app._last_agendas = [{"title": "안건1", "status": "pending"}]
+        app.current_agenda_idx = 0
+
+        # 자신(alice)의 차례 이벤트
+        app.on_human_turn_started(HumanTurnStarted(username="alice"))
+        await pilot.pause()
+
+        panel = app.query_one("#human-input-panel")
+        label = app.query_one("#human-input-label", Static)
+
+        # 입력 패널이 활성화되어야 함
+        assert app.input_enabled is True
+        assert "visible" in panel.classes
+        label_text = _static_text(label)
+        assert "alice의 차례" in label_text
+
+
+@pytest.mark.asyncio
+async def test_local_mode_always_enables_input() -> None:
+    """로컬 모드에서는 항상 입력이 활성화됨."""
+    app = DummyMeetingTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+    )
+
+    async with app.run_test() as pilot:
+        app._last_agendas = [{"title": "안건1", "status": "pending"}]
+        app.current_agenda_idx = 0
+
+        app.on_human_turn_started(HumanTurnStarted(username="Bob"))
+        await pilot.pause()
+
+        # 로컬 모드에서는 항상 활성화
+        assert app.input_enabled is True
+        panel = app.query_one("#human-input-panel")
+        assert "visible" in panel.classes
