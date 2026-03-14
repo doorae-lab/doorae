@@ -259,6 +259,12 @@ class StreamError(Message):
         self.error = error
 
 
+class AgentProfilesReceived(Message):
+    def __init__(self, top_profiles_data: dict[str, dict]) -> None:
+        super().__init__()
+        self.top_profiles_data = top_profiles_data
+
+
 class ServerConnected(Message):
     pass
 
@@ -953,6 +959,17 @@ class MeetingTuiApp(App[None]):
             return
         scroll.mount(Static("서버에 연결되었습니다."))
         scroll.scroll_end(animate=False)
+
+    def on_agent_profiles_received(self, event: AgentProfilesReceived) -> None:
+        from doorae.core.profile import AgentProfile, flatten_all_profiles
+
+        top_profiles = {
+            name: AgentProfile.model_validate(data)
+            for name, data in event.top_profiles_data.items()
+        }
+        all_profiles = flatten_all_profiles(top_profiles)
+        participant_panel = self.query_one("#participant-panel", ParticipantPanel)
+        participant_panel.initialize(top_profiles, all_profiles)
 
     def on_stream_error(self, event: StreamError) -> None:
         self._clear_connecting_spinner()

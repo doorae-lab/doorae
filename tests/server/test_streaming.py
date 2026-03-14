@@ -202,7 +202,14 @@ async def test_start_workflow_streaming_with_engine_broadcasts_raw_events():
     room = Room(room_id="test-room", name="Test Room")
     room.connection_manager.broadcast = AsyncMock()
 
+    class MockSetupState:
+        def __init__(self):
+            self.top_profiles = {}
+
     class MockEngine:
+        def __init__(self):
+            self.setup_state = MockSetupState()
+
         async def run(self, callback):
             await callback.on_raw_event({"event": "on_chain_start", "data": {}})
 
@@ -211,6 +218,9 @@ async def test_start_workflow_streaming_with_engine_broadcasts_raw_events():
     assert room._streaming_task is not None
     await room._streaming_task
 
-    room.connection_manager.broadcast.assert_called_once()
-    event_data = json.loads(room.connection_manager.broadcast.call_args[0][0])
+    # First call: agent_profiles broadcast (empty), second call: raw event
+    assert room.connection_manager.broadcast.call_count == 2
+    profiles_data = json.loads(room.connection_manager.broadcast.call_args_list[0][0][0])
+    assert profiles_data["type"] == "semantic:agent_profiles"
+    event_data = json.loads(room.connection_manager.broadcast.call_args_list[1][0][0])
     assert event_data["type"] == "on_chain_start"

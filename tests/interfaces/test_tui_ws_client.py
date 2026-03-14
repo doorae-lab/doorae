@@ -12,6 +12,7 @@ from websockets.frames import Close
 
 from doorae.interfaces.tui import (
     AgendaUpdated,
+    AgentProfilesReceived,
     HumanTurnStarted,
     MeetingEnded,
     ParticipantStatusChanged,
@@ -431,3 +432,37 @@ async def test_dispatch_user_joined() -> None:
     assert len(status_msgs) == 1
     assert status_msgs[0].participant_name == "Charlie"
     assert status_msgs[0].status == "idle"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_agent_profiles() -> None:
+    """agent_profiles 이벤트 수신 시 AgentProfilesReceived 메시지가 포스트되는지 테스트."""
+    app = RecordingApp()
+    client = ServerEventClient(ws_url="ws://test", username="test", app=app)
+
+    event = {
+        "type": "semantic:agent_profiles",
+        "data": {
+            "top_profiles": {
+                "PM팀장": {
+                    "name": "PM팀장",
+                    "role": "project_manager",
+                    "responsibilities": ["프로젝트 관리"],
+                    "expertise": ["일정 관리"],
+                    "agents": [
+                        {
+                            "name": "기획자",
+                            "role": "planner",
+                            "responsibilities": ["기획"],
+                            "expertise": ["기획"],
+                        }
+                    ],
+                }
+            }
+        },
+    }
+    await client._dispatch_event(event)
+
+    profile_msgs = [m for m in app.messages if isinstance(m, AgentProfilesReceived)]
+    assert len(profile_msgs) == 1
+    assert "PM팀장" in profile_msgs[0].top_profiles_data
