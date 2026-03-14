@@ -10,6 +10,7 @@ from doorae.interfaces.engine import MeetingEngine
 from doorae.server.connection_manager import ConnectionManager
 from doorae.server.events import (
     event_to_dict,
+    format_semantic_event,
     format_message_event,
     format_error_event,
     format_system_event,
@@ -21,46 +22,86 @@ logger = logging.getLogger(__name__)
 class ServerMeetingCallback:
     """Broadcast raw MeetingEngine events to all room participants."""
 
-    def __init__(self, connection_manager: ConnectionManager) -> None:
+    def __init__(
+        self,
+        connection_manager: ConnectionManager,
+        broadcast_semantic: bool = True,
+    ) -> None:
         self._connection_manager = connection_manager
+        self._broadcast_semantic = broadcast_semantic
 
     async def on_raw_event(self, event: dict) -> None:
         await self._connection_manager.broadcast(json.dumps(event_to_dict(event)))
 
+    async def _broadcast_event(self, event_type: str, **payload: object) -> None:
+        if not self._broadcast_semantic:
+            return
+        await self._connection_manager.broadcast(
+            json.dumps(format_semantic_event(event_type, **payload))
+        )
+
     async def on_speaker_changed(self, speaker: str, is_delegated: bool) -> None:
-        _ = (speaker, is_delegated)
+        await self._broadcast_event(
+            "speaker_changed",
+            speaker=speaker,
+            is_delegated=is_delegated,
+        )
 
     async def on_token(self, content: str, speaker: str, is_delegated: bool) -> None:
-        _ = (content, speaker, is_delegated)
+        await self._broadcast_event(
+            "token",
+            content=content,
+            speaker=speaker,
+            is_delegated=is_delegated,
+        )
 
     async def on_turn_completed(self, speaker: str, is_delegated: bool) -> None:
-        _ = (speaker, is_delegated)
+        await self._broadcast_event(
+            "turn_completed",
+            speaker=speaker,
+            is_delegated=is_delegated,
+        )
 
     async def on_human_turn_started(self, username: str) -> None:
-        _ = username
+        await self._broadcast_event("human_turn_started", username=username)
 
     async def on_agenda_updated(
         self,
         agendas: list[dict],
         current_idx: int,
     ) -> None:
-        _ = (agendas, current_idx)
+        await self._broadcast_event(
+            "agenda_updated",
+            agendas=agendas,
+            current_idx=current_idx,
+        )
 
     async def on_meeting_ended(
         self,
         agendas: list[dict],
         speaker_counts: dict[str, int],
     ) -> None:
-        _ = (agendas, speaker_counts)
+        await self._broadcast_event(
+            "meeting_ended",
+            agendas=agendas,
+            speaker_counts=speaker_counts,
+        )
 
     async def on_pending_speakers_changed(self, pending_speakers: list[str]) -> None:
-        _ = pending_speakers
+        await self._broadcast_event(
+            "pending_speakers_changed",
+            pending_speakers=pending_speakers,
+        )
 
     async def on_participant_status_changed(self, participant_name: str, status: str) -> None:
-        _ = (participant_name, status)
+        await self._broadcast_event(
+            "participant_status_changed",
+            participant_name=participant_name,
+            status=status,
+        )
 
     async def on_tool_call(self, name: str, status: str) -> None:
-        _ = (name, status)
+        await self._broadcast_event("tool_call", name=name, status=status)
 
 
 class Room:

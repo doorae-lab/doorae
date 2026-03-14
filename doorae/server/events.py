@@ -120,3 +120,10 @@ def format_system_event(message: str) -> Dict[str, Any]:
         },
         "timestamp": datetime.now().isoformat(),
     }
+def format_semantic_event(event_type: str, **kwargs: Any) -> Dict[str, Any]:
+    """MeetingEngine semantic 이벤트를 WebSocket 전송용으로 포맷팅."""
+    return {
+        "type": f"semantic:{event_type}",
+        "data": {key: _to_jsonable(value) for key, value in kwargs.items()},
+        "timestamp": datetime.now().isoformat(),
+    }

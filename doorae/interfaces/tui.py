@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import colorsys
 import random
 import time
 from typing import TYPE_CHECKING, Any, cast
 
+import httpx
 from rich.markup import escape
 from rich.spinner import Spinner
 from rich.text import Text
@@ -31,6 +33,7 @@ from doorae.interfaces.time_utils import format_elapsed
 if TYPE_CHECKING:
     from doorae.core.profile import AgentProfile
     from doorae.graph.input_provider import TuiInputProvider
+    from doorae.interfaces.tui_ws_client import ServerEventClient
     from textual.widgets._tree import TreeNode
     from textual.timer import Timer
 
@@ -393,6 +396,10 @@ class ParticipantPanel(Vertical):
         self._statuses[participant_name] = status
         node = self._participant_nodes.get(participant_name)
         profile = self._flat_profiles.get(participant_name)
+        if node is None:
+            tree = self.query_one("#participant-tree", Tree)
+            node = tree.root.add(self._format_label(participant_name, profile), expand=False)
+            self._participant_nodes[participant_name] = node
         if node is not None:
             node.set_label(self._format_label(participant_name, profile))
 
@@ -509,12 +516,18 @@ class MeetingTuiApp(App[None]):
         profiles_path: str,
         initial_message: str,
         mcp_tools: dict[str, list[object]] | None = None,
+        server_url: str | None = None,
+        server_start_url: str | None = None,
+        server_username: str = "user",
     ) -> None:
         super().__init__()
         self._settings = settings
         self._profiles_path = profiles_path
         self._initial_message = initial_message
         self._mcp_tools = mcp_tools
+        self._server_url = server_url
+        self._server_start_url = server_start_url
+        self._server_username = server_username
         self._engine: MeetingEngine | None = None
         self._workflow: Any = None
         self._initial_state: dict[str, object] = {}
@@ -532,6 +545,8 @@ class MeetingTuiApp(App[None]):
         self._timer_interval: Timer | None = None
         self._participant_statuses: dict[str, str] = {}
         self._full_text: str = ""
+        self._ws_client: ServerEventClient | None = None
+        self._server_start_attempted = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -547,6 +562,25 @@ class MeetingTuiApp(App[None]):
         yield Footer()
 
     async def on_mount(self) -> None:
+        participant_panel = self.query_one("#participant-panel", ParticipantPanel)
+        agenda_panel = self.query_one("#agenda-panel", AgendaPanel)
+
+        if self._server_url is not None:
+            from doorae.interfaces.tui_ws_client import ServerEventClient
+
+            participant_panel.initialize({}, {})
+            self._meeting_start_time = time.time()
+            agenda_panel.update_meeting_start_time(self._meeting_start_time)
+            agenda_panel.update_agendas(self._last_agendas, 0)
+            self._timer_interval = self.set_interval(1.0, self._tick_timer)
+            self._ws_client = ServerEventClient(
+                ws_url=self._server_url,
+                username=self._server_username,
+                app=self,
+            )
+            self.run_server_worker()
+            return
+
         from doorae.graph.input_provider import TuiInputProvider
 
         self._input_provider = TuiInputProvider()
@@ -563,7 +597,6 @@ class MeetingTuiApp(App[None]):
         self._graph_config = setup_state.graph_config
         self._human_names = [name.lower() for name in setup_state.human_names]
 
-        participant_panel = self.query_one("#participant-panel", ParticipantPanel)
         participant_panel.initialize(setup_state.top_profiles, setup_state.all_profiles)
         self._participant_statuses = dict(self._engine.runtime_state.participant_statuses)
         self._initial_state["participant_statuses"] = dict(self._participant_statuses)
@@ -578,7 +611,6 @@ class MeetingTuiApp(App[None]):
         if isinstance(initial_agendas, list):
             self._last_agendas = cast(list[dict[str, object]], initial_agendas)
 
-        agenda_panel = self.query_one("#agenda-panel", AgendaPanel)
         agenda_panel.update_meeting_start_time(self._meeting_start_time)
         agenda_panel.update_agendas(self._last_agendas, 0)
         self._timer_interval = self.set_interval(1.0, self._tick_timer)
@@ -597,10 +629,71 @@ class MeetingTuiApp(App[None]):
         except Exception as e:
             self.post_message(StreamError(error=str(e)))
 
+    @work(exclusive=True)
+    async def run_server_worker(self) -> None:
+        client = self._ws_client
+        if client is None:
+            return
+
+        client_task = asyncio.create_task(client.run())
+        try:
+            self.meeting_status = "starting"
+            if not await client.wait_until_connected(timeout=10.0):
+                await client_task
+                return
+            await self._start_remote_meeting()
+            self.meeting_status = "running"
+            await client_task
+        except WorkerCancelled:
+            client_task.cancel()
+            try:
+                await client_task
+            except asyncio.CancelledError:
+                pass
+        except Exception as e:
+            self.post_message(StreamError(error=str(e)))
+            client_task.cancel()
+            try:
+                await client_task
+            except asyncio.CancelledError:
+                pass
+
+    async def _start_remote_meeting(self) -> None:
+        if self._server_start_url is None or self._server_start_attempted:
+            return
+        self._server_start_attempted = True
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(self._server_start_url)
+        except httpx.HTTPError as exc:
+            self.post_message(StreamError(error=f"서버 워크플로우 시작 실패: {exc}"))
+            return
+
+        if response.status_code == 409:
+            return
+        if response.is_error:
+            self.post_message(
+                StreamError(
+                    error=f"서버 워크플로우 시작 실패: {self._extract_response_detail(response)}"
+                )
+            )
+
     def _get_speaker_color(self, speaker: str) -> str:
         if speaker not in self._speaker_colors:
             self._speaker_colors[speaker] = _random_speaker_color()
         return self._speaker_colors[speaker]
+
+    def _extract_response_detail(self, response: httpx.Response) -> str:
+        try:
+            payload = response.json()
+        except ValueError:
+            return response.text.strip() or f"HTTP {response.status_code}"
+        if isinstance(payload, dict):
+            detail = payload.get("detail")
+            if isinstance(detail, str) and detail:
+                return detail
+        return response.text.strip() or f"HTTP {response.status_code}"
 
     def _mount_bubble(self, bubble: SpeechBubble) -> None:
         """bubble을 conversation-scroll에 마운트하고 끝으로 스크롤."""
@@ -752,7 +845,9 @@ class MeetingTuiApp(App[None]):
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         submitted_value = event.value
-        if self._input_provider is not None:
+        if self._ws_client is not None:
+            asyncio.create_task(self._ws_client.send_input(submitted_value))
+        elif self._input_provider is not None:
             self._input_provider.submit_input(submitted_value)
         if submitted_value.strip() and self._current_human_speaker:
             bubble = SpeechBubble(
@@ -792,6 +887,8 @@ class MeetingTuiApp(App[None]):
         sidebar.display = self.size.width >= 100
 
     async def action_quit(self) -> None:
+        if self._ws_client is not None:
+            await self._ws_client.close()
         self.workers.cancel_all()
         self.exit()
 
@@ -863,6 +960,9 @@ class MeetingTuiApp(App[None]):
 
     def _get_conversation_scroll(self) -> VerticalScroll | None:
         try:
-            return self.query_one("#conversation-scroll", VerticalScroll)
+            scroll = self.query_one("#conversation-scroll", VerticalScroll)
         except Exception:
             return None
+        if not scroll.is_attached:
+            return None
+        return scroll
