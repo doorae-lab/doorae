@@ -27,6 +27,27 @@ class RecordingInputProvider:
         self.submitted.append(value)
 
 
+class RecordingServerClient:
+    def __init__(self) -> None:
+        self.submitted: list[str] = []
+        self.closed = False
+
+    async def send_input(self, value: str) -> None:
+        self.submitted.append(value)
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class InspectServerBackedTuiApp(MeetingTuiApp):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.server_worker_called = False
+
+    def run_server_worker(self) -> None:
+        self.server_worker_called = True
+
+
 def _static_text(widget: Static) -> str:
     return str(widget.content)
 
@@ -138,6 +159,69 @@ async def test_input_submission_mounts_human_bubble_and_forwards_value() -> None
         assert bubbles[0]._buffer == "찬성합니다"
         assert bubbles[0]._body is None
         assert bubbles[0].query_one(Markdown)
+        assert "visible" not in panel.classes
+        assert app._current_human_speaker == ""
+
+
+@pytest.mark.asyncio
+async def test_server_mode_mount_uses_websocket_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubServerEventClient:
+        def __init__(self, ws_url: str, username: str, app: MeetingTuiApp) -> None:
+            self.ws_url = ws_url
+            self.username = username
+            self.app = app
+
+        async def close(self) -> None:
+            return
+
+    monkeypatch.setattr("doorae.interfaces.tui_ws_client.ServerEventClient", StubServerEventClient)
+
+    app = InspectServerBackedTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+        server_url="ws://localhost:8000/ws/room-123?username=alice",
+        server_start_url="http://localhost:8000/api/rooms/room-123/start",
+        server_username="alice",
+    )
+
+    async with app.run_test():
+        assert app._engine is None
+        assert app._input_provider is None
+        assert isinstance(app._ws_client, StubServerEventClient)
+        assert app._ws_client.ws_url == "ws://localhost:8000/ws/room-123?username=alice"
+        assert app.server_worker_called is True
+
+
+@pytest.mark.asyncio
+async def test_server_mode_input_submission_sends_over_websocket() -> None:
+    app = DummyMeetingTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+        server_url="ws://localhost:8000/ws/room-123?username=alice",
+        server_start_url="http://localhost:8000/api/rooms/room-123/start",
+        server_username="alice",
+    )
+
+    async with app.run_test() as pilot:
+        ws_client = RecordingServerClient()
+        app._ws_client = ws_client
+        app.on_human_turn_started(HumanTurnStarted(username="민지"))
+        await pilot.pause()
+
+        input_widget = app.query_one("#input-area", Input)
+        app.on_input_submitted(Input.Submitted(input=input_widget, value="찬성합니다"))
+        await pilot.pause()
+
+        bubbles = _speaker_bubbles(app, "민지")
+        panel = app.query_one("#human-input-panel")
+
+        assert ws_client.submitted == ["찬성합니다"]
+        assert len(bubbles) == 1
+        assert bubbles[0]._buffer == "찬성합니다"
         assert "visible" not in panel.classes
         assert app._current_human_speaker == ""
 

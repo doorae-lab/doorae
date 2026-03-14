@@ -7,9 +7,12 @@ import asyncio
 import os
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
+from urllib.parse import quote, urlsplit, urlunsplit
 
+import httpx
 import typer
 from loguru import logger
 from rich.console import Console
@@ -34,6 +37,13 @@ app = typer.Typer(
 )
 console = Console()
 DEFAULT_MESSAGE = "회의를 시작합니다"
+
+
+@dataclass(slots=True)
+class ServerSessionConfig:
+    room_id: str
+    ws_url: str
+    start_url: str
 
 
 def _status_emoji(status: str) -> str:
@@ -216,6 +226,9 @@ def _run_default_command(
     profiles: Optional[Path],
     no_stream: bool,
     no_tui: bool,
+    server: str | None,
+    room: str | None,
+    username: str,
     config: Optional[Path],
     verbose: bool,
     quiet: bool,
@@ -227,7 +240,9 @@ def _run_default_command(
         console.print(f"Doorae version: {__version__}")
         raise typer.Exit(code=0)
 
-    use_tui = should_use_tui(no_tui)
+    if server and no_tui:
+        logger.warning("Ignoring --no-tui because server-backed mode requires the TUI")
+    use_tui = True if server else should_use_tui(no_tui)
     setup_logging(verbose=verbose, quiet=quiet, use_tui=use_tui)
 
     stream = not no_stream
@@ -248,6 +263,9 @@ def _run_default_command(
             stream=stream,
             settings=settings,
             use_tui=use_tui,
+            server_url=server,
+            room_id=room,
+            username=username,
             hide_delegated=hide_delegated,
         )
     )
@@ -279,6 +297,24 @@ def main(
         False,
         "--no-tui",
         help="TUI 모드 비활성화 (클래식 CLI 출력 사용)",
+    ),
+    server: Optional[str] = typer.Option(
+        None,
+        "--server",
+        "-s",
+        help="서버 기본 URL (예: ws://localhost:8000 또는 http://localhost:8000)",
+    ),
+    room: Optional[str] = typer.Option(
+        None,
+        "--room",
+        "-r",
+        help="서버 모드에서 연결할 회의방 ID",
+    ),
+    username: str = typer.Option(
+        "user",
+        "--username",
+        "-u",
+        help="서버 모드에서 사용할 사용자 이름",
     ),
     config: Optional[Path] = typer.Option(
         None,
@@ -327,6 +363,9 @@ def main(
         profiles=profiles,
         no_stream=no_stream,
         no_tui=no_tui,
+        server=server,
+        room=room,
+        username=username,
         config=config,
         verbose=verbose,
         quiet=quiet,
@@ -427,12 +466,86 @@ async def _run_batch(workflow, state: dict, config: dict) -> dict:
     return result
 
 
+def _normalize_server_base_urls(server_url: str) -> tuple[str, str]:
+    """Normalize a user-provided server URL into WebSocket and HTTP base URLs."""
+    parsed = urlsplit(server_url)
+    if parsed.scheme not in {"ws", "wss", "http", "https"}:
+        raise RuntimeError(
+            "지원하지 않는 서버 URL 스킴입니다. ws://, wss://, http://, https:// 중 하나를 사용하세요."
+        )
+    if not parsed.netloc:
+        raise RuntimeError("서버 URL에 호스트가 없습니다.")
+
+    normalized_path = parsed.path.rstrip("/")
+    ws_scheme = "wss" if parsed.scheme in {"https", "wss"} else "ws"
+    http_scheme = "https" if parsed.scheme in {"https", "wss"} else "http"
+
+    ws_base = urlunsplit((ws_scheme, parsed.netloc, normalized_path, "", ""))
+    http_base = urlunsplit((http_scheme, parsed.netloc, normalized_path, "", ""))
+    return ws_base, http_base
+
+
+def _extract_error_detail(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text.strip() or f"HTTP {response.status_code}"
+    if isinstance(payload, dict):
+        detail = payload.get("detail")
+        if isinstance(detail, str) and detail:
+            return detail
+    return response.text.strip() or f"HTTP {response.status_code}"
+
+
+async def _setup_server_room(
+    server_url: str,
+    room_id: str | None,
+    username: str,
+) -> ServerSessionConfig:
+    """Create or validate the target room and build the concrete URLs for TUI mode."""
+    ws_base, http_base = _normalize_server_base_urls(server_url)
+
+    async with httpx.AsyncClient(base_url=http_base, timeout=10.0) as client:
+        if room_id is None:
+            create_response = await client.post(
+                "/api/rooms",
+                json={"name": f"Doorae Room ({username})"},
+            )
+            if create_response.is_error:
+                raise RuntimeError(
+                    f"회의방 생성에 실패했습니다: {_extract_error_detail(create_response)}"
+                )
+            payload = create_response.json()
+            room_id = str(payload["id"])
+        else:
+            room_response = await client.get(f"/api/rooms/{quote(room_id, safe='')}")
+            if room_response.status_code == 404:
+                raise RuntimeError(f"회의방을 찾을 수 없습니다: {room_id}")
+            if room_response.is_error:
+                raise RuntimeError(
+                    f"회의방 조회에 실패했습니다: {_extract_error_detail(room_response)}"
+                )
+
+    quoted_room_id = quote(room_id, safe="")
+    quoted_username = quote(username, safe="")
+    normalized_ws_base = ws_base.rstrip("/")
+    normalized_http_base = http_base.rstrip("/")
+    return ServerSessionConfig(
+        room_id=room_id,
+        ws_url=f"{normalized_ws_base}/ws/{quoted_room_id}?username={quoted_username}",
+        start_url=f"{normalized_http_base}/api/rooms/{quoted_room_id}/start",
+    )
+
+
 async def run_meeting(
     initial_message: str,
     profiles_path: Optional[Path] = None,
     stream: bool = False,
     settings: Optional[Settings] = None,
     use_tui: bool = False,
+    server_url: str | None = None,
+    room_id: str | None = None,
+    username: str = "user",
     hide_delegated: bool = False,
 ) -> None:
     """Run a meeting using the shared Doorae runtime."""
@@ -467,19 +580,30 @@ async def run_meeting(
         sys.stderr = stderr_file
 
     try:
-        mcp_tools = await _initialize_mcp(settings, use_tui=use_tui)
-
         if use_tui:
             from doorae.interfaces.tui import MeetingTuiApp
+
+            server_session: ServerSessionConfig | None = None
+            if server_url is not None:
+                server_session = await _setup_server_room(server_url, room_id, username)
+
+            mcp_tools = None
+            if server_session is None:
+                mcp_tools = await _initialize_mcp(settings, use_tui=True)
 
             tui_app = MeetingTuiApp(
                 settings=settings,
                 profiles_path=str(profiles_path),
                 initial_message=initial_message,
                 mcp_tools=mcp_tools,
+                server_url=server_session.ws_url if server_session else None,
+                server_start_url=server_session.start_url if server_session else None,
+                server_username=username,
             )
             await tui_app.run_async()
             return
+
+        mcp_tools = await _initialize_mcp(settings, use_tui=False)
 
         from doorae.interfaces.engine import MeetingEngine
 

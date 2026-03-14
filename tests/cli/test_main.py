@@ -7,13 +7,14 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 from typer.testing import CliRunner
 
 from doorae import PROJECT_ROOT
-from doorae.interfaces.cli import app
+from doorae.interfaces.cli import _normalize_server_base_urls, _setup_server_room, app
 from doorae.project import WorkspaceError, init_workspace
 
 
@@ -53,6 +54,9 @@ def test_cli_help() -> None:
     assert "Doorae" in result.stdout
     assert "init" in result.stdout
     assert "--message" in result.stdout
+    assert "--server" in result.stdout
+    assert "--room" in result.stdout
+    assert "--username" in result.stdout
 
 
 def test_cli_default_message() -> None:
@@ -70,6 +74,88 @@ def test_cli_no_stream_option() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "--no-stream" in result.stdout
+
+
+def test_normalize_server_base_urls_supports_ws_scheme() -> None:
+    ws_base, http_base = _normalize_server_base_urls("ws://localhost:8000/")
+
+    assert ws_base == "ws://localhost:8000"
+    assert http_base == "http://localhost:8000"
+
+
+def test_normalize_server_base_urls_supports_http_scheme() -> None:
+    ws_base, http_base = _normalize_server_base_urls("https://example.com/doorae/")
+
+    assert ws_base == "wss://example.com/doorae"
+    assert http_base == "https://example.com/doorae"
+
+
+class MockResponse:
+    def __init__(self, status_code: int, payload: dict[str, Any]) -> None:
+        self.status_code = status_code
+        self._payload = payload
+        self.text = str(payload)
+
+    @property
+    def is_error(self) -> bool:
+        return self.status_code >= 400
+
+    def json(self) -> dict[str, Any]:
+        return self._payload
+
+
+@pytest.mark.asyncio
+async def test_setup_server_room_creates_room_and_builds_urls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MockAsyncClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.base_url = kwargs["base_url"]
+            self.timeout = kwargs["timeout"]
+
+        async def __aenter__(self) -> "MockAsyncClient":
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+        async def post(self, path: str, json: dict[str, Any]) -> MockResponse:
+            assert path == "/api/rooms"
+            assert json == {"name": "Doorae Room (alice user)"}
+            return MockResponse(201, {"id": "room-123"})
+
+    monkeypatch.setattr("doorae.interfaces.cli.httpx.AsyncClient", MockAsyncClient)
+
+    session = await _setup_server_room("ws://localhost:8000/", None, "alice user")
+
+    assert session.room_id == "room-123"
+    assert session.ws_url == "ws://localhost:8000/ws/room-123?username=alice%20user"
+    assert session.start_url == "http://localhost:8000/api/rooms/room-123/start"
+
+
+@pytest.mark.asyncio
+async def test_setup_server_room_errors_for_missing_room(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MockAsyncClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.base_url = kwargs["base_url"]
+            self.timeout = kwargs["timeout"]
+
+        async def __aenter__(self) -> "MockAsyncClient":
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+        async def get(self, path: str) -> MockResponse:
+            assert path == "/api/rooms/missing-room"
+            return MockResponse(404, {"detail": "회의방을 찾을 수 없습니다."})
+
+    monkeypatch.setattr("doorae.interfaces.cli.httpx.AsyncClient", MockAsyncClient)
+
+    with pytest.raises(RuntimeError, match="회의방을 찾을 수 없습니다: missing-room"):
+        await _setup_server_room("http://localhost:8000", "missing-room", "alice")
 
 
 def test_init_command_is_visible_in_help() -> None:
@@ -192,5 +278,3 @@ def test_init_force_rewrites_workspace_file() -> None:
         assert workspace_data["projects_dir"] == ".doorae/projects"
     finally:
         remove_workspace_dir(workspace)
-
-
