@@ -20,7 +20,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
-from textual.widgets import Collapsible, Footer, Header, Input, Markdown, Static, Tree
+from textual.widgets import Collapsible, Footer, Header, Markdown, Static, TextArea, Tree
 from textual.worker import WorkerCancelled
 from doorae.config import Settings
 from doorae.graph.constants import (
@@ -103,23 +103,40 @@ class SpeechBubble(Widget):
         border-left: block $secondary;
         background: $surface-lighten-2;
     }
+    SpeechBubble.human {
+        margin: 1 0 1 8;
+        border-left: none;
+        border-right: wide transparent;
+        padding: 1 1 0 0;
+        background: $boost;
+    }
     SpeechBubble Markdown {
         padding: 1 1;
         height: auto;
+    }
+    SpeechBubble.human Markdown {
+        text-align: right;
     }
     SpeechBubble .bubble-body {
         padding: 1 1;
         height: auto;
     }
+    SpeechBubble.human .bubble-body {
+        text-align: right;
+    }
     SpeechBubble .bubble-header {
         height: auto;
         width: 1fr;
     }
-    SpeechBubble .bubble-header Static {
+    SpeechBubble .bubble-title {
         width: auto;
     }
     SpeechBubble .bubble-header SpinnerWidget {
         width: auto;
+    }
+    SpeechBubble.human .bubble-title {
+        width: 1fr;
+        text-align: right;
     }
     SpeechBubble Collapsible {
         margin: 0 0 0 1;
@@ -133,26 +150,45 @@ class SpeechBubble(Widget):
     }
     """
 
-    def __init__(self, speaker: str, color: str, is_delegated: bool = False) -> None:
-        super().__init__(classes="delegated" if is_delegated else "")
+    def __init__(
+        self,
+        speaker: str,
+        color: str,
+        is_delegated: bool = False,
+        is_human: bool = False,
+    ) -> None:
+        classes: list[str] = []
+        if is_delegated:
+            classes.append("delegated")
+        if is_human:
+            classes.append("human")
+        super().__init__(classes=" ".join(classes))
         self._speaker = speaker
         self._color = color
         self._buffer = ""
         self.is_delegated = is_delegated
+        self.is_human = is_human
         self._body: Static | None = None
         self._tool_indicator: SpinnerWidget | None = None
         self._header_spinner: SpinnerWidget | None = None
 
     def on_mount(self) -> None:
-        if not self.is_delegated:
+        if self.is_delegated:
+            return
+        if self.is_human:
+            self.styles.border_right = ("wide", self._color)
+        else:
             self.styles.border_left = ("wide", self._color)
 
     def compose(self) -> ComposeResult:
+        if self.is_delegated:
+            title = f"[dim]{self._speaker} (위임)[/dim]"
+        elif self.is_human:
+            title = f"[bold {self._color}]💬 {self._speaker}[/bold {self._color}]"
+        else:
+            title = f"[bold {self._color}]🤖 {self._speaker}[/bold {self._color}]"
         with Horizontal(classes="bubble-header"):
-            if self.is_delegated:
-                yield Static(f"[dim] {self._speaker} (위임)[/dim]")
-            else:
-                yield Static(f"[bold {self._color}] {self._speaker}[/bold {self._color}]")
+            yield Static(title, classes="bubble-title")
             self._header_spinner = SpinnerWidget("", self._color)
             yield self._header_spinner
         self._body = Static("", classes="bubble-body")
@@ -189,6 +225,28 @@ class SpeechBubble(Widget):
             self._tool_indicator.remove()
             self._tool_indicator = None
         self.mount(Markdown(self._buffer))
+
+
+class SubmittableTextArea(TextArea):
+    """Enter로 제출하고 Ctrl+J로 줄바꿈하는 TextArea."""
+
+    BINDINGS = [
+        *TextArea.BINDINGS,
+        Binding("enter", "submit", "전송", show=False, priority=True),
+        Binding("ctrl+j", "insert_newline", "줄바꿈", show=False, priority=True),
+    ]
+
+    class Submitted(Message):
+        def __init__(self, text_area: "SubmittableTextArea", value: str) -> None:
+            super().__init__()
+            self.text_area = text_area
+            self.value = value
+
+    def action_submit(self) -> None:
+        self.post_message(self.Submitted(text_area=self, value=self.text))
+
+    def action_insert_newline(self) -> None:
+        self.insert("\n")
 
 
 class TokenStreamed(Message):
@@ -456,23 +514,17 @@ class MeetingTuiApp(App[None]):
     }
     #right-sidebar {
         width: 55;
+        border-left: wide $primary;
     }
     #agenda-panel {
         height: 1fr;
         padding: 1 2;
-        border-top: solid $primary;
-        border-bottom: solid $primary;
-        border-left: solid $primary;
-        border-right: solid $primary;
     }
     #participant-panel {
         height: auto;
         max-height: 40%;
         padding: 1 1;
-        border-top: solid $primary;
-        border-bottom: solid $primary;
-        border-left: solid $primary;
-        border-right: solid $primary;
+        border-top: solid $surface-darken-2;
     }
     #participant-tree {
         height: 1fr;
@@ -501,7 +553,7 @@ class MeetingTuiApp(App[None]):
         padding: 0 0 0 1;
     }
     #input-area {
-        height: 3;
+        height: 5;
     }
     """
 
@@ -512,7 +564,7 @@ class MeetingTuiApp(App[None]):
         Binding("question_mark", "help", "도움말"),
         Binding("pageup", "scroll_up", "Page Up", show=False),
         Binding("pagedown", "scroll_down", "Page Down", show=False),
-        Binding("d", "toggle_delegated", "위임 표시"),
+        Binding("ctrl+d", "toggle_delegated", "위임 토글", priority=True),
     ]
 
     current_speaker: reactive[str] = reactive("")
@@ -573,8 +625,8 @@ class MeetingTuiApp(App[None]):
                 yield AgendaPanel(id="agenda-panel")
                 yield ParticipantPanel(id="participant-panel")
         with Vertical(id="human-input-panel"):
-            yield Static("의견을 입력하세요", id="human-input-label")
-            yield Input(id="input-area", placeholder="의견을 입력하세요 (Enter로 전송, 빈 입력 시 스킵)")
+            yield Static(self._default_input_label(), id="human-input-label")
+            yield SubmittableTextArea(id="input-area")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -734,6 +786,15 @@ class MeetingTuiApp(App[None]):
             parts.append(f"발언자: {speaker}")
         return " | ".join(parts)
 
+    def _default_input_label(self) -> str:
+        return "의견을 입력하세요 · Enter: 전송 · Ctrl+J: 줄바꿈"
+
+    def _active_input_label(self, username: str, agenda_title: str) -> str:
+        return f"[{username}의 차례] {agenda_title} · Enter: 전송 · Ctrl+J: 줄바꿈"
+
+    def _waiting_input_label(self, username: str, agenda_title: str) -> str:
+        return f"[{username}님이 입력 중] {agenda_title}"
+
     def _mount_server_invite_notice(self) -> None:
         if not self._show_server_invite:
             return
@@ -796,7 +857,7 @@ class MeetingTuiApp(App[None]):
 
     def watch_input_enabled(self, enabled: bool) -> None:
         panel = self.query_one("#human-input-panel", Vertical)
-        input_area = self.query_one("#input-area", Input)
+        input_area = self.query_one("#input-area", SubmittableTextArea)
         if enabled:
             panel.add_class("visible")
             input_area.focus()
@@ -875,17 +936,17 @@ class MeetingTuiApp(App[None]):
 
         # 서버 모드: 자신의 차례가 아니면 입력 비활성화
         if self._server_url is not None and event.username != self._server_username:
-            label.update(escape(f"[{event.username}님이 입력 중...] {agenda_title}"))
+            label.update(escape(self._waiting_input_label(event.username, agenda_title)))
             scroll.mount(
-                Static(f"[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]")
+                Static(f"[bold yellow]💬 {event.username}님이 입력 중입니다[/bold yellow]")
             )
             scroll.scroll_end(animate=False)
             return
 
-        label.update(escape(f"[{event.username}의 차례] {agenda_title}"))
+        label.update(escape(self._active_input_label(event.username, agenda_title)))
         self.input_enabled = True
         scroll.mount(
-            Static(f"[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]")
+            Static(f"[bold yellow]💬 {event.username}님 차례입니다[/bold yellow]")
         )
         scroll.scroll_end(animate=False)
 
@@ -923,7 +984,7 @@ class MeetingTuiApp(App[None]):
         participant_panel = self.query_one("#participant-panel", ParticipantPanel)
         participant_panel.update_status(event.participant_name, event.status)
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    def on_submittable_text_area_submitted(self, event: SubmittableTextArea.Submitted) -> None:
         submitted_value = event.value
         if self._ws_client is not None:
             asyncio.create_task(self._ws_client.send_input(submitted_value))
@@ -933,11 +994,12 @@ class MeetingTuiApp(App[None]):
             bubble = SpeechBubble(
                 speaker=self._current_human_speaker,
                 color=self._get_speaker_color(self._current_human_speaker),
+                is_human=True,
             )
             bubble.append_token(submitted_value)
             self._mount_bubble(bubble)
             self.call_after_refresh(bubble.finalize)
-        event.input.clear()
+        event.text_area.clear()
         self.input_enabled = False
         self._current_human_speaker = ""
 
@@ -996,7 +1058,7 @@ class MeetingTuiApp(App[None]):
 
     def action_help(self) -> None:
         self.notify(
-            "Ctrl+C/Ctrl+Q: 종료\n?: 도움말\nPageUp/Down: 스크롤\nd: 위임 발언 표시/숨김",
+            "Ctrl+C/Ctrl+Q: 종료\n?: 도움말\nPageUp/Down: 스크롤\nCtrl+D: 위임 발언 표시/숨김",
             title="단축키",
             timeout=5,
         )

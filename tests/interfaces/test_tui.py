@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from textual.widgets import Input, Markdown, Static
+from textual.widgets import Markdown, Static
 
 from doorae.config import Settings
 from doorae.interfaces.tui import (
@@ -14,6 +14,7 @@ from doorae.interfaces.tui import (
     SpeakerChanged,
     SpeechBubble,
     SpinnerWidget,
+    SubmittableTextArea,
 )
 
 
@@ -69,6 +70,12 @@ def _conversation_texts(app: MeetingTuiApp) -> list[str]:
     return [_static_text(widget) for widget in scroll.query(Static)]
 
 
+def _submitted_event(
+    text_area: SubmittableTextArea, value: str
+) -> SubmittableTextArea.Submitted:
+    return SubmittableTextArea.Submitted(text_area=text_area, value=value)
+
+
 @pytest.mark.asyncio
 async def test_human_input_panel_hidden_by_default() -> None:
     app = DummyMeetingTuiApp(
@@ -81,6 +88,7 @@ async def test_human_input_panel_hidden_by_default() -> None:
         label = app.query_one("#human-input-label", Static)
         assert "visible" not in panel.classes
         assert "의견을 입력하세요" in _static_text(label)
+        assert "Ctrl+J" in _static_text(label)
 
 
 @pytest.mark.asyncio
@@ -92,7 +100,7 @@ async def test_watch_input_enabled_toggles_panel_and_focus() -> None:
     )
     async with app.run_test() as pilot:
         panel = app.query_one("#human-input-panel")
-        input_widget = app.query_one("#input-area", Input)
+        input_widget = app.query_one("#input-area", SubmittableTextArea)
 
         app.watch_input_enabled(True)
         await pilot.pause()
@@ -160,8 +168,8 @@ async def test_input_submission_mounts_human_bubble_and_forwards_value() -> None
         app.on_human_turn_started(HumanTurnStarted(username="민지"))
         await pilot.pause()
 
-        input_widget = app.query_one("#input-area", Input)
-        app.on_input_submitted(Input.Submitted(input=input_widget, value="찬성합니다"))
+        input_widget = app.query_one("#input-area", SubmittableTextArea)
+        app.on_submittable_text_area_submitted(_submitted_event(input_widget, "찬성합니다"))
         await pilot.pause()
 
         bubbles = _speaker_bubbles(app, "민지")
@@ -170,10 +178,29 @@ async def test_input_submission_mounts_human_bubble_and_forwards_value() -> None
         assert input_provider.submitted == ["찬성합니다"]
         assert len(bubbles) == 1
         assert bubbles[0]._buffer == "찬성합니다"
+        assert "human" in bubbles[0].classes
         assert bubbles[0]._body is None
         assert bubbles[0].query_one(Markdown)
         assert "visible" not in panel.classes
         assert app._current_human_speaker == ""
+
+
+@pytest.mark.asyncio
+async def test_ai_bubble_does_not_have_human_class() -> None:
+    app = DummyMeetingTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+    )
+
+    async with app.run_test() as pilot:
+        app.on_speaker_changed(SpeakerChanged(speaker="ai-agent", pending=[]))
+        await pilot.pause()
+
+        bubbles = _speaker_bubbles(app, "ai-agent")
+
+        assert len(bubbles) == 1
+        assert "human" not in bubbles[0].classes
 
 
 @pytest.mark.asyncio
@@ -331,8 +358,8 @@ async def test_server_mode_input_submission_sends_over_websocket() -> None:
         app.on_human_turn_started(HumanTurnStarted(username="민지"))
         await pilot.pause()
 
-        input_widget = app.query_one("#input-area", Input)
-        app.on_input_submitted(Input.Submitted(input=input_widget, value="찬성합니다"))
+        input_widget = app.query_one("#input-area", SubmittableTextArea)
+        app.on_submittable_text_area_submitted(_submitted_event(input_widget, "찬성합니다"))
         await pilot.pause()
 
         bubbles = _speaker_bubbles(app, "민지")
@@ -359,13 +386,65 @@ async def test_blank_input_submission_skips_human_bubble() -> None:
         app.on_human_turn_started(HumanTurnStarted(username="민지"))
         await pilot.pause()
 
-        input_widget = app.query_one("#input-area", Input)
-        app.on_input_submitted(Input.Submitted(input=input_widget, value="   "))
+        input_widget = app.query_one("#input-area", SubmittableTextArea)
+        app.on_submittable_text_area_submitted(_submitted_event(input_widget, "   "))
         await pilot.pause()
 
         assert input_provider.submitted == ["   "]
         assert _speaker_bubbles(app, "민지") == []
         assert app._current_human_speaker == ""
+
+
+@pytest.mark.asyncio
+async def test_multiline_input_submission() -> None:
+    app = DummyMeetingTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+    )
+
+    async with app.run_test() as pilot:
+        input_provider = RecordingInputProvider()
+        app._input_provider = input_provider
+        app.on_human_turn_started(HumanTurnStarted(username="민지"))
+        await pilot.pause()
+
+        input_widget = app.query_one("#input-area", SubmittableTextArea)
+        input_widget.insert("첫줄")
+        await pilot.press("ctrl+j")
+        await pilot.pause()
+        assert input_widget.text == "첫줄\n"
+
+        input_widget.insert("둘째줄")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert input_provider.submitted == ["첫줄\n둘째줄"]
+        assert input_widget.text == ""
+        assert _speaker_bubbles(app, "민지")[0]._buffer == "첫줄\n둘째줄"
+
+
+@pytest.mark.asyncio
+async def test_ctrl_d_toggle_delegated_while_text_area_focused() -> None:
+    app = DummyMeetingTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+    )
+
+    async with app.run_test() as pilot:
+        app.on_human_turn_started(HumanTurnStarted(username="민지"))
+        await pilot.pause()
+
+        input_widget = app.query_one("#input-area", SubmittableTextArea)
+        assert input_widget.has_focus
+        assert app.show_delegated is True
+
+        await pilot.press("ctrl+d")
+        await pilot.pause()
+
+        assert app.show_delegated is False
+        assert input_widget.text == ""
 
 
 # ── 서버 모드: 다른 사용자 차례일 때 입력 비활성화 테스트 ──
