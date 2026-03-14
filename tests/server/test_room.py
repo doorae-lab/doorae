@@ -1,6 +1,7 @@
 """Room 테스트."""
 
 import json
+
 import pytest
 import asyncio
 from doorae.server.room import Room
@@ -8,17 +9,27 @@ from doorae.server.room_manager import RoomManager, get_room_manager
 
 
 class MockConnectionManager:
-    """테스트용 ConnectionManager 모의 객체."""
+    """테스트용 ConnectionManager mock."""
 
     def __init__(self):
-        self.personal_messages: list[tuple[str, str]] = []  # (message, username)
+        self.connections: dict[str, object] = {}
         self.broadcasts: list[str] = []
+        self.personal_messages: list[tuple[str, str]] = []  # (message, username)
 
-    async def send_personal_message(self, message: str, username: str):
+    async def connect(self, username, websocket):
+        self.connections[username] = websocket
+
+    def disconnect(self, username):
+        self.connections.pop(username, None)
+
+    async def broadcast(self, message):
+        self.broadcasts.append(message)
+
+    async def send_personal_message(self, message, username):
         self.personal_messages.append((message, username))
 
-    async def broadcast(self, message: str):
-        self.broadcasts.append(message)
+    def get_connection_count(self):
+        return len(self.connections)
 
 
 def test_room_creation():
@@ -239,3 +250,60 @@ async def test_handle_message_rejects_non_active_user_no_broadcast():
     assert len(room.connection_manager.broadcasts) == 0
     # 활성 사용자 변경 없음
     assert room._current_active_human == "Alice"
+
+
+# ── join 참가자 목록 전송 테스트 ──
+
+
+@pytest.mark.asyncio
+async def test_join_sends_participants_list_to_new_user():
+    """새 입장자에게 기존 참가자 목록이 전송되는지 테스트."""
+    room = Room(room_id="test", name="Test")
+    mock_cm = MockConnectionManager()
+    mock_cm.connections["Alice"] = "ws_alice"  # Pre-existing user
+    room.connection_manager = mock_cm
+
+    await room.join("Bob", "ws_bob")
+
+    # Check personal message sent to Bob with Alice's info
+    assert len(mock_cm.personal_messages) >= 1
+    msg = json.loads(mock_cm.personal_messages[0][0])
+    assert msg["type"] == "semantic:participants_list"
+    assert mock_cm.personal_messages[0][1] == "Bob"
+    participants = msg["data"]["participants"]
+    assert any(p["username"] == "Alice" for p in participants)
+
+
+@pytest.mark.asyncio
+async def test_join_broadcasts_user_joined():
+    """기존 참가자에게 새 입장자 알림이 브로드캐스트되는지 테스트."""
+    room = Room(room_id="test", name="Test")
+    mock_cm = MockConnectionManager()
+    room.connection_manager = mock_cm
+
+    await room.join("Alice", "ws_alice")
+
+    # Find user_joined broadcast
+    user_joined_broadcasts = [
+        json.loads(b) for b in mock_cm.broadcasts
+        if "user_joined" in b
+    ]
+    assert len(user_joined_broadcasts) == 1
+    assert user_joined_broadcasts[0]["data"]["username"] == "Alice"
+
+
+@pytest.mark.asyncio
+async def test_first_user_gets_empty_participants_list():
+    """첫 번째 입장자에게는 빈 participants_list가 전송되지 않는지 테스트."""
+    room = Room(room_id="test", name="Test")
+    mock_cm = MockConnectionManager()
+    room.connection_manager = mock_cm
+
+    await room.join("Alice", "ws_alice")
+
+    # No personal message for participants_list (no existing participants)
+    participants_msgs = [
+        pm for pm in mock_cm.personal_messages
+        if "participants_list" in pm[0]
+    ]
+    assert len(participants_msgs) == 0

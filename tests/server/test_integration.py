@@ -43,7 +43,12 @@ def test_full_flow_single_user(client):
 
     # 3. WebSocket 연결 및 메시지 전송
     with client.websocket_connect(f"/ws/{room_id}?username=Alice") as websocket:
-        # 입장 메시지 수신
+        # user_joined 이벤트 수신
+        user_joined = websocket.receive_json()
+        assert user_joined["type"] == "semantic:user_joined"
+        assert user_joined["data"]["username"] == "Alice"
+
+        # 시스템 입장 메시지 수신
         join_message = websocket.receive_json()
         assert join_message["type"] == "system"
         assert "Alice" in join_message["data"]["message"]
@@ -77,17 +82,36 @@ def test_full_flow_multiple_users(client):
 
     # 2. 2명의 사용자 동시 연결
     with client.websocket_connect(f"/ws/{room_id}?username=Alice") as ws_alice:
-        # Alice 입장 메시지
+        # Alice user_joined + 입장 메시지
+        alice_user_joined = ws_alice.receive_json()
+        assert alice_user_joined["type"] == "semantic:user_joined"
         alice_join = ws_alice.receive_json()
         assert alice_join["type"] == "system"
 
         with client.websocket_connect(f"/ws/{room_id}?username=Bob") as ws_bob:
-            # Alice가 Bob 입장 메시지 수신
+            # Alice가 Bob user_joined 이벤트 수신
+            bob_joined_for_alice = ws_alice.receive_json()
+            assert bob_joined_for_alice["type"] == "semantic:user_joined"
+            assert bob_joined_for_alice["data"]["username"] == "Bob"
+
+            # Alice가 Bob 시스템 입장 메시지 수신
             bob_join_for_alice = ws_alice.receive_json()
             assert bob_join_for_alice["type"] == "system"
             assert "Bob" in bob_join_for_alice["data"]["message"]
 
-            # Bob이 자신의 입장 메시지 수신
+            # Bob이 participants_list (기존 참가자 Alice 포함) 수신
+            bob_participants = ws_bob.receive_json()
+            assert bob_participants["type"] == "semantic:participants_list"
+            assert any(
+                p["username"] == "Alice"
+                for p in bob_participants["data"]["participants"]
+            )
+
+            # Bob이 user_joined 이벤트 수신
+            bob_user_joined = ws_bob.receive_json()
+            assert bob_user_joined["type"] == "semantic:user_joined"
+
+            # Bob이 시스템 입장 메시지 수신
             bob_join = ws_bob.receive_json()
             assert bob_join["type"] == "system"
 
@@ -139,6 +163,8 @@ def test_concurrent_room_operations(client):
     # 3. 각 회의방에 사용자 연결
     for i, room_id in enumerate(room_ids):
         with client.websocket_connect(f"/ws/{room_id}?username=User{i+1}") as ws:
+            user_joined_msg = ws.receive_json()
+            assert user_joined_msg["type"] == "semantic:user_joined"
             join_msg = ws.receive_json()
             assert join_msg["type"] == "system"
 
@@ -160,12 +186,16 @@ def test_websocket_disconnect_handling(client):
 
     # Alice 연결
     with client.websocket_connect(f"/ws/{room_id}?username=Alice") as ws_alice:
+        ws_alice.receive_json()  # user_joined
         ws_alice.receive_json()  # 입장 메시지
 
         # Bob 연결
         with client.websocket_connect(f"/ws/{room_id}?username=Bob") as ws_bob:
-            # Alice가 Bob 입장 메시지 수신
-            ws_alice.receive_json()
+            # Alice가 Bob user_joined + 입장 메시지 수신
+            ws_alice.receive_json()  # Bob user_joined
+            ws_alice.receive_json()  # Bob 입장 메시지
+            ws_bob.receive_json()  # participants_list
+            ws_bob.receive_json()  # Bob user_joined
             ws_bob.receive_json()  # Bob 입장 메시지
 
             # Bob 연결 종료 (with 블록 종료)
@@ -205,6 +235,7 @@ def test_empty_message_handling(client):
     room_id = create_response.json()["id"]
 
     with client.websocket_connect(f"/ws/{room_id}?username=Alice") as websocket:
+        websocket.receive_json()  # user_joined
         websocket.receive_json()  # 입장 메시지
 
         # 빈 메시지 전송

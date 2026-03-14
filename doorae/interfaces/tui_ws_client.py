@@ -192,6 +192,26 @@ class ServerEventClient:
                 self._app.post_message(MeetingEnded(agendas=agendas, speaker_counts=speaker_counts))
             return
 
+        if semantic_type == "participants_list":
+            participants = data.get("participants")
+            if isinstance(participants, list):
+                for p in participants:
+                    if isinstance(p, dict):
+                        uname = p.get("username")
+                        if isinstance(uname, str) and uname:
+                            self._app.post_message(
+                                ParticipantStatusChanged(participant_name=uname, status="idle")
+                            )
+            return
+
+        if semantic_type == "user_joined":
+            uname = data.get("username")
+            if isinstance(uname, str) and uname:
+                self._app.post_message(
+                    ParticipantStatusChanged(participant_name=uname, status="idle")
+                )
+            return
+
         if semantic_type == "pending_speakers_changed":
             pending = data.get("pending_speakers")
             if isinstance(pending, list):

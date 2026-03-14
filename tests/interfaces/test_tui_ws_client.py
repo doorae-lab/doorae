@@ -390,3 +390,44 @@ async def test_send_input_formats_connection_closed(
     error = app.messages[0]
     assert isinstance(error, StreamError)
     assert "1006" not in error.error
+
+
+@pytest.mark.asyncio
+async def test_dispatch_participants_list() -> None:
+    """participants_list 이벤트 수신 시 ParticipantStatusChanged 메시지가 포스트되는지 테스트."""
+    app = RecordingApp()
+    client = ServerEventClient(ws_url="ws://test", username="Bob", app=app)
+
+    event = {
+        "type": "semantic:participants_list",
+        "data": {
+            "participants": [
+                {"username": "Alice", "role": "participant"},
+                {"username": "Charlie", "role": "participant"},
+            ]
+        },
+    }
+    await client._dispatch_event(event)
+
+    status_msgs = [m for m in app.messages if isinstance(m, ParticipantStatusChanged)]
+    assert len(status_msgs) == 2
+    names = {m.participant_name for m in status_msgs}
+    assert names == {"Alice", "Charlie"}
+
+
+@pytest.mark.asyncio
+async def test_dispatch_user_joined() -> None:
+    """user_joined 이벤트 수신 시 ParticipantStatusChanged 메시지가 포스트되는지 테스트."""
+    app = RecordingApp()
+    client = ServerEventClient(ws_url="ws://test", username="Bob", app=app)
+
+    event = {
+        "type": "semantic:user_joined",
+        "data": {"username": "Charlie", "role": "participant"},
+    }
+    await client._dispatch_event(event)
+
+    status_msgs = [m for m in app.messages if isinstance(m, ParticipantStatusChanged)]
+    assert len(status_msgs) == 1
+    assert status_msgs[0].participant_name == "Charlie"
+    assert status_msgs[0].status == "idle"
