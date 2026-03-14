@@ -7,6 +7,8 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
+from websockets.exceptions import ConnectionClosed
+from websockets.frames import Close
 
 from doorae.interfaces.tui import (
     AgendaUpdated,
@@ -20,7 +22,7 @@ from doorae.interfaces.tui import (
     ToolCallStarted,
     TurnCompleted,
 )
-from doorae.interfaces.tui_ws_client import ServerEventClient
+from doorae.interfaces.tui_ws_client import ServerEventClient, _format_connection_closed
 
 
 class RecordingApp:
@@ -312,3 +314,79 @@ async def test_wait_until_connected_tracks_connection_lifecycle(
     await run_task
 
     assert client.connected.is_set() is False
+
+
+def test_format_connection_closed_code_1006() -> None:
+    exc = ConnectionClosed(Close(1006, ""), None)
+    msg = _format_connection_closed(exc)
+    assert "비정상" in msg
+    assert "서버 상태를 확인" in msg
+
+
+def test_format_connection_closed_code_1000() -> None:
+    exc = ConnectionClosed(Close(1000, ""), None)
+    msg = _format_connection_closed(exc)
+    assert "정상" in msg
+
+
+def test_format_connection_closed_code_1001() -> None:
+    exc = ConnectionClosed(Close(1001, "going away"), None)
+    msg = _format_connection_closed(exc)
+    assert "서버가 종료" in msg
+
+
+def test_format_connection_closed_unknown_code() -> None:
+    exc = ConnectionClosed(Close(1011, "server error"), None)
+    msg = _format_connection_closed(exc)
+    assert "1011" in msg
+    assert "종료" in msg
+
+
+def test_format_connection_closed_no_rcvd() -> None:
+    exc = ConnectionClosed(None, None)
+    msg = _format_connection_closed(exc)
+    assert "종료" in msg
+
+
+@pytest.mark.asyncio
+async def test_run_formats_connection_closed_without_internal_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ConnectionClosed with code 1006 should produce a user-friendly message, not raw code."""
+    app = RecordingApp()
+    websocket = AsyncMock()
+
+    websocket.recv = AsyncMock(
+        side_effect=ConnectionClosed(Close(1006, "connection closed abnormally"), None)
+    )
+    _patch_connect(monkeypatch, MockConnection(websocket=websocket))
+
+    client = ServerEventClient("ws://example/ws/room?username=alice", "alice", app)
+    await client.run()
+
+    assert len(app.messages) == 1
+    error = app.messages[0]
+    assert isinstance(error, StreamError)
+    assert "1006" not in error.error
+    assert "비정상" in error.error
+
+
+@pytest.mark.asyncio
+async def test_send_input_formats_connection_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """send_input ConnectionClosed should use user-friendly message."""
+    app = RecordingApp()
+    client = ServerEventClient("ws://example/ws/room?username=alice", "alice", app)
+    websocket = AsyncMock()
+    websocket.send = AsyncMock(
+        side_effect=ConnectionClosed(Close(1006, ""), None)
+    )
+    client._websocket = websocket
+
+    await client.send_input("test")
+
+    assert len(app.messages) == 1
+    error = app.messages[0]
+    assert isinstance(error, StreamError)
+    assert "1006" not in error.error
