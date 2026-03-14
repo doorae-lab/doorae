@@ -103,26 +103,13 @@ class SpeechBubble(Widget):
         border-left: block $secondary;
         background: $surface-lighten-2;
     }
-    SpeechBubble.human {
-        margin: 1 0 1 8;
-        border-left: none;
-        border-right: wide transparent;
-        padding: 1 1 0 0;
-        background: $boost;
-    }
     SpeechBubble Markdown {
         padding: 1 1;
         height: auto;
     }
-    SpeechBubble.human Markdown {
-        text-align: right;
-    }
     SpeechBubble .bubble-body {
         padding: 1 1;
         height: auto;
-    }
-    SpeechBubble.human .bubble-body {
-        text-align: right;
     }
     SpeechBubble .bubble-header {
         height: auto;
@@ -133,10 +120,6 @@ class SpeechBubble(Widget):
     }
     SpeechBubble .bubble-header SpinnerWidget {
         width: auto;
-    }
-    SpeechBubble.human .bubble-title {
-        width: 1fr;
-        text-align: right;
     }
     SpeechBubble Collapsible {
         margin: 0 0 0 1;
@@ -155,19 +138,15 @@ class SpeechBubble(Widget):
         speaker: str,
         color: str,
         is_delegated: bool = False,
-        is_human: bool = False,
     ) -> None:
         classes: list[str] = []
         if is_delegated:
             classes.append("delegated")
-        if is_human:
-            classes.append("human")
         super().__init__(classes=" ".join(classes))
         self._speaker = speaker
         self._color = color
         self._buffer = ""
         self.is_delegated = is_delegated
-        self.is_human = is_human
         self._body: Static | None = None
         self._tool_indicator: SpinnerWidget | None = None
         self._header_spinner: SpinnerWidget | None = None
@@ -175,18 +154,13 @@ class SpeechBubble(Widget):
     def on_mount(self) -> None:
         if self.is_delegated:
             return
-        if self.is_human:
-            self.styles.border_right = ("wide", self._color)
-        else:
-            self.styles.border_left = ("wide", self._color)
+        self.styles.border_left = ("wide", self._color)
 
     def compose(self) -> ComposeResult:
         if self.is_delegated:
             title = f"[dim]{self._speaker} (위임)[/dim]"
-        elif self.is_human:
-            title = f"[bold {self._color}]💬 {self._speaker}[/bold {self._color}]"
         else:
-            title = f"[bold {self._color}]🤖 {self._speaker}[/bold {self._color}]"
+            title = f"[bold {self._color}]{self._speaker}[/bold {self._color}]"
         with Horizontal(classes="bubble-header"):
             yield Static(title, classes="bubble-title")
             self._header_spinner = SpinnerWidget("", self._color)
@@ -938,7 +912,7 @@ class MeetingTuiApp(App[None]):
         if self._server_url is not None and event.username != self._server_username:
             label.update(escape(self._waiting_input_label(event.username, agenda_title)))
             scroll.mount(
-                Static(f"[bold yellow]💬 {event.username}님이 입력 중입니다[/bold yellow]")
+                Static(f"[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]")
             )
             scroll.scroll_end(animate=False)
             return
@@ -946,7 +920,7 @@ class MeetingTuiApp(App[None]):
         label.update(escape(self._active_input_label(event.username, agenda_title)))
         self.input_enabled = True
         scroll.mount(
-            Static(f"[bold yellow]💬 {event.username}님 차례입니다[/bold yellow]")
+            Static(f"[bold yellow]── {event.username}님 차례입니다 ──[/bold yellow]")
         )
         scroll.scroll_end(animate=False)
 
@@ -994,7 +968,6 @@ class MeetingTuiApp(App[None]):
             bubble = SpeechBubble(
                 speaker=self._current_human_speaker,
                 color=self._get_speaker_color(self._current_human_speaker),
-                is_human=True,
             )
             bubble.append_token(submitted_value)
             self._mount_bubble(bubble)

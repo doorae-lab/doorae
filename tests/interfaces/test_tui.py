@@ -178,29 +178,10 @@ async def test_input_submission_mounts_human_bubble_and_forwards_value() -> None
         assert input_provider.submitted == ["찬성합니다"]
         assert len(bubbles) == 1
         assert bubbles[0]._buffer == "찬성합니다"
-        assert "human" in bubbles[0].classes
         assert bubbles[0]._body is None
         assert bubbles[0].query_one(Markdown)
         assert "visible" not in panel.classes
         assert app._current_human_speaker == ""
-
-
-@pytest.mark.asyncio
-async def test_ai_bubble_does_not_have_human_class() -> None:
-    app = DummyMeetingTuiApp(
-        settings=Settings(),
-        profiles_path="config/agent_profiles.yaml",
-        initial_message="hello",
-    )
-
-    async with app.run_test() as pilot:
-        app.on_speaker_changed(SpeakerChanged(speaker="ai-agent", pending=[]))
-        await pilot.pause()
-
-        bubbles = _speaker_bubbles(app, "ai-agent")
-
-        assert len(bubbles) == 1
-        assert "human" not in bubbles[0].classes
 
 
 @pytest.mark.asyncio
