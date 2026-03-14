@@ -192,13 +192,50 @@ User ──► CLI/TUI ──► LangGraph StateGraph
 
 AI participants must call other participants with `@Name` prefixes such as `@PM` or `@TechLead`. The routing layer treats AI responses without `@Name` as non-routing text and only keeps natural-language fallback for human input during the migration period.
 
-## WebSocket Server
+## Server Mode
 
-For web integrations, Doorae also provides a FastAPI WebSocket server:
+For web integrations and shared rooms, Doorae can run in client/server mode with a
+FastAPI WebSocket backend:
 
 ```bash
 uv sync --extra server
+uv run doorae serve --port 8000
+```
+
+The legacy entrypoint still works for compatibility, but it is deprecated:
+
+```bash
 uv run doorae-server
+```
+
+### Multi-participant flow
+
+1. Start the server:
+
+   ```bash
+   uv run doorae serve --host 0.0.0.0 --port 8000
+   ```
+
+2. Alice creates a room by connecting without `--room`:
+
+   ```bash
+   uv run doorae --server http://localhost:8000 --username alice
+   ```
+
+3. Bob joins the same room with the shared room ID:
+
+   ```bash
+   uv run doorae --server http://localhost:8000 --room <room_id> --username bob
+   ```
+
+```text
+Alice client                 Doorae server                  Bob client
+------------                 -------------                  ----------
+doorae serve --------------> listen on :8000
+doorae --server -----------> create room
+share <room_id> ------------------------------------------> receive room ID
+message stream <----------> /ws/<room_id>?username=alice
+                                                   /ws/<room_id>?username=bob <----------> message stream
 ```
 
 ## Development

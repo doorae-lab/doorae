@@ -28,6 +28,7 @@ dependencies = [
 
 [project.scripts]
 doorae = "doorae.interfaces.cli:app"
+# Deprecated compatibility shim. Prefer `doorae serve`.
 doorae-server = "doorae.server:main"
 
 [project.optional-dependencies]
