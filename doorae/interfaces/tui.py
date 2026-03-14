@@ -759,8 +759,14 @@ class MeetingTuiApp(App[None]):
         parsed = urlsplit(self._server_url)
         room_path_suffix = f"/ws/{quote(self._room_id, safe='')}"
         base_path = parsed.path.removesuffix(room_path_suffix)
-        base_url = urlunsplit((parsed.scheme, parsed.netloc, base_path.rstrip("/"), "", ""))
-        return f"doorae --server {base_url} --room {self._room_id} --username <name>"
+        if base_path.rstrip("/"):
+            http_scheme = "https" if parsed.scheme == "wss" else "http"
+            server_address = urlunsplit(
+                (http_scheme, parsed.netloc, base_path.rstrip("/"), "", "")
+            )
+        else:
+            server_address = parsed.netloc
+        return f"doorae join {self._room_id} -s {server_address} -u <name>"
 
     def watch_current_speaker(self, speaker: str) -> None:
         self.sub_title = self._build_sub_title(speaker)

@@ -45,7 +45,7 @@ class Settings(BaseSettings):
 
 
     # TUI 설정
-    tui_enabled: bool = True  # --no-tui 플래그로 비활성화 가능
+    tui_enabled: bool = True  # --classic 플래그로 클래식 출력으로 전환 가능
 
     # 대화 요약 설정
     max_messages_before_summary: int = 8  # 이 개수 초과 시 요약

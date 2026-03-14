@@ -218,10 +218,11 @@ JSON 텍스트 메시지:
 
 > 구현: `doorae/server/config.py`
 
-환경 변수 prefix: `SERVER_`
+환경 변수 prefix: `SERVER_` (`DOORAE_SERVER` 예외 지원)
 
 | 환경 변수 | 타입 | 기본값 | 설명 |
 |-----------|------|-------|------|
+| `DOORAE_SERVER` | string | — | `host:port` 형식의 통합 바인드 주소. 설정 시 `SERVER_HOST`/`SERVER_PORT`보다 우선 |
 | `SERVER_HOST` | string | `0.0.0.0` | 바인드 주소 |
 | `SERVER_PORT` | int | `8000` | 바인드 포트 |
 | `SERVER_MAX_ROOMS` | int | `100` | 최대 동시 회의방 수 |

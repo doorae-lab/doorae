@@ -21,6 +21,7 @@ from doorae.interfaces.cli import (
     _setup_server_room,
     app,
     run_meeting,
+    run_server_meeting,
 )
 from doorae.project import WorkspaceError, init_workspace
 
@@ -59,26 +60,23 @@ def test_cli_help() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "Doorae" in result.stdout
+    assert "create" in result.stdout
+    assert "join" in result.stdout
+    assert "rooms" in result.stdout
     assert "init" in result.stdout
     assert "serve" in result.stdout
     assert "--message" in result.stdout
-    assert "--server" in result.stdout
-    assert "--room" in result.stdout
-    assert "--username" in result.stdout
+    assert "--classic" in result.stdout
+    assert "--server" not in result.stdout
+    assert "--room" not in result.stdout
+    assert "--username" not in result.stdout
 
 
-def test_cli_help_server_option_includes_startup_hint() -> None:
+def test_cli_help_hides_server_mode_options_from_default_command() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "doorae-server" in result.stdout
-
-
-def test_cli_help_room_option_includes_auto_create_hint() -> None:
-    result = runner.invoke(app, ["--help"])
-    assert result.exit_code == 0
-    # typer may line-wrap the help text, so check for key fragments
-    assert "생략" in result.stdout
-    assert "생성" in result.stdout
+    assert "--no-stream" not in result.stdout
+    assert "--server" not in result.stdout
 
 
 def test_cli_default_message() -> None:
@@ -92,10 +90,17 @@ def test_cli_custom_message() -> None:
     assert result.exit_code == 0
 
 
-def test_cli_no_stream_option() -> None:
+def test_cli_default_command_exposes_classic_option() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "--no-stream" in result.stdout
+    assert "--classic" in result.stdout
+
+
+def test_normalize_server_base_urls_supports_host_port() -> None:
+    ws_base, http_base = _normalize_server_base_urls("localhost:8000")
+
+    assert ws_base == "ws://localhost:8000"
+    assert http_base == "http://localhost:8000"
 
 
 def test_normalize_server_base_urls_supports_ws_scheme() -> None:
@@ -179,7 +184,7 @@ async def test_setup_server_room_errors_for_missing_room(
     with pytest.raises(RuntimeError, match="회의방을 찾을 수 없습니다: missing-room") as exc_info:
         await _setup_server_room("http://localhost:8000", "missing-room", "alice")
 
-    assert "--room" in str(exc_info.value)
+    assert "doorae rooms -s localhost:8000" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -206,7 +211,7 @@ async def test_setup_server_room_connection_refused_includes_hint(
 
     msg = str(exc_info.value)
     assert "연결할 수 없습니다" in msg
-    assert "doorae-server" in msg
+    assert "uv run doorae serve -s localhost:9999" in msg
 
 
 def test_normalize_server_base_urls_invalid_scheme_includes_hint() -> None:
@@ -214,27 +219,7 @@ def test_normalize_server_base_urls_invalid_scheme_includes_hint() -> None:
         _normalize_server_base_urls("ftp://localhost:8000")
 
     msg = str(exc_info.value)
-    assert "http://localhost:8000" in msg
-
-
-def test_run_default_command_catches_server_runtime_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Server RuntimeError should produce exit code 1, not a traceback."""
-    error_msg = "서버에 연결할 수 없습니다: http://localhost:9999"
-
-    async def fake_run_meeting(**kwargs: Any) -> None:
-        raise RuntimeError(error_msg)
-
-    monkeypatch.setattr("doorae.interfaces.cli.run_meeting", fake_run_meeting)
-
-    result = runner.invoke(
-        app,
-        ["--server", "http://localhost:9999"],
-        catch_exceptions=False,
-    )
-
-    assert result.exit_code == 1
-    assert "연결할 수 없습니다" in result.stdout
-    assert "Traceback" not in result.stdout
+    assert "localhost:8000" in msg
 
 
 @pytest.mark.asyncio
@@ -245,7 +230,7 @@ def test_run_default_command_catches_server_runtime_error(monkeypatch: pytest.Mo
         ("existing-room", False),
     ],
 )
-async def test_run_meeting_passes_server_room_metadata_to_tui(
+async def test_run_server_meeting_passes_server_room_metadata_to_tui(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     requested_room_id: str | None,
@@ -261,11 +246,11 @@ async def test_run_meeting_passes_server_room_metadata_to_tui(
             return
 
     async def stub_setup_server_room(
-        server_url: str,
+        server_address: str,
         room_id: str | None,
         username: str,
     ) -> Any:
-        assert server_url == "ws://localhost:8000"
+        assert server_address == "localhost:8000"
         assert room_id == requested_room_id
         assert username == "alice"
         return type(
@@ -282,11 +267,10 @@ async def test_run_meeting_passes_server_room_metadata_to_tui(
     monkeypatch.setattr("doorae.interfaces.cli._setup_server_room", stub_setup_server_room)
     monkeypatch.setattr("doorae.interfaces.tui.MeetingTuiApp", StubMeetingTuiApp)
 
-    await run_meeting(
+    await run_server_meeting(
         initial_message="hello",
         settings=Settings(),
-        use_tui=True,
-        server_url="ws://localhost:8000",
+        server_address="localhost:8000",
         room_id=requested_room_id,
         username="alice",
     )
@@ -304,8 +288,7 @@ def test_init_command_is_visible_in_help() -> None:
 def test_serve_command_is_visible_in_help() -> None:
     result = runner.invoke(app, ["serve", "--help"])
     assert result.exit_code == 0
-    assert "--host" in result.stdout
-    assert "--port" in result.stdout
+    assert "--server" in result.stdout
 
 
 def test_serve_command_runs_server_with_explicit_options(
@@ -313,16 +296,15 @@ def test_serve_command_runs_server_with_explicit_options(
 ) -> None:
     calls: dict[str, object] = {}
 
-    def fake_run_server(*, host: str, port: int) -> None:
-        calls["host"] = host
-        calls["port"] = port
+    def fake_run_server(server: str) -> None:
+        calls["server"] = server
 
     monkeypatch.setattr("doorae.interfaces.cli._load_server_runner", lambda: fake_run_server)
 
-    result = runner.invoke(app, ["serve", "--host", "127.0.0.1", "--port", "9000"])
+    result = runner.invoke(app, ["serve", "--server", "127.0.0.1:9000"])
 
     assert result.exit_code == 0
-    assert calls == {"host": "127.0.0.1", "port": 9000}
+    assert calls == {"server": "127.0.0.1:9000"}
 
 
 def test_serve_command_reads_host_and_port_from_environment(
@@ -330,18 +312,16 @@ def test_serve_command_reads_host_and_port_from_environment(
 ) -> None:
     calls: dict[str, object] = {}
 
-    def fake_run_server(*, host: str, port: int) -> None:
-        calls["host"] = host
-        calls["port"] = port
+    def fake_run_server(server: str) -> None:
+        calls["server"] = server
 
     monkeypatch.setattr("doorae.interfaces.cli._load_server_runner", lambda: fake_run_server)
-    monkeypatch.setenv("SERVER_HOST", "127.0.0.1")
-    monkeypatch.setenv("SERVER_PORT", "9100")
+    monkeypatch.setenv("DOORAE_SERVER", "127.0.0.1:9100")
 
     result = runner.invoke(app, ["serve"])
 
     assert result.exit_code == 0
-    assert calls == {"host": "127.0.0.1", "port": 9100}
+    assert calls == {"server": "127.0.0.1:9100"}
 
 
 def test_python_module_help_stays_side_effect_free() -> None:
@@ -375,8 +355,7 @@ def test_python_module_serve_help_stays_side_effect_free() -> None:
 
     combined_output = result.stdout + result.stderr
     assert result.returncode == 0
-    assert "--host" in result.stdout
-    assert "--port" in result.stdout
+    assert "--server" in result.stdout
     assert "| DEBUG    |" not in combined_output
     assert "노드 등록" not in combined_output
 

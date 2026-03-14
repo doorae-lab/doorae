@@ -9,17 +9,18 @@ from __future__ import annotations
 import sys
 import warnings
 
-from doorae.server.config import get_server_settings
+from doorae.server.config import _parse_bind_address, get_server_settings
 
 DEPRECATED_ENTRYPOINT_MESSAGE = (
     "doorae-server는 deprecated입니다. 대신 'doorae serve'를 사용하세요."
 )
 
 
-def run_server(host: str = "0.0.0.0", port: int = 8000) -> None:
+def run_server(server: str = "0.0.0.0:8000") -> None:
     """공통 서버 실행 로직."""
     import uvicorn
 
+    host, port = _parse_bind_address(server)
     uvicorn.run(
         "doorae.server.app:create_app",
         host=host,
@@ -35,4 +36,4 @@ def main() -> None:
     print(DEPRECATED_ENTRYPOINT_MESSAGE, file=sys.stderr)
 
     settings = get_server_settings()
-    run_server(host=settings.host, port=settings.port)
+    run_server(settings.server_address)
