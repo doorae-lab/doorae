@@ -26,6 +26,21 @@ if TYPE_CHECKING:
     from doorae.interfaces.tui import MeetingTuiApp
 
 
+def _format_connection_closed(exc: ConnectionClosed) -> str:
+    """Convert a ConnectionClosed exception into a user-friendly Korean message."""
+    rcvd = getattr(exc, "rcvd", None)
+    code = getattr(rcvd, "code", None) if rcvd is not None else None
+    if code == 1000:
+        return "서버 연결이 정상적으로 종료되었습니다."
+    if code == 1001:
+        return "서버가 종료되었습니다."
+    if code == 1006:
+        return "서버 연결이 비정상적으로 종료되었습니다. 서버 상태를 확인하세요."
+    if code is not None:
+        return f"서버 연결이 종료되었습니다 (코드: {code})."
+    return "서버 연결이 종료되었습니다."
+
+
 class ServerEventClient:
     """Receive semantic room events and adapt them into existing TUI messages."""
 
@@ -52,7 +67,7 @@ class ServerEventClient:
                     try:
                         raw_message = await websocket.recv()
                     except ConnectionClosed as exc:
-                        self._emit_error(f"서버 연결이 종료되었습니다: {exc}")
+                        self._emit_error(_format_connection_closed(exc))
                         return
                     except StopAsyncIteration:
                         self._emit_error("서버 연결이 종료되었습니다.")
@@ -92,7 +107,7 @@ class ServerEventClient:
         try:
             await self._websocket.send(json.dumps({"content": content}))
         except ConnectionClosed as exc:
-            self._emit_error(f"입력 전송 중 연결이 종료되었습니다: {exc}")
+            self._emit_error(f"입력 전송 중 {_format_connection_closed(exc)}")
         except Exception as exc:
             self._emit_error(f"입력 전송 실패: {exc}")
 

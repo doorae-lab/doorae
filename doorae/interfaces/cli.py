@@ -241,7 +241,9 @@ def _run_default_command(
         raise typer.Exit(code=0)
 
     if server and no_tui:
-        logger.warning("Ignoring --no-tui because server-backed mode requires the TUI")
+        logger.warning(
+            "--no-tui 옵션은 무시됩니다: 서버 모드는 TUI를 통해 WebSocket 이벤트를 표시합니다"
+        )
     use_tui = True if server else should_use_tui(no_tui)
     setup_logging(verbose=verbose, quiet=quiet, use_tui=use_tui)
 
@@ -256,19 +258,25 @@ def _run_default_command(
         endpoint=settings.langchain_endpoint,
     )
 
-    asyncio.run(
-        run_meeting(
-            initial_message=message,
-            profiles_path=profiles,
-            stream=stream,
-            settings=settings,
-            use_tui=use_tui,
-            server_url=server,
-            room_id=room,
-            username=username,
-            hide_delegated=hide_delegated,
+    try:
+        asyncio.run(
+            run_meeting(
+                initial_message=message,
+                profiles_path=profiles,
+                stream=stream,
+                settings=settings,
+                use_tui=use_tui,
+                server_url=server,
+                room_id=room,
+                username=username,
+                hide_delegated=hide_delegated,
+            )
         )
-    )
+    except RuntimeError as exc:
+        if server is not None:
+            console.print(f"[bold red]오류:[/bold red] {exc}")
+            raise typer.Exit(code=1) from exc
+        raise
 
 
 @app.callback(invoke_without_command=True)
@@ -302,19 +310,19 @@ def main(
         None,
         "--server",
         "-s",
-        help="서버 기본 URL (예: ws://localhost:8000 또는 http://localhost:8000)",
+        help="서버 모드 URL (예: http://localhost:8000). 먼저 서버를 실행하세요: uv run doorae-server",
     ),
     room: Optional[str] = typer.Option(
         None,
         "--room",
         "-r",
-        help="서버 모드에서 연결할 회의방 ID",
+        help="연결할 회의방 ID (생략 시 새 회의방 자동 생성)",
     ),
     username: str = typer.Option(
         "user",
         "--username",
         "-u",
-        help="서버 모드에서 사용할 사용자 이름",
+        help="서버 모드에서 표시될 사용자 이름",
     ),
     config: Optional[Path] = typer.Option(
         None,
@@ -471,7 +479,8 @@ def _normalize_server_base_urls(server_url: str) -> tuple[str, str]:
     parsed = urlsplit(server_url)
     if parsed.scheme not in {"ws", "wss", "http", "https"}:
         raise RuntimeError(
-            "지원하지 않는 서버 URL 스킴입니다. ws://, wss://, http://, https:// 중 하나를 사용하세요."
+            "지원하지 않는 서버 URL 스킴입니다."
+            "\n  → 예: http://localhost:8000"
         )
     if not parsed.netloc:
         raise RuntimeError("서버 URL에 호스트가 없습니다.")
@@ -505,26 +514,42 @@ async def _setup_server_room(
     """Create or validate the target room and build the concrete URLs for TUI mode."""
     ws_base, http_base = _normalize_server_base_urls(server_url)
 
-    async with httpx.AsyncClient(base_url=http_base, timeout=10.0) as client:
-        if room_id is None:
-            create_response = await client.post(
-                "/api/rooms",
-                json={"name": f"Doorae Room ({username})"},
-            )
-            if create_response.is_error:
-                raise RuntimeError(
-                    f"회의방 생성에 실패했습니다: {_extract_error_detail(create_response)}"
+    try:
+        async with httpx.AsyncClient(base_url=http_base, timeout=10.0) as client:
+            if room_id is None:
+                create_response = await client.post(
+                    "/api/rooms",
+                    json={"name": f"Doorae Room ({username})"},
                 )
-            payload = create_response.json()
-            room_id = str(payload["id"])
-        else:
-            room_response = await client.get(f"/api/rooms/{quote(room_id, safe='')}")
-            if room_response.status_code == 404:
-                raise RuntimeError(f"회의방을 찾을 수 없습니다: {room_id}")
-            if room_response.is_error:
-                raise RuntimeError(
-                    f"회의방 조회에 실패했습니다: {_extract_error_detail(room_response)}"
-                )
+                if create_response.is_error:
+                    raise RuntimeError(
+                        f"회의방 생성에 실패했습니다: {_extract_error_detail(create_response)}"
+                    )
+                payload = create_response.json()
+                room_id = str(payload["id"])
+            else:
+                room_response = await client.get(f"/api/rooms/{quote(room_id, safe='')}")
+                if room_response.status_code == 404:
+                    raise RuntimeError(
+                        f"회의방을 찾을 수 없습니다: {room_id}"
+                        "\n  → --room을 생략하면 새 회의방이 자동 생성됩니다"
+                    )
+                if room_response.is_error:
+                    raise RuntimeError(
+                        f"회의방 조회에 실패했습니다: {_extract_error_detail(room_response)}"
+                    )
+    except httpx.ConnectError:
+        raise RuntimeError(
+            f"서버에 연결할 수 없습니다: {http_base}"
+            "\n  → 서버가 실행 중인지 확인하세요: uv run doorae-server"
+        )
+    except RuntimeError:
+        raise
+    except httpx.HTTPError as exc:
+        raise RuntimeError(
+            f"서버 통신 중 오류가 발생했습니다: {exc}"
+            "\n  → 서버가 실행 중인지 확인하세요: uv run doorae-server"
+        ) from exc
 
     quoted_room_id = quote(room_id, safe="")
     quoted_username = quote(username, safe="")

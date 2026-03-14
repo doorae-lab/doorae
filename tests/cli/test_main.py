@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 import yaml
 from typer.testing import CliRunner
@@ -57,6 +58,20 @@ def test_cli_help() -> None:
     assert "--server" in result.stdout
     assert "--room" in result.stdout
     assert "--username" in result.stdout
+
+
+def test_cli_help_server_option_includes_startup_hint() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "doorae-server" in result.stdout
+
+
+def test_cli_help_room_option_includes_auto_create_hint() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    # typer may line-wrap the help text, so check for key fragments
+    assert "생략" in result.stdout
+    assert "생성" in result.stdout
 
 
 def test_cli_default_message() -> None:
@@ -154,8 +169,65 @@ async def test_setup_server_room_errors_for_missing_room(
 
     monkeypatch.setattr("doorae.interfaces.cli.httpx.AsyncClient", MockAsyncClient)
 
-    with pytest.raises(RuntimeError, match="회의방을 찾을 수 없습니다: missing-room"):
+    with pytest.raises(RuntimeError, match="회의방을 찾을 수 없습니다: missing-room") as exc_info:
         await _setup_server_room("http://localhost:8000", "missing-room", "alice")
+
+    assert "--room" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_setup_server_room_connection_refused_includes_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MockAsyncClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> "MockAsyncClient":
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+        async def post(self, path: str, json: dict[str, Any]) -> MockResponse:
+            raise httpx.ConnectError("Connection refused")
+
+    monkeypatch.setattr("doorae.interfaces.cli.httpx.AsyncClient", MockAsyncClient)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await _setup_server_room("http://localhost:9999", None, "alice")
+
+    msg = str(exc_info.value)
+    assert "연결할 수 없습니다" in msg
+    assert "doorae-server" in msg
+
+
+def test_normalize_server_base_urls_invalid_scheme_includes_hint() -> None:
+    with pytest.raises(RuntimeError) as exc_info:
+        _normalize_server_base_urls("ftp://localhost:8000")
+
+    msg = str(exc_info.value)
+    assert "http://localhost:8000" in msg
+
+
+def test_run_default_command_catches_server_runtime_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Server RuntimeError should produce exit code 1, not a traceback."""
+    error_msg = "서버에 연결할 수 없습니다: http://localhost:9999"
+
+    async def fake_run_meeting(**kwargs: Any) -> None:
+        raise RuntimeError(error_msg)
+
+    monkeypatch.setattr("doorae.interfaces.cli.run_meeting", fake_run_meeting)
+
+    result = runner.invoke(
+        app,
+        ["--server", "http://localhost:9999"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "연결할 수 없습니다" in result.stdout
+    assert "Traceback" not in result.stdout
 
 
 def test_init_command_is_visible_in_help() -> None:
