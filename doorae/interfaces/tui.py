@@ -7,6 +7,7 @@ import colorsys
 import random
 import time
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
 from rich.markup import escape
@@ -256,6 +257,10 @@ class StreamError(Message):
     def __init__(self, error: str) -> None:
         super().__init__()
         self.error = error
+
+
+class ServerConnected(Message):
+    pass
 
 
 class TuiMeetingCallback:
@@ -519,6 +524,8 @@ class MeetingTuiApp(App[None]):
         server_url: str | None = None,
         server_start_url: str | None = None,
         server_username: str = "user",
+        room_id: str | None = None,
+        show_server_invite: bool = False,
     ) -> None:
         super().__init__()
         self._settings = settings
@@ -528,6 +535,8 @@ class MeetingTuiApp(App[None]):
         self._server_url = server_url
         self._server_start_url = server_start_url
         self._server_username = server_username
+        self._room_id = room_id
+        self._show_server_invite = show_server_invite
         self._engine: MeetingEngine | None = None
         self._workflow: Any = None
         self._initial_state: dict[str, object] = {}
@@ -547,6 +556,7 @@ class MeetingTuiApp(App[None]):
         self._full_text: str = ""
         self._ws_client: ServerEventClient | None = None
         self._server_start_attempted = False
+        self._connecting_spinner: SpinnerWidget | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -569,10 +579,14 @@ class MeetingTuiApp(App[None]):
             from doorae.interfaces.tui_ws_client import ServerEventClient
 
             participant_panel.initialize({}, {})
+            participant_panel.update_status(self._server_username, "idle")
             self._meeting_start_time = time.time()
             agenda_panel.update_meeting_start_time(self._meeting_start_time)
             agenda_panel.update_agendas(self._last_agendas, 0)
             self._timer_interval = self.set_interval(1.0, self._tick_timer)
+            self.sub_title = self._build_sub_title("")
+            self._mount_server_invite_notice()
+            self._mount_connecting_spinner()
             self._ws_client = ServerEventClient(
                 ws_url=self._server_url,
                 username=self._server_username,
@@ -639,8 +653,10 @@ class MeetingTuiApp(App[None]):
         try:
             self.meeting_status = "starting"
             if not await client.wait_until_connected(timeout=10.0):
+                self.post_message(StreamError(error="서버 연결 시간이 초과되었습니다."))
                 await client_task
                 return
+            self.post_message(ServerConnected())
             await self._start_remote_meeting()
             self.meeting_status = "running"
             await client_task
@@ -704,8 +720,50 @@ class MeetingTuiApp(App[None]):
         if bubble.display:
             scroll.scroll_end(animate=False)
 
+    def _build_sub_title(self, speaker: str) -> str:
+        parts: list[str] = []
+        if self._room_id:
+            parts.append(f"Room: {self._room_id}")
+        if speaker:
+            parts.append(f"발언자: {speaker}")
+        return " | ".join(parts)
+
+    def _mount_server_invite_notice(self) -> None:
+        if not self._show_server_invite:
+            return
+        invite_command = self._build_server_invite_command()
+        scroll = self._get_conversation_scroll()
+        if invite_command is None or scroll is None:
+            return
+        scroll.mount(Static(f"다른 참여자 초대:\n{invite_command}"))
+        scroll.scroll_end(animate=False)
+
+    def _mount_connecting_spinner(self) -> None:
+        scroll = self._get_conversation_scroll()
+        if scroll is None or self._connecting_spinner is not None:
+            return
+        self._connecting_spinner = SpinnerWidget("서버에 연결 중...")
+        scroll.mount(self._connecting_spinner)
+        scroll.scroll_end(animate=False)
+
+    def _clear_connecting_spinner(self) -> None:
+        if self._connecting_spinner is None:
+            return
+        self._connecting_spinner.remove()
+        self._connecting_spinner = None
+
+    def _build_server_invite_command(self) -> str | None:
+        if self._server_url is None or self._room_id is None:
+            return None
+
+        parsed = urlsplit(self._server_url)
+        room_path_suffix = f"/ws/{quote(self._room_id, safe='')}"
+        base_path = parsed.path.removesuffix(room_path_suffix)
+        base_url = urlunsplit((parsed.scheme, parsed.netloc, base_path.rstrip("/"), "", ""))
+        return f"doorae --server {base_url} --room {self._room_id} --username <name>"
+
     def watch_current_speaker(self, speaker: str) -> None:
-        self.sub_title = f"발언자: {speaker}" if speaker else ""
+        self.sub_title = self._build_sub_title(speaker)
 
     def watch_current_agenda_idx(self, idx: int) -> None:
         agenda_panel = self.query_one("#agenda-panel", AgendaPanel)
@@ -864,13 +922,24 @@ class MeetingTuiApp(App[None]):
     def on_meeting_ended(self, event: MeetingEnded) -> None:
         self._last_agendas = event.agendas
         self._last_speaker_counts = event.speaker_counts
+        self._clear_connecting_spinner()
         if self._timer_interval is not None:
             self._timer_interval.stop()
             self._timer_interval = None
         self._tick_timer()
         self.meeting_status = "ended"
 
+    def on_server_connected(self, event: ServerConnected) -> None:
+        _ = event
+        self._clear_connecting_spinner()
+        scroll = self._get_conversation_scroll()
+        if scroll is None:
+            return
+        scroll.mount(Static("서버에 연결되었습니다."))
+        scroll.scroll_end(animate=False)
+
     def on_stream_error(self, event: StreamError) -> None:
+        self._clear_connecting_spinner()
         if self._timer_interval is not None:
             self._timer_interval.stop()
             self._timer_interval = None
