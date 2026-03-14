@@ -9,7 +9,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
 from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
@@ -37,6 +37,7 @@ app = typer.Typer(
 )
 console = Console()
 DEFAULT_MESSAGE = "회의를 시작합니다"
+OPTIONAL_SERVER_DEPENDENCIES = {"fastapi", "starlette", "uvicorn"}
 
 
 @dataclass(slots=True)
@@ -271,6 +272,26 @@ def _run_default_command(
     )
 
 
+def _load_server_runner() -> Callable[[str, int], None]:
+    """Load the server runtime lazily so the base CLI works without server extras."""
+    try:
+        from doorae.server import run_server
+        from doorae.server.app import create_app
+    except ImportError as exc:
+        missing_module = (exc.name or "").split(".")[0]
+        if missing_module in OPTIONAL_SERVER_DEPENDENCIES:
+            typer.secho(
+                "Server mode requires optional dependencies. Run 'uv sync --extra server'.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=1) from exc
+        raise
+
+    _ = create_app
+    return run_server
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
@@ -398,6 +419,28 @@ def init_command(
         typer.echo("Created .env from the packaged template.")
     else:
         typer.echo("Kept existing .env.")
+
+
+@app.command("serve")
+def serve_command(
+    host: str = typer.Option(
+        "0.0.0.0",
+        "--host",
+        "-H",
+        envvar="SERVER_HOST",
+        help="바인딩할 호스트 주소",
+    ),
+    port: int = typer.Option(
+        8000,
+        "--port",
+        "-p",
+        envvar="SERVER_PORT",
+        help="서버 포트",
+    ),
+) -> None:
+    """Doorae WebSocket 서버를 시작한다."""
+    run_server = _load_server_runner()
+    run_server(host=host, port=port)
 
 
 async def _initialize_mcp(settings: Settings, use_tui: bool = False) -> dict[str, list] | None:

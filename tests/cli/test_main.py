@@ -53,6 +53,7 @@ def test_cli_help() -> None:
     assert result.exit_code == 0
     assert "Doorae" in result.stdout
     assert "init" in result.stdout
+    assert "serve" in result.stdout
     assert "--message" in result.stdout
     assert "--server" in result.stdout
     assert "--room" in result.stdout
@@ -164,6 +165,49 @@ def test_init_command_is_visible_in_help() -> None:
     assert "--force" in result.stdout
 
 
+def test_serve_command_is_visible_in_help() -> None:
+    result = runner.invoke(app, ["serve", "--help"])
+    assert result.exit_code == 0
+    assert "--host" in result.stdout
+    assert "--port" in result.stdout
+
+
+def test_serve_command_runs_server_with_explicit_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, object] = {}
+
+    def fake_run_server(*, host: str, port: int) -> None:
+        calls["host"] = host
+        calls["port"] = port
+
+    monkeypatch.setattr("doorae.interfaces.cli._load_server_runner", lambda: fake_run_server)
+
+    result = runner.invoke(app, ["serve", "--host", "127.0.0.1", "--port", "9000"])
+
+    assert result.exit_code == 0
+    assert calls == {"host": "127.0.0.1", "port": 9000}
+
+
+def test_serve_command_reads_host_and_port_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, object] = {}
+
+    def fake_run_server(*, host: str, port: int) -> None:
+        calls["host"] = host
+        calls["port"] = port
+
+    monkeypatch.setattr("doorae.interfaces.cli._load_server_runner", lambda: fake_run_server)
+    monkeypatch.setenv("SERVER_HOST", "127.0.0.1")
+    monkeypatch.setenv("SERVER_PORT", "9100")
+
+    result = runner.invoke(app, ["serve"])
+
+    assert result.exit_code == 0
+    assert calls == {"host": "127.0.0.1", "port": 9100}
+
+
 def test_python_module_help_stays_side_effect_free() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "doorae", "--help"],
@@ -178,6 +222,25 @@ def test_python_module_help_stays_side_effect_free() -> None:
     combined_output = result.stdout + result.stderr
     assert result.returncode == 0
     assert "init" in result.stdout
+    assert "| DEBUG    |" not in combined_output
+    assert "노드 등록" not in combined_output
+
+
+def test_python_module_serve_help_stays_side_effect_free() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "doorae", "serve", "--help"],
+        cwd=PROJECT_ROOT,
+        env=build_subprocess_env(),
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+
+    combined_output = result.stdout + result.stderr
+    assert result.returncode == 0
+    assert "--host" in result.stdout
+    assert "--port" in result.stdout
     assert "| DEBUG    |" not in combined_output
     assert "노드 등록" not in combined_output
 
