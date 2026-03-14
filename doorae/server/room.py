@@ -365,6 +365,29 @@ class Room:
     async def _stream_engine_events(self, engine: MeetingEngine):
         """MeetingEngine 이벤트를 스트리밍하여 브로드캐스트."""
         try:
+            # Ensure setup is complete and broadcast profiles to clients
+            setup_state = engine.setup_state
+            if setup_state is None:
+                setup_state = engine.setup()
+
+            # Broadcast agent profiles to all clients (strip llm recursively)
+            def _strip_llm(d: dict) -> dict:
+                d.pop("llm", None)
+                for child in d.get("agents") or []:
+                    if isinstance(child, dict):
+                        _strip_llm(child)
+                return d
+
+            top_profiles_data = {
+                name: _strip_llm(profile.model_dump())
+                for name, profile in setup_state.top_profiles.items()
+            }
+            profiles_event = format_semantic_event(
+                "agent_profiles",
+                top_profiles=top_profiles_data,
+            )
+            await self.connection_manager.broadcast(json.dumps(profiles_event))
+
             await engine.run(ServerMeetingCallback(self.connection_manager, room=self))
         except asyncio.CancelledError:
             logger.info(f"Workflow streaming cancelled for room {self.id}")

@@ -232,3 +232,68 @@ def test_agent_llm_config_unset_env_var_becomes_none(monkeypatch):
     )
 
     assert config.api_key is None
+
+
+def test_agent_profile_hierarchy_roundtrip():
+    """계층적 프로필 직렬화/역직렬화 라운드트립 테스트."""
+    supervisor = AgentProfile(
+        name="PM팀장",
+        role="project_manager",
+        responsibilities=["프로젝트 관리"],
+        expertise=["일정 관리"],
+        agents=[
+            AgentProfile(
+                name="기획자",
+                role="planner",
+                responsibilities=["기획"],
+                expertise=["기획"],
+            ),
+            AgentProfile(
+                name="디자이너",
+                role="designer",
+                responsibilities=["디자인"],
+                expertise=["UI/UX"],
+            ),
+        ],
+    )
+
+    # Serialize
+    dumped = supervisor.model_dump(exclude={"llm"})
+
+    # Deserialize
+    restored = AgentProfile.model_validate(dumped)
+
+    assert restored.name == "PM팀장"
+    assert len(restored.agents) == 2
+    assert restored.agents[0].name == "기획자"
+    assert restored.agents[1].name == "디자이너"
+    assert restored.is_supervisor()
+
+
+def test_agent_profile_hierarchy_flatten_after_roundtrip():
+    """라운드트립 후 flatten이 정상 동작하는지 테스트."""
+    profiles = {
+        "PM팀장": AgentProfile(
+            name="PM팀장",
+            role="project_manager",
+            responsibilities=["프로젝트 관리"],
+            expertise=["일정 관리"],
+            agents=[
+                AgentProfile(
+                    name="기획자",
+                    role="planner",
+                    responsibilities=["기획"],
+                    expertise=["기획"],
+                ),
+            ],
+        ),
+    }
+
+    # Serialize and deserialize
+    serialized = {name: p.model_dump(exclude={"llm"}) for name, p in profiles.items()}
+    restored = {name: AgentProfile.model_validate(d) for name, d in serialized.items()}
+
+    # Flatten should work
+    flat = flatten_all_profiles(restored)
+    assert "PM팀장" in flat
+    assert "기획자" in flat

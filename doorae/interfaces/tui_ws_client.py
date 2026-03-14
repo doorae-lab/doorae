@@ -11,6 +11,7 @@ from websockets.exceptions import ConnectionClosed
 
 from doorae.interfaces.tui import (
     AgendaUpdated,
+    AgentProfilesReceived,
     HumanTurnStarted,
     MeetingEnded,
     ParticipantStatusChanged,
@@ -135,6 +136,14 @@ class ServerEventClient:
         if not isinstance(data, dict):
             data = {}
         semantic_type = event_type.removeprefix("semantic:")
+
+        if semantic_type == "agent_profiles":
+            top_profiles = data.get("top_profiles")
+            if isinstance(top_profiles, dict):
+                self._app.post_message(
+                    AgentProfilesReceived(top_profiles_data=top_profiles)
+                )
+            return
 
         if semantic_type == "speaker_changed":
             speaker = data.get("speaker")
