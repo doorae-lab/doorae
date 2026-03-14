@@ -960,6 +960,9 @@ class MeetingTuiApp(App[None]):
 
     def _get_conversation_scroll(self) -> VerticalScroll | None:
         try:
-            return self.query_one("#conversation-scroll", VerticalScroll)
+            scroll = self.query_one("#conversation-scroll", VerticalScroll)
         except Exception:
             return None
+        if not scroll.is_attached:
+            return None
+        return scroll

@@ -24,6 +24,16 @@ class DummyTimer:
         self.stopped = True
 
 
+class DetachedScroll:
+    is_attached = False
+
+    def mount(self, _widget: object) -> None:
+        raise AssertionError("mount should not be called for a detached scroll")
+
+    def scroll_end(self, *, animate: bool) -> None:
+        raise AssertionError("scroll_end should not be called for a detached scroll")
+
+
 def _build_app() -> MeetingTuiApp:
     return MeetingTuiApp(settings=object(), profiles_path="profiles.yaml", initial_message="start")
 
@@ -85,6 +95,16 @@ def test_stream_error_stops_interval_timer_and_ends_meeting() -> None:
     assert app.meeting_status == "ended"
 
 
+def test_stream_error_skips_detached_conversation_scroll() -> None:
+    app = _build_app()
+    app.query_one = lambda *_args, **_kwargs: DetachedScroll()  # type: ignore[method-assign]
+
+    app.on_stream_error(StreamError(error="boom"))
+
+    assert app.meeting_status == "ended"
+    assert app._full_text == "⚠ 오류: boom"
+
+
 def test_render_summary_includes_total_and_agenda_durations() -> None:
     app = _build_app()
     app._meeting_start_time = 100.0
@@ -100,3 +120,15 @@ def test_render_summary_includes_total_and_agenda_durations() -> None:
     assert "⏱ 총 경과: 01:30" in app._full_text
     assert "A" in app._full_text and "소요: 00:40" in app._full_text
     assert "B" in app._full_text and "소요: 01:00" in app._full_text
+
+
+def test_render_summary_skips_detached_conversation_scroll() -> None:
+    app = _build_app()
+    app._meeting_start_time = 100.0
+    app._last_agendas = [{"title": "A", "status": "completed", "decision": "done"}]
+    app.query_one = lambda *_args, **_kwargs: DetachedScroll()  # type: ignore[method-assign]
+
+    with patch("doorae.interfaces.tui.time.time", return_value=190.0):
+        app._render_summary()
+
+    assert "## 📋 회의 요약" in app._full_text
