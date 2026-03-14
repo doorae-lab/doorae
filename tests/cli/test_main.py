@@ -14,7 +14,13 @@ import yaml
 from typer.testing import CliRunner
 
 from doorae import PROJECT_ROOT
-from doorae.interfaces.cli import _normalize_server_base_urls, _setup_server_room, app
+from doorae.config import Settings
+from doorae.interfaces.cli import (
+    _normalize_server_base_urls,
+    _setup_server_room,
+    app,
+    run_meeting,
+)
 from doorae.project import WorkspaceError, init_workspace
 
 
@@ -156,6 +162,64 @@ async def test_setup_server_room_errors_for_missing_room(
 
     with pytest.raises(RuntimeError, match="회의방을 찾을 수 없습니다: missing-room"):
         await _setup_server_room("http://localhost:8000", "missing-room", "alice")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("requested_room_id", "show_server_invite"),
+    [
+        (None, True),
+        ("existing-room", False),
+    ],
+)
+async def test_run_meeting_passes_server_room_metadata_to_tui(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    requested_room_id: str | None,
+    show_server_invite: bool,
+) -> None:
+    captured_kwargs: dict[str, Any] = {}
+
+    class StubMeetingTuiApp:
+        def __init__(self, **kwargs: Any) -> None:
+            captured_kwargs.update(kwargs)
+
+        async def run_async(self) -> None:
+            return
+
+    async def stub_setup_server_room(
+        server_url: str,
+        room_id: str | None,
+        username: str,
+    ) -> Any:
+        assert server_url == "ws://localhost:8000"
+        assert room_id == requested_room_id
+        assert username == "alice"
+        return type(
+            "ServerSession",
+            (),
+            {
+                "room_id": "room-123",
+                "ws_url": "ws://localhost:8000/ws/room-123?username=alice",
+                "start_url": "http://localhost:8000/api/rooms/room-123/start",
+            },
+        )()
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("doorae.interfaces.cli._setup_server_room", stub_setup_server_room)
+    monkeypatch.setattr("doorae.interfaces.tui.MeetingTuiApp", StubMeetingTuiApp)
+
+    await run_meeting(
+        initial_message="hello",
+        settings=Settings(),
+        use_tui=True,
+        server_url="ws://localhost:8000",
+        room_id=requested_room_id,
+        username="alice",
+    )
+
+    assert captured_kwargs["room_id"] == "room-123"
+    assert captured_kwargs["show_server_invite"] is show_server_invite
 
 
 def test_init_command_is_visible_in_help() -> None:

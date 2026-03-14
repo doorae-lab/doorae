@@ -599,6 +599,8 @@ async def run_meeting(
                 server_url=server_session.ws_url if server_session else None,
                 server_start_url=server_session.start_url if server_session else None,
                 server_username=username,
+                room_id=server_session.room_id if server_session else None,
+                show_server_invite=server_session is not None and room_id is None,
             )
             await tui_app.run_async()
             return

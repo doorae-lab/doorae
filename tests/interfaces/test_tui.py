@@ -6,7 +6,15 @@ import pytest
 from textual.widgets import Input, Markdown, Static
 
 from doorae.config import Settings
-from doorae.interfaces.tui import HumanTurnStarted, MeetingTuiApp, SpeakerChanged, SpeechBubble
+from doorae.interfaces.tui import (
+    HumanTurnStarted,
+    MeetingTuiApp,
+    ParticipantPanel,
+    ServerConnected,
+    SpeakerChanged,
+    SpeechBubble,
+    SpinnerWidget,
+)
 
 
 class DummyMeetingTuiApp(MeetingTuiApp):
@@ -54,6 +62,11 @@ def _static_text(widget: Static) -> str:
 
 def _speaker_bubbles(app: MeetingTuiApp, speaker: str) -> list[SpeechBubble]:
     return [bubble for bubble in app.query(SpeechBubble) if bubble._speaker == speaker]
+
+
+def _conversation_texts(app: MeetingTuiApp) -> list[str]:
+    scroll = app.query_one("#conversation-scroll")
+    return [_static_text(widget) for widget in scroll.query(Static)]
 
 
 @pytest.mark.asyncio
@@ -193,6 +206,112 @@ async def test_server_mode_mount_uses_websocket_client(
         assert isinstance(app._ws_client, StubServerEventClient)
         assert app._ws_client.ws_url == "ws://localhost:8000/ws/room-123?username=alice"
         assert app.server_worker_called is True
+
+
+@pytest.mark.asyncio
+async def test_server_mode_mount_shows_room_and_initial_participant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubServerEventClient:
+        def __init__(self, ws_url: str, username: str, app: MeetingTuiApp) -> None:
+            self.ws_url = ws_url
+            self.username = username
+            self.app = app
+
+        async def close(self) -> None:
+            return
+
+    monkeypatch.setattr("doorae.interfaces.tui_ws_client.ServerEventClient", StubServerEventClient)
+
+    app = InspectServerBackedTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+        server_url="ws://localhost:8000/ws/room-123?username=alice",
+        server_start_url="http://localhost:8000/api/rooms/room-123/start",
+        server_username="alice",
+        room_id="room-123",
+    )
+
+    async with app.run_test():
+        participant_panel = app.query_one("#participant-panel", ParticipantPanel)
+        assert app.sub_title == "Room: room-123"
+        assert participant_panel._statuses["alice"] == "idle"
+        assert "alice" in participant_panel._participant_nodes
+
+        app.on_speaker_changed(SpeakerChanged(speaker="host-agent", pending=[]))
+        assert app.sub_title == "Room: room-123 | 발언자: host-agent"
+
+
+@pytest.mark.asyncio
+async def test_server_mode_mount_shows_connecting_spinner_and_invite_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubServerEventClient:
+        def __init__(self, ws_url: str, username: str, app: MeetingTuiApp) -> None:
+            self.ws_url = ws_url
+            self.username = username
+            self.app = app
+
+        async def close(self) -> None:
+            return
+
+    monkeypatch.setattr("doorae.interfaces.tui_ws_client.ServerEventClient", StubServerEventClient)
+
+    app = InspectServerBackedTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+        server_url="ws://localhost:8000/ws/room-123?username=alice",
+        server_start_url="http://localhost:8000/api/rooms/room-123/start",
+        server_username="alice",
+        room_id="room-123",
+        show_server_invite=True,
+    )
+
+    async with app.run_test():
+        spinners = [spinner for spinner in app.query(SpinnerWidget)]
+        assert len(spinners) == 1
+        assert spinners[0]._label == "서버에 연결 중..."
+        assert any(
+            "doorae --server ws://localhost:8000 --room room-123 --username <name>" in text
+            for text in _conversation_texts(app)
+        )
+
+
+@pytest.mark.asyncio
+async def test_server_connected_removes_spinner_and_shows_connected_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubServerEventClient:
+        def __init__(self, ws_url: str, username: str, app: MeetingTuiApp) -> None:
+            self.ws_url = ws_url
+            self.username = username
+            self.app = app
+
+        async def close(self) -> None:
+            return
+
+    monkeypatch.setattr("doorae.interfaces.tui_ws_client.ServerEventClient", StubServerEventClient)
+
+    app = InspectServerBackedTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+        server_url="ws://localhost:8000/ws/room-123?username=alice",
+        server_start_url="http://localhost:8000/api/rooms/room-123/start",
+        server_username="alice",
+        room_id="room-123",
+    )
+
+    async with app.run_test() as pilot:
+        assert len([spinner for spinner in app.query(SpinnerWidget)]) == 1
+
+        app.on_server_connected(ServerConnected())
+        await pilot.pause()
+
+        assert [spinner for spinner in app.query(SpinnerWidget)] == []
+        assert any("서버에 연결되었습니다." in text for text in _conversation_texts(app))
 
 
 @pytest.mark.asyncio
