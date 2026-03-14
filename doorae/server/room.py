@@ -214,13 +214,41 @@ class Room:
     async def join(self, username: str, websocket: WebSocket):
         """사용자 입장 처리.
 
-        연결 수락 후 입장 메시지를 브로드캐스트합니다.
+        연결 수락 후 기존 참가자 목록을 새 입장자에게 전송하고,
+        구조화된 입장 이벤트와 시스템 메시지를 브로드캐스트합니다.
 
         Args:
             username: 사용자 이름
             websocket: WebSocket 연결
         """
         await self.connection_manager.connect(username, websocket)
+
+        # Send existing participant list to the newly joined user
+        existing_usernames = [
+            name for name in self.connection_manager.connections
+            if name != username
+        ]
+        if existing_usernames:
+            participants_event = format_semantic_event(
+                "participants_list",
+                participants=[
+                    {"username": name, "role": "participant"}
+                    for name in existing_usernames
+                ],
+            )
+            await self.connection_manager.send_personal_message(
+                json.dumps(participants_event), username
+            )
+
+        # Broadcast structured join event to all (including new joiner)
+        user_joined_event = format_semantic_event(
+            "user_joined",
+            username=username,
+            role="participant",
+        )
+        await self.connection_manager.broadcast(json.dumps(user_joined_event))
+
+        # Keep existing system message for chat display
         join_event = format_system_event(f"{username}님이 입장했습니다.")
         await self.connection_manager.broadcast(json.dumps(join_event))
 

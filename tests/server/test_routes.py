@@ -128,7 +128,12 @@ def test_websocket_connection(client):
 
     # WebSocket 연결
     with client.websocket_connect(f"/ws/{room_id}?username=Alice") as websocket:
-        # 입장 메시지 수신
+        # user_joined 이벤트 수신
+        user_joined = websocket.receive_json()
+        assert user_joined["type"] == "semantic:user_joined"
+        assert user_joined["data"]["username"] == "Alice"
+
+        # 시스템 입장 메시지 수신
         data = websocket.receive_json()
         assert data["type"] == "system"
         assert "Alice" in data["data"]["message"]
@@ -146,16 +151,24 @@ def test_websocket_message_broadcast(client):
 
     # 2명 연결
     with client.websocket_connect(f"/ws/{room_id}?username=Alice") as ws1:
-        # Alice 입장 메시지 수신
-        ws1.receive_json()
+        # Alice user_joined + 입장 메시지 수신
+        ws1.receive_json()  # user_joined
+        ws1.receive_json()  # system
 
         with client.websocket_connect(f"/ws/{room_id}?username=Bob") as ws2:
-            # Alice가 Bob 입장 메시지 수신
+            # Alice가 Bob user_joined + 입장 메시지 수신
+            data = ws1.receive_json()
+            assert data["type"] == "semantic:user_joined"
+            assert data["data"]["username"] == "Bob"
             data = ws1.receive_json()
             assert data["type"] == "system"
             assert "Bob" in data["data"]["message"]
 
-            # Bob이 자신의 입장 메시지 수신
+            # Bob이 participants_list + user_joined + 입장 메시지 수신
+            data = ws2.receive_json()
+            assert data["type"] == "semantic:participants_list"
+            data = ws2.receive_json()
+            assert data["type"] == "semantic:user_joined"
             data = ws2.receive_json()
             assert data["type"] == "system"
             assert "Bob" in data["data"]["message"]
