@@ -58,6 +58,13 @@ class ServerMeetingCallback:
         )
 
     async def on_turn_completed(self, speaker: str, is_delegated: bool) -> None:
+        # human turn이 완료되면 활성 사용자 초기화 (타임아웃 등 입력 없이 넘어간 경우 대비)
+        if (
+            not is_delegated
+            and self._room is not None
+            and self._room._current_active_human == speaker
+        ):
+            self._room.clear_current_active_human()
         await self._broadcast_event(
             "turn_completed",
             speaker=speaker,
