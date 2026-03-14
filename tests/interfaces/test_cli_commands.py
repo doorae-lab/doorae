@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -34,6 +35,20 @@ def test_create_command_help_shows_server_options() -> None:
     assert "--server" in result.stdout
     assert "--username" in result.stdout
     assert "--message" in result.stdout
+
+
+def test_project_command_help_shows_create_subcommand() -> None:
+    result = runner.invoke(app, ["project", "--help"])
+
+    assert result.exit_code == 0
+    assert "create" in result.stdout
+
+
+def test_project_create_command_help_shows_name_argument() -> None:
+    result = runner.invoke(app, ["project", "create", "--help"])
+
+    assert result.exit_code == 0
+    assert "NAME" in result.stdout
 
 
 def test_join_command_help_shows_room_argument() -> None:
@@ -75,6 +90,30 @@ def test_create_command_uses_doorae_server_env(monkeypatch: pytest.MonkeyPatch) 
 
     assert result.exit_code == 0
     assert captured["server"] == "localhost:9100"
+
+
+def test_project_create_command_routes_name_to_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class StubResult:
+        def __init__(self) -> None:
+            self.paths = type("ProjectPaths", (), {"project_dir": Path("I:/workspace/.doorae/projects/demo")})()
+            self.config = type("ProjectConfig", (), {"slug": "demo"})()
+
+    def fake_create_project(base_dir: Path, name: str) -> StubResult:
+        captured["base_dir"] = base_dir
+        captured["name"] = name
+        return StubResult()
+
+    monkeypatch.setattr("doorae.interfaces.cli.create_project", fake_create_project)
+
+    result = runner.invoke(app, ["project", "create", "Demo"])
+
+    assert result.exit_code == 0
+    assert captured["name"] == "Demo"
+    assert "Created Doorae project." in result.stdout
 
 
 def test_join_command_requires_server_address() -> None:

@@ -29,7 +29,7 @@ from doorae.core.server_address import (
 from doorae.interfaces.event_utils import random_speaker_color
 from doorae.interfaces.logging import setup_logging
 from doorae.interfaces.time_utils import format_elapsed
-from doorae.project import WorkspaceError, init_workspace
+from doorae.project import WorkspaceError, create_project, init_workspace
 from doorae.server.models import RoomInfo
 
 if TYPE_CHECKING:
@@ -41,6 +41,11 @@ app = typer.Typer(
     help="Doorae - AI-powered team meeting system",
     add_completion=False,
 )
+project_app = typer.Typer(
+    help="Manage workspace project scaffolds.",
+    add_completion=False,
+)
+app.add_typer(project_app, name="project")
 console = Console()
 DEFAULT_MESSAGE = "회의를 시작합니다"
 DEFAULT_SERVER_BIND = "0.0.0.0:8000"
@@ -559,6 +564,22 @@ def init_command(
         typer.echo("Created .env from the packaged template.")
     else:
         typer.echo("Kept existing .env.")
+
+
+@project_app.command("create")
+def project_create_command(
+    name: str = typer.Argument(..., metavar="NAME"),
+) -> None:
+    """Create a scaffolded project inside the current workspace."""
+    try:
+        result = create_project(Path.cwd(), name)
+    except WorkspaceError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.secho("Created Doorae project.", fg=typer.colors.GREEN)
+    typer.echo(f"Project: {result.paths.project_dir}")
+    typer.echo(f"Slug: {result.config.slug}")
 
 
 @app.command("serve")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib import resources
 import os
 import shutil
 import subprocess
@@ -50,6 +51,13 @@ def build_subprocess_env() -> dict[str, str]:
     return env
 
 
+def read_packaged_template(relative_path: str) -> str:
+    resource = resources.files("doorae.templates")
+    for part in ("default", *Path(relative_path).parts):
+        resource = resource / part
+    return resource.read_text(encoding="utf-8")
+
+
 def test_cli_version() -> None:
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
@@ -64,6 +72,7 @@ def test_cli_help() -> None:
     assert "join" in result.stdout
     assert "rooms" in result.stdout
     assert "init" in result.stdout
+    assert "project" in result.stdout
     assert "serve" in result.stdout
     assert "--message" in result.stdout
     assert "--classic" in result.stdout
@@ -285,6 +294,12 @@ def test_init_command_is_visible_in_help() -> None:
     assert "--force" in result.stdout
 
 
+def test_project_create_command_is_visible_in_help() -> None:
+    result = runner.invoke(app, ["project", "create", "--help"])
+    assert result.exit_code == 0
+    assert "NAME" in result.stdout
+
+
 def test_serve_command_is_visible_in_help() -> None:
     result = runner.invoke(app, ["serve", "--help"])
     assert result.exit_code == 0
@@ -338,6 +353,7 @@ def test_python_module_help_stays_side_effect_free() -> None:
     combined_output = result.stdout + result.stderr
     assert result.returncode == 0
     assert "init" in result.stdout
+    assert "project" in result.stdout
     assert "| DEBUG    |" not in combined_output
     assert "노드 등록" not in combined_output
 
@@ -382,6 +398,88 @@ def test_module_init_command_creates_workspace() -> None:
         remove_workspace_dir(workspace)
 
 
+def test_project_create_command_creates_scaffold() -> None:
+    workspace = create_workspace_dir("project-create")
+    try:
+        init_workspace(workspace)
+        original_cwd = Path.cwd()
+        os.chdir(workspace)
+        try:
+            result = runner.invoke(app, ["project", "create", "Weekly Dev"])
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.exit_code == 0
+        assert "Created Doorae project." in result.stdout
+        assert "weekly-dev" in result.stdout
+        assert (workspace / ".doorae" / "projects" / "weekly-dev" / "project.yaml").exists()
+        assert (
+            workspace
+            / ".doorae"
+            / "projects"
+            / "weekly-dev"
+            / "config"
+            / "agent_profiles.yaml"
+        ).exists()
+    finally:
+        remove_workspace_dir(workspace)
+
+
+def test_project_create_command_fails_without_workspace() -> None:
+    workspace = create_workspace_dir("project-create-missing")
+    try:
+        original_cwd = Path.cwd()
+        os.chdir(workspace)
+        try:
+            result = runner.invoke(app, ["project", "create", "demo"])
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.exit_code == 1
+        assert "Run 'doorae init' first." in result.stderr
+    finally:
+        remove_workspace_dir(workspace)
+
+
+def test_module_project_create_command_creates_scaffold() -> None:
+    workspace = create_workspace_dir("module-project-create")
+    try:
+        init_result = subprocess.run(
+            [sys.executable, "-m", "doorae", "init"],
+            cwd=workspace,
+            env=build_subprocess_env(),
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        assert init_result.returncode == 0
+
+        result = subprocess.run(
+            [sys.executable, "-m", "doorae", "project", "create", "demo"],
+            cwd=workspace,
+            env=build_subprocess_env(),
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+
+        assert result.returncode == 0
+        assert "Created Doorae project." in result.stdout
+        assert (workspace / ".doorae" / "projects" / "demo" / "project.yaml").exists()
+        assert (
+            workspace
+            / ".doorae"
+            / "projects"
+            / "demo"
+            / "config"
+            / "mcp_servers.json"
+        ).exists()
+    finally:
+        remove_workspace_dir(workspace)
+
+
 def test_init_creates_workspace_and_copies_env_when_missing() -> None:
     workspace = create_workspace_dir("create")
     try:
@@ -400,9 +498,9 @@ def test_init_creates_workspace_and_copies_env_when_missing() -> None:
             "current_project": None,
             "projects_dir": ".doorae/projects",
         }
-        assert (workspace / ".env").read_text(encoding="utf-8") == (
-            PROJECT_ROOT / ".env.example"
-        ).read_text(encoding="utf-8")
+        assert (workspace / ".env").read_text(encoding="utf-8") == read_packaged_template(
+            ".env.example"
+        )
     finally:
         remove_workspace_dir(workspace)
 

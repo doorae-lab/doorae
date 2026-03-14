@@ -52,17 +52,37 @@ cd doorae
 uv sync
 ```
 
-### 2. Configure
+Optional global install:
 
 ```bash
-cp .env.example .env
+uv tool install .
 ```
 
-Edit `.env` with your API key and preferred model:
+If `doorae` is not available in PowerShell after `uv tool install .`, run `uv tool update-shell` once and restart the terminal.
+
+### 2. Initialize the workspace
+
+```bash
+uv run doorae init
+```
+
+### 3. Create a project scaffold
+
+```bash
+uv run doorae project create demo
+```
+
+This creates `.doorae/projects/demo/` with `project.yaml`, `config/agent_profiles.yaml`, `config/agendas.yaml`, and `config/mcp_servers.json`.
+
+### 4. Configure
+
+Edit `.env` with your API key, preferred model, and the project config paths you want to use:
 
 ```env
 OPENAI_API_KEY=your-api-key-here
 OPENAI_BASE_URL=https://openrouter.ai/api/v1  # or https://api.openai.com/v1
+AGENT_PROFILES_PATH=.doorae/projects/demo/config/agent_profiles.yaml
+AGENDAS_PATH=.doorae/projects/demo/config/agendas.yaml
 
 LLM_MAIN_MODEL=deepseek/deepseek-v3.2
 LLM_TASK_MODEL=google/gemini-2.5-flash
@@ -71,7 +91,7 @@ LLM_TASK_MODEL=google/gemini-2.5-flash
 > [!TIP]
 > OpenRouter is recommended for cost efficiency. See `.env.example` for all configuration options including Azure OpenAI, local Ollama, and LangSmith tracing.
 
-### 3. Run
+### 5. Run
 
 ```bash
 uv run doorae
@@ -82,6 +102,10 @@ uv run doorae
 ```bash
 # Default meeting
 uv run doorae
+
+# Initialize a workspace and scaffold a project
+uv run doorae init
+uv run doorae project create demo
 
 # Custom message
 uv run doorae -m "Emergency bug response meeting"
@@ -158,6 +182,7 @@ agendas:
 | `MENTION_EXTRACTION_MAX_TOKENS` | Human mention fallback token cap | `64` |
 | `MAX_TURNS` | Max meeting turns | `1000` |
 | `AGENT_PROFILES_PATH` | Path to profiles YAML | `config/agent_profiles.yaml` |
+| `AGENDAS_PATH` | Path to agendas YAML | `config/agendas.yaml` |
 
 See `.env.example` for the full list.
 
