@@ -26,9 +26,11 @@ class ServerMeetingCallback:
         self,
         connection_manager: ConnectionManager,
         broadcast_semantic: bool = True,
+        room: "Room | None" = None,
     ) -> None:
         self._connection_manager = connection_manager
         self._broadcast_semantic = broadcast_semantic
+        self._room = room
 
     async def on_raw_event(self, event: dict) -> None:
         await self._connection_manager.broadcast(json.dumps(event_to_dict(event)))
@@ -63,6 +65,8 @@ class ServerMeetingCallback:
         )
 
     async def on_human_turn_started(self, username: str) -> None:
+        if self._room is not None:
+            self._room.set_current_active_human(username)
         await self._broadcast_event("human_turn_started", username=username)
 
     async def on_agenda_updated(
@@ -139,6 +143,7 @@ class Room:
         self.input_queues: dict[str, asyncio.Queue] = {}
         self.workflow = None
         self._streaming_task: Optional[asyncio.Task] = None
+        self._current_active_human: str | None = None
 
     def get_info(self) -> dict:
         """회의방 정보 반환.
@@ -187,6 +192,18 @@ class Room:
         if username in self.input_queues:
             del self.input_queues[username]
 
+    def set_current_active_human(self, username: str) -> None:
+        """현재 입력 차례인 사용자 설정.
+
+        Args:
+            username: 활성 사용자 이름
+        """
+        self._current_active_human = username
+
+    def clear_current_active_human(self) -> None:
+        """현재 활성 사용자 초기화."""
+        self._current_active_human = None
+
     async def join(self, username: str, websocket: WebSocket):
         """사용자 입장 처리.
 
@@ -234,10 +251,25 @@ class Room:
 
         content = message_data.get("content", "")
 
+        # 활성 사용자가 아닌 사용자의 입력 거부
+        if (
+            self._current_active_human is not None
+            and username != self._current_active_human
+        ):
+            error_event = format_error_event("현재 입력할 수 있는 차례가 아닙니다.")
+            await self.connection_manager.send_personal_message(
+                json.dumps(error_event), username
+            )
+            return
+
         # 사용자 입력 큐에 추가 (워크플로우가 대기 중이면 전달됨)
         queue = self.get_user_queue(username)
         if queue is not None:
             await queue.put(content)
+
+        # 활성 사용자의 입력 처리 후 초기화
+        if self._current_active_human == username:
+            self._current_active_human = None
 
         # 사용자 메시지를 참가자에게 브로드캐스트
         message_event = format_message_event(content=content, sender=username)
@@ -298,7 +330,7 @@ class Room:
     async def _stream_engine_events(self, engine: MeetingEngine):
         """MeetingEngine 이벤트를 스트리밍하여 브로드캐스트."""
         try:
-            await engine.run(ServerMeetingCallback(self.connection_manager))
+            await engine.run(ServerMeetingCallback(self.connection_manager, room=self))
         except asyncio.CancelledError:
             logger.info(f"Workflow streaming cancelled for room {self.id}")
         except Exception as e:

@@ -1,9 +1,24 @@
 """Room 테스트."""
 
+import json
 import pytest
 import asyncio
 from doorae.server.room import Room
 from doorae.server.room_manager import RoomManager, get_room_manager
+
+
+class MockConnectionManager:
+    """테스트용 ConnectionManager 모의 객체."""
+
+    def __init__(self):
+        self.personal_messages: list[tuple[str, str]] = []  # (message, username)
+        self.broadcasts: list[str] = []
+
+    async def send_personal_message(self, message: str, username: str):
+        self.personal_messages.append((message, username))
+
+    async def broadcast(self, message: str):
+        self.broadcasts.append(message)
 
 
 def test_room_creation():
@@ -122,3 +137,105 @@ def test_get_room_manager_singleton():
     manager2 = get_room_manager()
 
     assert manager1 is manager2
+
+
+# ── 활성 사용자 추적 테스트 ──
+
+
+def test_room_initial_current_active_human_is_none():
+    """Room 생성 시 _current_active_human은 None."""
+    room = Room(room_id="test", name="Test")
+    assert room._current_active_human is None
+
+
+def test_room_set_current_active_human():
+    """set_current_active_human으로 활성 사용자 설정."""
+    room = Room(room_id="test", name="Test")
+    room.set_current_active_human("Alice")
+    assert room._current_active_human == "Alice"
+
+
+def test_room_clear_current_active_human():
+    """clear_current_active_human으로 활성 사용자 초기화."""
+    room = Room(room_id="test", name="Test")
+    room.set_current_active_human("Alice")
+    room.clear_current_active_human()
+    assert room._current_active_human is None
+
+
+# ── handle_message 입력 차례 검증 테스트 ──
+
+
+@pytest.mark.asyncio
+async def test_handle_message_rejects_non_active_user():
+    """활성 사용자가 아닌 사용자의 입력은 거부."""
+    room = Room(room_id="test", name="Test")
+    room.connection_manager = MockConnectionManager()
+    room.set_current_active_human("Alice")
+    room.create_user_queue("Alice")
+    room.create_user_queue("Bob")
+
+    await room.handle_message("Bob", json.dumps({"content": "hello"}))
+
+    # Bob의 큐는 비어있어야 함 (거부됨)
+    assert room.get_user_queue("Bob").empty()
+    # Bob에게 에러 메시지 전송
+    assert len(room.connection_manager.personal_messages) == 1
+    assert room.connection_manager.personal_messages[0][1] == "Bob"
+    error_data = json.loads(room.connection_manager.personal_messages[0][0])
+    assert error_data["type"] == "error"
+    assert "차례가 아닙니다" in error_data["data"]["error"]
+    # 브로드캐스트는 발생하지 않아야 함
+    assert len(room.connection_manager.broadcasts) == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_message_accepts_active_user():
+    """활성 사용자의 입력은 정상 처리."""
+    room = Room(room_id="test", name="Test")
+    room.connection_manager = MockConnectionManager()
+    room.set_current_active_human("Alice")
+    room.create_user_queue("Alice")
+
+    await room.handle_message("Alice", json.dumps({"content": "hello"}))
+
+    # Alice의 큐에 입력이 추가되어야 함
+    assert not room.get_user_queue("Alice").empty()
+    content = await room.get_user_queue("Alice").get()
+    assert content == "hello"
+    # 활성 사용자 초기화
+    assert room._current_active_human is None
+    # 메시지 브로드캐스트
+    assert len(room.connection_manager.broadcasts) == 1
+
+
+@pytest.mark.asyncio
+async def test_handle_message_no_active_human_allows_all():
+    """활성 사용자가 없으면 모든 사용자의 입력 허용."""
+    room = Room(room_id="test", name="Test")
+    room.connection_manager = MockConnectionManager()
+    room.create_user_queue("Bob")
+
+    await room.handle_message("Bob", json.dumps({"content": "hello"}))
+
+    assert not room.get_user_queue("Bob").empty()
+    content = await room.get_user_queue("Bob").get()
+    assert content == "hello"
+    assert len(room.connection_manager.broadcasts) == 1
+
+
+@pytest.mark.asyncio
+async def test_handle_message_rejects_non_active_user_no_broadcast():
+    """거부된 메시지는 브로드캐스트되지 않아야 함."""
+    room = Room(room_id="test", name="Test")
+    room.connection_manager = MockConnectionManager()
+    room.set_current_active_human("Alice")
+    room.create_user_queue("Alice")
+    room.create_user_queue("Bob")
+
+    await room.handle_message("Bob", json.dumps({"content": "나도 의견 있어요"}))
+
+    # 브로드캐스트 없음
+    assert len(room.connection_manager.broadcasts) == 0
+    # 활성 사용자 변경 없음
+    assert room._current_active_human == "Alice"
