@@ -38,6 +38,18 @@ def test_server_settings_env_prefix_isolation(monkeypatch):
     assert settings.port == 8080
 
 
+def test_server_settings_supports_doorae_server(monkeypatch):
+    """DOORAE_SERVER 환경변수 테스트."""
+    monkeypatch.setenv("DOORAE_SERVER", "127.0.0.1:9100")
+
+    settings = ServerSettings()
+
+    assert settings.server == "127.0.0.1:9100"
+    assert settings.host == "127.0.0.1"
+    assert settings.port == 9100
+    assert settings.server_address == "127.0.0.1:9100"
+
+
 def test_get_server_settings_cached():
     """캐싱 테스트."""
     settings1 = get_server_settings()

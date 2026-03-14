@@ -87,10 +87,7 @@ uv run doorae
 uv run doorae -m "Emergency bug response meeting"
 
 # Classic CLI (no TUI)
-uv run doorae --no-tui
-
-# Batch mode (non-streaming)
-uv run doorae --no-stream
+uv run doorae --classic
 
 # Custom profiles & config
 uv run doorae --profiles config/custom_profiles.yaml --config .env.prod
@@ -199,7 +196,7 @@ FastAPI WebSocket backend:
 
 ```bash
 uv sync --extra server
-uv run doorae serve --port 8000
+uv run doorae serve -s 0.0.0.0:8000
 ```
 
 The legacy entrypoint still works for compatibility, but it is deprecated:
@@ -213,29 +210,35 @@ uv run doorae-server
 1. Start the server:
 
    ```bash
-   uv run doorae serve --host 0.0.0.0 --port 8000
+   uv run doorae serve -s 0.0.0.0:8000
    ```
 
-2. Alice creates a room by connecting without `--room`:
+2. Alice creates a room:
 
    ```bash
-   uv run doorae --server http://localhost:8000 --username alice
+   uv run doorae create -u alice -s localhost:8000
    ```
 
 3. Bob joins the same room with the shared room ID:
 
    ```bash
-   uv run doorae --server http://localhost:8000 --room <room_id> --username bob
+   uv run doorae join <room_id> -u bob -s localhost:8000
+   ```
+
+4. Anyone can inspect the room list:
+
+   ```bash
+   uv run doorae rooms -s localhost:8000
    ```
 
 ```text
 Alice client                 Doorae server                  Bob client
 ------------                 -------------                  ----------
 doorae serve --------------> listen on :8000
-doorae --server -----------> create room
+doorae create -------------> create room
 share <room_id> ------------------------------------------> receive room ID
 message stream <----------> /ws/<room_id>?username=alice
-                                                   /ws/<room_id>?username=bob <----------> message stream
+doorae join -------------------------------------> /ws/<room_id>?username=bob <----------> message stream
 ```
 
 ## Development

@@ -274,7 +274,7 @@ async def test_server_mode_mount_shows_connecting_spinner_and_invite_message(
         assert len(spinners) == 1
         assert spinners[0]._label == "서버에 연결 중..."
         assert any(
-            "doorae --server ws://localhost:8000 --room room-123 --username <name>" in text
+            "doorae join room-123 -s localhost:8000 -u <name>" in text
             for text in _conversation_texts(app)
         )
 
