@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import WebSocket
+from doorae.core.profile import AgentProfile
 from doorae.interfaces.engine import MeetingEngine
 from doorae.server.connection_manager import ConnectionManager
 from doorae.server.events import (
@@ -41,6 +42,16 @@ def _serialize_top_profiles(top_profiles: dict[str, Any]) -> dict[str, dict[str,
         name: _strip_llm(profile.model_dump())
         for name, profile in top_profiles.items()
     }
+
+
+def _build_runtime_human_profile(username: str) -> AgentProfile:
+    return AgentProfile(
+        name=username,
+        role="participant",
+        responsibilities=["회의 참여", "의견 제시"],
+        expertise=["일반"],
+        is_human=True,
+    )
 
 
 class ServerMeetingCallback:
@@ -173,6 +184,7 @@ class Room:
         self.connection_manager = ConnectionManager()
         self.input_queues: dict[str, asyncio.Queue] = {}
         self.workflow = None
+        self.participant_registry = None
         self._streaming_task: Optional[asyncio.Task] = None
         self._engine: MeetingEngine | None = None
         self._current_active_human: str | None = None
@@ -248,6 +260,12 @@ class Room:
         """
         await self.connection_manager.connect(username, websocket)
 
+        if self.workflow is not None and self.participant_registry is not None:
+            self.create_user_queue(username)
+            add_profile = getattr(self.participant_registry, "add", None)
+            if callable(add_profile):
+                add_profile(_build_runtime_human_profile(username))
+
         # Send existing participant list to the newly joined user
         existing_usernames = [
             name for name in self.connection_manager.connections
@@ -292,6 +310,19 @@ class Room:
         Args:
             username: 사용자 이름
         """
+        if self.workflow is not None:
+            queue = self.get_user_queue(username)
+            if queue is not None:
+                await queue.put(None)
+
+            if self._current_active_human == username:
+                self.clear_current_active_human()
+
+            if self.participant_registry is not None:
+                remove_profile = getattr(self.participant_registry, "remove", None)
+                if callable(remove_profile):
+                    remove_profile(username)
+
         self.connection_manager.disconnect(username)
         self.remove_user_queue(username)
         leave_event = format_system_event(f"{username}님이 퇴장했습니다.")
@@ -380,6 +411,12 @@ class Room:
         """
         if engine is not None:
             self.workflow = engine
+            if engine.setup_state is not None:
+                self.participant_registry = getattr(
+                    engine.setup_state,
+                    "participant_registry",
+                    None,
+                )
             self._streaming_task = asyncio.create_task(self._stream_engine_events(engine))
             return
 
@@ -420,6 +457,7 @@ class Room:
             setup_state = engine.setup_state
             if setup_state is None:
                 setup_state = engine.setup()
+            self.participant_registry = getattr(setup_state, "participant_registry", None)
 
             top_profiles_data = _serialize_top_profiles(setup_state.top_profiles)
             profiles_event = format_semantic_event(
@@ -450,3 +488,4 @@ class Room:
             self._streaming_task = None
         self._engine = None
         self.workflow = None
+        self.participant_registry = None

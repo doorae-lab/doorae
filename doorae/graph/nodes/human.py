@@ -9,6 +9,35 @@ from doorae.graph.nodes.registry import register_node
 from doorae.graph.state import MeetingState
 
 
+class HumanNodeExecutor:
+    """Shared human input execution logic."""
+
+    def __init__(self, input_provider: Optional[InputProvider] = None) -> None:
+        self.input_provider = input_provider
+
+    async def execute(
+        self,
+        state: MeetingState,
+        profile: AgentProfile,
+    ) -> Dict[str, Any]:
+        """사용자 입력 대기 및 메시지 추가."""
+        if self.input_provider is None:
+            raise RuntimeError(
+                f"HumanNode({profile.name})에 InputProvider가 설정되지 않았습니다."
+            )
+
+        user_input = await self.input_provider.get_input(state, profile.name)
+
+        # 빈 입력 시 스킵
+        if not user_input.strip():
+            skip_message = HumanMessage(content="(발언 없음)", name=profile.name)
+            return {"messages": [skip_message]}
+
+        # 사용자 입력을 메시지로 추가
+        user_message = HumanMessage(content=user_input, name=profile.name)
+        return {"messages": [user_message]}
+
+
 @register_node("human", category="human")
 class HumanNode(BaseNode):
     """사용자 입력 노드.
@@ -33,31 +62,8 @@ class HumanNode(BaseNode):
         """
         self.profile = profile
         self.input_provider = input_provider
+        self._executor = HumanNodeExecutor(input_provider=input_provider)
 
     async def execute(self, state: MeetingState) -> Dict[str, Any]:
-        """사용자 입력 대기 및 메시지 추가
-
-        Args:
-            state: 현재 회의 상태
-
-        Returns:
-            사용자 메시지를 포함한 상태 업데이트 딕셔너리
-        """
-        if self.input_provider is None:
-            raise RuntimeError(
-                f"HumanNode({self.profile.name})에 InputProvider가 설정되지 않았습니다."
-            )
-
-        user_input = await self.input_provider.get_input(state, self.profile.name)
-
-        # 빈 입력 시 스킵
-        if not user_input.strip():
-            skip_message = HumanMessage(
-                content="(발언 없음)", name=self.profile.name
-            )
-            return {"messages": [skip_message]}
-
-        # 사용자 입력을 메시지로 추가
-        user_message = HumanMessage(content=user_input, name=self.profile.name)
-
-        return {"messages": [user_message]}
+        """사용자 입력 대기 및 메시지 추가."""
+        return await self._executor.execute(state, self.profile)

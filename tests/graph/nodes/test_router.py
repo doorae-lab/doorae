@@ -10,7 +10,7 @@ class TestConditionRouter:
     """condition_router 함수 테스트"""
 
     def test_route_to_first_pending_speaker(self):
-        """pending_speakers의 첫 번째 참여자로 라우팅"""
+        """pending_speakers가 있으면 participant 노드로 라우팅"""
         state = MeetingState(
             messages=[],
             pending_speakers=["Alice", "Bob"],
@@ -20,7 +20,7 @@ class TestConditionRouter:
 
         result = condition_router(state)
 
-        assert result == "alice"
+        assert result == "participant"
 
     def test_route_to_refill_when_pending_empty(self):
         """pending_speakers가 비어있으면 refill_speakers로"""
@@ -106,8 +106,8 @@ class TestConditionRouter:
 
         assert result == END
 
-    def test_lowercase_speaker_name(self):
-        """참여자 이름이 소문자로 변환됨"""
+    def test_pending_routes_to_single_dispatch_node(self):
+        """개별 이름 대신 단일 dispatch 노드로 라우팅"""
         state = MeetingState(
             messages=[],
             pending_speakers=["Alice"],
@@ -117,8 +117,7 @@ class TestConditionRouter:
 
         result = condition_router(state)
 
-        assert result == "alice"
-        assert result != "Alice"
+        assert result == "participant"
 
     def test_default_values(self):
         """기본값으로 작동"""

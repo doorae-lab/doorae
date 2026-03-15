@@ -1,7 +1,6 @@
 """Room 테스트."""
 
 import json
-from types import SimpleNamespace
 
 import asyncio
 import pytest
@@ -35,16 +34,6 @@ class MockConnectionManager:
     def get_connection_count(self):
         return len(self.connections)
 
-
-def _build_profile(name: str) -> AgentProfile:
-    return AgentProfile(
-        name=name,
-        role="participant",
-        responsibilities=["회의 참여"],
-        expertise=["일반"],
-    )
-
-
 class DummyStreamingTask:
     def done(self) -> bool:
         return False
@@ -64,6 +53,21 @@ class DummyEngine:
         )()
 
 
+class MockParticipantRegistry:
+    def __init__(self) -> None:
+        self.profiles: dict[str, AgentProfile] = {}
+        self.added: list[AgentProfile] = []
+        self.removed: list[str] = []
+
+    def add(self, profile: AgentProfile) -> None:
+        self.profiles[profile.name] = profile
+        self.added.append(profile)
+
+    def remove(self, name: str) -> None:
+        self.profiles.pop(name, None)
+        self.removed.append(name)
+
+
 def test_room_creation():
     """Room 생성 테스트."""
     room = Room(room_id="test-123", name="Test Room", agenda="Test Agenda")
@@ -74,6 +78,7 @@ def test_room_creation():
     assert room.created_at is not None
     assert room.connection_manager is not None
     assert room.input_queues == {}
+    assert room.participant_registry is None
 
 
 def test_room_get_info():
@@ -322,6 +327,46 @@ async def test_join_broadcasts_user_joined():
     ]
     assert len(user_joined_broadcasts) == 1
     assert user_joined_broadcasts[0]["data"]["username"] == "Alice"
+
+
+@pytest.mark.asyncio
+async def test_join_adds_runtime_profile_when_workflow_running():
+    room = Room(room_id="test", name="Test")
+    room.connection_manager = MockConnectionManager()
+    room.workflow = object()
+    room.participant_registry = MockParticipantRegistry()
+
+    await room.join("Alice", "ws_alice")
+
+    assert "Alice" in room.input_queues
+    assert room.participant_registry.added[0].name == "Alice"
+    assert room.participant_registry.added[0].is_human is True
+
+
+@pytest.mark.asyncio
+async def test_leave_unblocks_waiting_human_and_removes_registry_entry():
+    room = Room(room_id="test", name="Test")
+    room.connection_manager = MockConnectionManager()
+    room.workflow = object()
+    room.participant_registry = MockParticipantRegistry()
+    queue = room.create_user_queue("Alice")
+    room.participant_registry.add(
+        AgentProfile(
+            name="Alice",
+            role="participant",
+            responsibilities=["참여"],
+            expertise=["일반"],
+            is_human=True,
+        )
+    )
+    room.set_current_active_human("Alice")
+
+    await room.leave("Alice")
+
+    assert queue.get_nowait() is None
+    assert room._current_active_human is None
+    assert room.participant_registry.removed == ["Alice"]
+    assert room.get_user_queue("Alice") is None
 
 
 @pytest.mark.asyncio

@@ -1,9 +1,10 @@
 """RefillSpeakersNode - pending_speakers 채우기"""
 
 from typing import Dict, Any
+
 from doorae.graph.nodes.base import BaseNode, NodeType
 from doorae.graph.nodes.registry import register_node
-# utils import 제거 - 함수를 private 메서드로 이동
+from doorae.graph.participant_registry import ParticipantRegistry
 from doorae.graph.state import MeetingState
 from doorae.graph.constants import HOST_ROLE_NAME
 
@@ -23,7 +24,12 @@ class RefillSpeakersNode(BaseNode):
 
     node_type = NodeType.UTILITY
 
-    def __init__(self, model=None, valid_speakers: set[str] | None = None):
+    def __init__(
+        self,
+        model=None,
+        valid_speakers: set[str] | None = None,
+        registry: ParticipantRegistry | None = None,
+    ):
         """초기화
 
         Args:
@@ -32,6 +38,7 @@ class RefillSpeakersNode(BaseNode):
         """
         self.model = model
         self.valid_speakers = valid_speakers or set()
+        self._registry = registry
 
     def _get_remaining_speakers(
         self, required_speakers: list[str], already_spoken: set
@@ -71,9 +78,9 @@ class RefillSpeakersNode(BaseNode):
         already_spoken = set(speaker_counts.keys())
         remaining = self._get_remaining_speakers(required, already_spoken)
 
-        # valid_speakers로 필터링 (비활성 에이전트 제거)
-        if self.valid_speakers:
-            remaining = [s for s in remaining if s in self.valid_speakers]
+        valid_speakers = set(self._registry.all_names) if self._registry else self.valid_speakers
+        if valid_speakers:
+            remaining = [speaker for speaker in remaining if speaker in valid_speakers]
 
         if remaining:
             return {
