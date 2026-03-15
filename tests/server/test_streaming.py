@@ -222,5 +222,7 @@ async def test_start_workflow_streaming_with_engine_broadcasts_raw_events():
     assert room.connection_manager.broadcast.call_count == 2
     profiles_data = json.loads(room.connection_manager.broadcast.call_args_list[0][0][0])
     assert profiles_data["type"] == "semantic:agent_profiles"
+    assert room.connection_manager.broadcast.call_args_list[0].kwargs == {}
     event_data = json.loads(room.connection_manager.broadcast.call_args_list[1][0][0])
     assert event_data["type"] == "on_chain_start"
+    assert room.connection_manager.broadcast.call_args_list[1].kwargs == {"channel": "raw"}

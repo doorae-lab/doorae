@@ -60,21 +60,29 @@ class ServerMeetingCallback:
     def __init__(
         self,
         connection_manager: ConnectionManager,
+        broadcast_raw: bool = True,
         broadcast_semantic: bool = True,
         room: "Room | None" = None,
     ) -> None:
         self._connection_manager = connection_manager
+        self._broadcast_raw = broadcast_raw
         self._broadcast_semantic = broadcast_semantic
         self._room = room
 
     async def on_raw_event(self, event: dict) -> None:
-        await self._connection_manager.broadcast(json.dumps(event_to_dict(event)))
+        if not self._broadcast_raw:
+            return
+        await self._connection_manager.broadcast(
+            json.dumps(event_to_dict(event)),
+            channel="raw",
+        )
 
     async def _broadcast_event(self, event_type: str, **payload: object) -> None:
         if not self._broadcast_semantic:
             return
         await self._connection_manager.broadcast(
-            json.dumps(format_semantic_event(event_type, **payload))
+            json.dumps(format_semantic_event(event_type, **payload)),
+            channel="semantic",
         )
 
     async def on_speaker_changed(self, speaker: str, is_delegated: bool) -> None:
@@ -248,7 +256,7 @@ class Room:
         """현재 활성 사용자 초기화."""
         self._current_active_human = None
 
-    async def join(self, username: str, websocket: WebSocket):
+    async def join(self, username: str, websocket: WebSocket, raw_events: bool = True):
         """사용자 입장 처리.
 
         연결 수락 후 기존 참가자 목록을 새 입장자에게 전송하고,
@@ -260,7 +268,11 @@ class Room:
         """
         is_reconnecting = username in self.input_queues
         self.create_user_queue(username)
-        await self.connection_manager.connect(username, websocket)
+        await self.connection_manager.connect(
+            username,
+            websocket,
+            raw_events=raw_events,
+        )
 
         if self.workflow is not None and self.participant_registry is not None:
             self.create_user_queue(username)

@@ -1,5 +1,6 @@
 """WebSocket 연결 관리자."""
 
+from dataclasses import dataclass
 import logging
 from typing import Dict
 
@@ -8,18 +9,29 @@ from fastapi import WebSocket
 logger = logging.getLogger(__name__)
 
 
+@dataclass(slots=True)
+class ConnectionInfo:
+    websocket: WebSocket
+    raw_events: bool = True
+
+
 class ConnectionManager:
     """WebSocket 연결을 관리하는 클래스.
 
     Attributes:
-        connections: username을 키로, WebSocket을 값으로 하는 딕셔너리
+        connections: username을 키로, 연결 정보를 값으로 하는 딕셔너리
     """
 
     def __init__(self):
         """초기화."""
-        self.connections: Dict[str, WebSocket] = {}
+        self.connections: Dict[str, ConnectionInfo] = {}
 
-    async def connect(self, username: str, websocket: WebSocket):
+    async def connect(
+        self,
+        username: str,
+        websocket: WebSocket,
+        raw_events: bool = True,
+    ):
         """WebSocket 연결을 수락하고 저장.
 
         Args:
@@ -33,7 +45,10 @@ class ConnectionManager:
             except Exception:
                 logger.warning("Failed to close stale websocket for %s", username)
         await websocket.accept()
-        self.connections[username] = websocket
+        self.connections[username] = ConnectionInfo(
+            websocket=websocket,
+            raw_events=raw_events,
+        )
 
     def disconnect(self, username: str):
         """WebSocket 연결을 제거.
@@ -56,13 +71,13 @@ class ConnectionManager:
             return
 
         try:
-            await connection.send_text(message)
+            await connection.websocket.send_text(message)
         except Exception:
             logger.warning(f"Failed to send message to {username}")
             if self.connections.get(username) is connection:
                 self.disconnect(username)
 
-    async def broadcast(self, message: str):
+    async def broadcast(self, message: str, channel: str = "all"):
         """모든 연결된 사용자에게 메시지 브로드캐스트.
 
         개별 연결 실패 시 해당 연결만 정리하고 나머지에는 계속 전송.
@@ -71,13 +86,16 @@ class ConnectionManager:
 
         Args:
             message: 전송할 메시지
+            channel: "all", "semantic", "raw" 중 하나
         """
-        disconnected: list[tuple[str, WebSocket]] = []
+        disconnected: list[tuple[str, ConnectionInfo]] = []
         for username, connection in list(self.connections.items()):
             if self.connections.get(username) is not connection:
                 continue
+            if channel == "raw" and not connection.raw_events:
+                continue
             try:
-                await connection.send_text(message)
+                await connection.websocket.send_text(message)
             except Exception:
                 logger.warning(f"Failed to broadcast to {username}")
                 if self.connections.get(username) is connection:
