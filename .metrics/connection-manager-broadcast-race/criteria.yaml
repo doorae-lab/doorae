@@ -1,0 +1,8 @@
+goal: WebSocket broadcast 중 동시 disconnect/reconnect가 발생해도 서버가 예외 없이 올바른 연결만 유지한다.
+criteria:
+  - name: 순회 중 disconnect 안정성
+    description: broadcast 도중 다른 coroutine이 연결을 제거해도 dictionary iteration 오류가 발생하지 않는다.
+  - name: 재연결 소켓 보호
+    description: 실패한 구 소켓 정리 과정이 같은 username으로 재연결된 새 소켓을 제거하지 않는다.
+  - name: 기존 broadcast 의미 보존
+    description: 연결된 사용자에게는 기존처럼 메시지가 전달되고 실패한 연결만 정리된다.

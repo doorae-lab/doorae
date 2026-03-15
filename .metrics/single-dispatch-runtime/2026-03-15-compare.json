@@ -1,0 +1,51 @@
+{
+  "target": "single-dispatch-runtime",
+  "date": "2026-03-15",
+  "baseline": {
+    "branch": "main",
+    "goal_fitness": 0.4,
+    "implementation_quality": 0.52,
+    "experiments": {
+      "basic_flow": {
+        "passed": true,
+        "note": "기존 참가자만 있는 기본 흐름은 유지됐다."
+      },
+      "late_join": {
+        "passed": false,
+        "note": "Bob human turn을 기다리다 timeout. 이후 Host 재위임 루프 끝에 recursion limit error가 발생했다."
+      },
+      "leave_recovery": {
+        "passed": false,
+        "note": "Bob human turn 시작 후 leave 메시지는 나왔지만 후속 on_chain_start를 받지 못해 timeout 됐다."
+      }
+    }
+  },
+  "candidate": {
+    "branch": "feat/255-single-dispatch-node",
+    "goal_fitness": 0.96,
+    "implementation_quality": 0.88,
+    "experiments": {
+      "basic_flow": {
+        "passed": true,
+        "note": "Alice/Bob 두 human turn과 후속 체인 시작을 모두 확인했다."
+      },
+      "late_join": {
+        "passed": true,
+        "note": "start 후 join한 Bob이 Alice의 @Bob 호출 뒤 turn을 받았다."
+      },
+      "leave_recovery": {
+        "passed": true,
+        "note": "Bob leave 후 시스템 퇴장 메시지와 후속 on_chain_start가 이어졌다."
+      }
+    }
+  },
+  "delta": {
+    "goal_fitness": "+0.56",
+    "implementation_quality": "+0.36",
+    "experiments": {
+      "basic_flow": "유지",
+      "late_join": "실패 -> 성공",
+      "leave_recovery": "실패 -> 성공"
+    }
+  }
+}
