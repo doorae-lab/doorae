@@ -14,6 +14,7 @@
 from doorae.graph.nodes.base import BaseNode, NodeType
 from doorae.graph.nodes.registry import NodeRegistry, register_node
 from doorae.graph.nodes.agent import AgentNode
+from doorae.graph.nodes.dispatch import DispatchNode
 from doorae.graph.nodes.human import HumanNode
 from doorae.graph.nodes.process import ProcessResponseNode
 from doorae.graph.nodes.refill import RefillSpeakersNode
@@ -30,6 +31,7 @@ __all__ = [
     "register_node",
     # 노드 클래스
     "AgentNode",
+    "DispatchNode",
     "HumanNode",
     "ProcessResponseNode",
     "RefillSpeakersNode",

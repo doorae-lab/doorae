@@ -15,6 +15,7 @@ from doorae.core.profile import (
     merge_profiles_with_overrides,
 )
 from doorae.graph.input_provider import InputProvider
+from doorae.graph.participant_registry import ParticipantRegistry
 from doorae.graph.workflow import build_initial_state, create_meeting_workflow
 from doorae.interfaces.event_utils import extract_node_name, extract_speaker, is_delegated
 
@@ -28,6 +29,7 @@ class MeetingEngineSetup:
     all_profiles: dict[str, AgentProfile]
     human_names: list[str]
     human_name_lookup: dict[str, str]
+    participant_registry: Any
 
 
 @dataclass(slots=True)
@@ -107,17 +109,35 @@ class MeetingEngine:
         top_profiles = merge_profiles_with_overrides(base_profiles, self._profiles_override)
 
         all_profiles = flatten_all_profiles(top_profiles)
+        participant_registry = ParticipantRegistry(top_profiles)
+        fallback_registry = ParticipantRegistry(all_profiles)
         human_names = [name for name, profile in all_profiles.items() if profile.is_human]
-        human_name_lookup = {
-            name.lower(): name for name, profile in all_profiles.items() if profile.is_human
-        }
 
-        workflow = create_meeting_workflow(
+        workflow_result = create_meeting_workflow(
             profiles_path=self._profiles_path,
             input_provider=self._input_provider,
             mcp_tools=self._mcp_tools,
             profiles_override=self._profiles_override or None,
+            participant_registry=participant_registry,
         )
+        workflow = workflow_result
+        workflow_registry = getattr(workflow_result, "participant_registry", None)
+        if isinstance(workflow_result, tuple):
+            workflow = workflow_result[0]
+            if len(workflow_result) > 1:
+                workflow_registry = workflow_result[1]
+        if workflow_registry is None:
+            workflow_registry = getattr(workflow, "participant_registry", None)
+        if workflow_registry is not None:
+            participant_registry = workflow_registry
+        else:
+            participant_registry = fallback_registry
+
+        human_name_lookup = {
+            name.lower(): name
+            for name, profile in all_profiles.items()
+            if profile.is_human
+        }
 
         agendas = load_agendas(str(self._settings.agendas_path))
         initial_state = build_initial_state(
@@ -146,6 +166,7 @@ class MeetingEngine:
             all_profiles=all_profiles,
             human_names=human_names,
             human_name_lookup=human_name_lookup,
+            participant_registry=participant_registry,
         )
         return self._setup
 
@@ -209,8 +230,19 @@ class MeetingEngine:
         event_name = event.get("name")
         setup_state = self._setup
         if isinstance(event_name, str) and setup_state is not None:
-            human_name_lookup = getattr(setup_state, "human_name_lookup", {})
-            human_name = human_name_lookup.get(event_name.lower())
+            participant_registry = getattr(setup_state, "participant_registry", None)
+            human_name_lookup = cast(
+                dict[str, str],
+                getattr(participant_registry, "human_name_lookup", {}),
+            )
+            human_name = None
+            if event_name == "participant":
+                input_data = event.get("data", {}).get("input", {})
+                pending = input_data.get("pending_speakers", [])
+                if isinstance(pending, list) and pending and isinstance(pending[0], str):
+                    human_name = human_name_lookup.get(pending[0].lower())
+            else:
+                human_name = human_name_lookup.get(event_name.lower())
             if human_name is not None:
                 await callback.on_human_turn_started(human_name)
 

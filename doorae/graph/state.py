@@ -46,6 +46,7 @@ class MeetingState(MessagesState):
 
     # 발언자 큐
     pending_speakers: List[str] = []  # ["PM", "Designer", ...]
+    participants: Dict[str, str] = {}  # 이름 -> 역할
 
     # 발언 추적
     speaker_counts: Dict[str, int] = {}

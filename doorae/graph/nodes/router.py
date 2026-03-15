@@ -13,13 +13,13 @@ def condition_router(state: MeetingState) -> str:
         state: 현재 회의 상태
 
     Returns:
-        다음 노드 이름 (참여자 이름 소문자 또는 'refill_speakers' 또는 END)
+        다음 노드 이름 ('participant' 또는 'refill_speakers' 또는 END)
 
     라우팅 우선순위:
     1. meeting_ended 플래그 → END
     2. 최대 턴 수 초과 → END
     3. 모든 안건 완료 → END
-    4. pending_speakers 존재 → 첫 번째 참여자
+    4. pending_speakers 존재 → 'participant'
     5. pending_speakers 비어있음 → 'refill_speakers'
     """
     pending = state.get("pending_speakers", [])
@@ -41,9 +41,9 @@ def condition_router(state: MeetingState) -> str:
     if current_idx >= len(agendas):
         return END
 
-    # pending_speakers에 참여자가 있으면 첫 번째 참여자로 라우팅
+    # pending_speakers에 참여자가 있으면 dispatch 노드로 라우팅
     if pending:
-        return pending[0].lower()
+        return "participant"
 
     # 빈 큐 → refill_speakers 노드로
     return "refill_speakers"
