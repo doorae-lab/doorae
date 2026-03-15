@@ -221,6 +221,8 @@ class Room:
             username: 사용자 이름
             websocket: WebSocket 연결
         """
+        is_reconnecting = username in self.input_queues
+        self.create_user_queue(username)
         await self.connection_manager.connect(username, websocket)
 
         # Send existing participant list to the newly joined user
@@ -240,6 +242,17 @@ class Room:
                 json.dumps(participants_event), username
             )
 
+        if is_reconnecting:
+            online_event = format_semantic_event(
+                "participant_status_changed",
+                participant_name=username,
+                status="idle",
+            )
+            await self.connection_manager.broadcast(json.dumps(online_event))
+            reconnect_event = format_system_event(f"{username}님이 다시 연결되었습니다.")
+            await self.connection_manager.broadcast(json.dumps(reconnect_event))
+            return
+
         # Broadcast structured join event to all (including new joiner)
         user_joined_event = format_semantic_event(
             "user_joined",
@@ -252,6 +265,20 @@ class Room:
         join_event = format_system_event(f"{username}님이 입장했습니다.")
         await self.connection_manager.broadcast(json.dumps(join_event))
 
+    async def disconnect(self, username: str):
+        """연결만 해제하고 입력 큐는 보존한다."""
+        self.connection_manager.disconnect(username)
+        offline_event = format_semantic_event(
+            "participant_status_changed",
+            participant_name=username,
+            status="offline",
+        )
+        await self.connection_manager.broadcast(json.dumps(offline_event))
+        disconnect_event = format_system_event(
+            f"{username}님의 연결이 끊겼습니다. 재연결을 기다립니다."
+        )
+        await self.connection_manager.broadcast(json.dumps(disconnect_event))
+
     async def leave(self, username: str):
         """사용자 퇴장 처리.
 
@@ -260,7 +287,7 @@ class Room:
         Args:
             username: 사용자 이름
         """
-        self.connection_manager.disconnect(username)
+        await self.disconnect(username)
         self.remove_user_queue(username)
         leave_event = format_system_event(f"{username}님이 퇴장했습니다.")
         await self.connection_manager.broadcast(json.dumps(leave_event))

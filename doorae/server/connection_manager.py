@@ -2,6 +2,7 @@
 
 import logging
 from typing import Dict
+
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,12 @@ class ConnectionManager:
             username: 사용자 이름
             websocket: WebSocket 연결
         """
+        existing = self.connections.get(username)
+        if existing is not None and existing is not websocket:
+            try:
+                await existing.close()
+            except Exception:
+                logger.warning("Failed to close stale websocket for %s", username)
         await websocket.accept()
         self.connections[username] = websocket
 
