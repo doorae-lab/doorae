@@ -124,6 +124,7 @@ async def test_server_meeting_callback_broadcasts_semantic_events(
 
     connection_manager.broadcast.assert_awaited_once()
     payload = json.loads(connection_manager.broadcast.await_args.args[0])
+    assert connection_manager.broadcast.await_args.kwargs == {"channel": "semantic"}
     assert payload["type"] == expected_type
     assert payload["data"] == expected_data
     _assert_timestamp_isoformat(payload["timestamp"])
@@ -148,6 +149,17 @@ async def test_server_meeting_callback_keeps_raw_event_broadcast_when_semantic_d
 
     connection_manager.broadcast.assert_awaited_once()
     payload = json.loads(connection_manager.broadcast.await_args.args[0])
+    assert connection_manager.broadcast.await_args.kwargs == {"channel": "raw"}
     assert payload["type"] == "on_chain_start"
     assert payload["data"] == {"foo": "bar"}
     _assert_timestamp_isoformat(payload["timestamp"])
+
+
+@pytest.mark.asyncio
+async def test_server_meeting_callback_can_disable_raw_broadcasts() -> None:
+    connection_manager = _connection_manager()
+    callback = ServerMeetingCallback(connection_manager, broadcast_raw=False)
+
+    await callback.on_raw_event({"event": "on_chain_start", "data": {"foo": "bar"}})
+
+    connection_manager.broadcast.assert_not_awaited()

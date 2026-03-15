@@ -282,7 +282,7 @@
         // WebSocket 연결
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}?username=${encodeURIComponent(username)}`;
+            const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}?username=${encodeURIComponent(username)}&raw_events=false`;
 
             ws = new WebSocket(wsUrl);
 
