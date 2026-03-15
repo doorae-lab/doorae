@@ -200,11 +200,16 @@ def test_websocket_disconnect_handling(client):
 
             # Bob 연결 종료 (with 블록 종료)
 
-        # Alice가 Bob 퇴장 메시지 수신
-        leave_msg = ws_alice.receive_json()
-        assert leave_msg["type"] == "system"
-        assert "Bob" in leave_msg["data"]["message"]
-        assert "퇴장" in leave_msg["data"]["message"]
+        # Alice가 Bob 연결 끊김 상태와 시스템 메시지를 수신
+        offline_msg = ws_alice.receive_json()
+        assert offline_msg["type"] == "semantic:participant_status_changed"
+        assert offline_msg["data"]["participant_name"] == "Bob"
+        assert offline_msg["data"]["status"] == "offline"
+
+        disconnect_msg = ws_alice.receive_json()
+        assert disconnect_msg["type"] == "system"
+        assert "Bob" in disconnect_msg["data"]["message"]
+        assert "연결" in disconnect_msg["data"]["message"]
 
 
 def test_room_capacity_and_limits(client):
