@@ -939,6 +939,7 @@ class MeetingTuiApp(App[None]):
         self._last_agendas = event.agendas
         agenda_panel = self.query_one("#agenda-panel", AgendaPanel)
         agenda_panel.update_meeting_start_time(self._meeting_start_time)
+        agenda_panel.update_agendas(self._last_agendas, event.current_idx)
         self.current_agenda_idx = event.current_idx
 
     def on_human_turn_started(self, event: HumanTurnStarted) -> None:
@@ -1035,6 +1036,8 @@ class MeetingTuiApp(App[None]):
             self._timer_interval.stop()
             self._timer_interval = None
         self._tick_timer()
+        agenda_panel = self.query_one("#agenda-panel", AgendaPanel)
+        agenda_panel.update_agendas(self._last_agendas, self.current_agenda_idx)
         self.meeting_status = "ended"
 
     def on_server_connected(self, event: ServerConnected) -> None:

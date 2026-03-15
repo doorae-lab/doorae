@@ -7,9 +7,12 @@ from textual.widgets import Markdown, Static
 
 from doorae.config import Settings
 from doorae.interfaces.tui import (
+    AgendaPanel,
+    AgendaUpdated,
     ConnectionStatus,
     ConnectionStatusChanged,
     HumanTurnStarted,
+    MeetingEnded,
     MeetingTuiApp,
     ParticipantPanel,
     ServerConnected,
@@ -549,3 +552,74 @@ async def test_local_mode_always_enables_input() -> None:
         assert app.input_enabled is True
         panel = app.query_one("#human-input-panel")
         assert "visible" in panel.classes
+
+
+@pytest.mark.asyncio
+async def test_server_mode_agenda_panel_updates_on_agenda_event() -> None:
+    """서버 모드에서 AgendaUpdated(current_idx=0) 이벤트 후 패널이 갱신되는지 확인."""
+    app = DummyMeetingTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+        server_url="ws://localhost:8000/ws/room-123?username=alice",
+        server_username="alice",
+    )
+
+    async with app.run_test() as pilot:
+        agenda_panel = app.query_one("#agenda-panel", AgendaPanel)
+
+        # 초기 상태: 안건 없음
+        assert agenda_panel._last_agendas == []
+
+        # AgendaUpdated 이벤트 (current_idx=0, 초기값과 동일)
+        app.on_agenda_updated(
+            AgendaUpdated(
+                agendas=[
+                    {"title": "로드맵 논의", "status": "in_progress"},
+                    {"title": "스프린트 리뷰", "status": "pending"},
+                ],
+                current_idx=0,
+            )
+        )
+        await pilot.pause()
+
+        # AgendaPanel 내부 상태가 갱신되었는지 확인
+        assert len(agenda_panel._last_agendas) == 2
+        assert agenda_panel._last_agendas[0]["title"] == "로드맵 논의"
+        assert agenda_panel._last_agendas[1]["title"] == "스프린트 리뷰"
+        assert agenda_panel._current_idx == 0
+
+
+@pytest.mark.asyncio
+async def test_meeting_ended_updates_agenda_panel() -> None:
+    """MeetingEnded 이벤트 후 패널에 최종 안건 상태가 반영되는지 확인."""
+    app = DummyMeetingTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+        server_url="ws://localhost:8000/ws/room-123?username=alice",
+        server_username="alice",
+    )
+
+    async with app.run_test() as pilot:
+        import time
+
+        app._meeting_start_time = time.time()
+        app._timer_interval = app.set_interval(1.0, app._tick_timer)
+        agenda_panel = app.query_one("#agenda-panel", AgendaPanel)
+
+        app.on_meeting_ended(
+            MeetingEnded(
+                agendas=[
+                    {"title": "안건A", "status": "completed", "decision": "승인됨"},
+                    {"title": "안건B", "status": "pending"},
+                ],
+                speaker_counts={"Host": 3},
+            )
+        )
+        await pilot.pause()
+
+        # AgendaPanel 내부 상태가 갱신되었는지 확인
+        assert len(agenda_panel._last_agendas) == 2
+        assert agenda_panel._last_agendas[0]["title"] == "안건A"
+        assert agenda_panel._last_agendas[0]["decision"] == "승인됨"
