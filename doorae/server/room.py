@@ -4,7 +4,8 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
+
 from fastapi import WebSocket
 from doorae.core.profile import AgentProfile
 from doorae.interfaces.engine import MeetingEngine
@@ -14,10 +15,33 @@ from doorae.server.events import (
     format_semantic_event,
     format_message_event,
     format_error_event,
+    format_state_snapshot_event,
     format_system_event,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _strip_llm(profile_data: dict[str, Any]) -> dict[str, Any]:
+    """Remove llm configuration recursively before broadcasting profile data."""
+    cleaned = dict(profile_data)
+    cleaned.pop("llm", None)
+
+    agents = cleaned.get("agents")
+    if isinstance(agents, list):
+        cleaned["agents"] = [
+            _strip_llm(child) if isinstance(child, dict) else child
+            for child in agents
+        ]
+    return cleaned
+
+
+def _serialize_top_profiles(top_profiles: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Serialize top profiles for WebSocket delivery without embedded llm config."""
+    return {
+        name: _strip_llm(profile.model_dump())
+        for name, profile in top_profiles.items()
+    }
 
 
 def _build_runtime_human_profile(username: str) -> AgentProfile:
@@ -170,6 +194,7 @@ class Room:
         self.workflow = None
         self.participant_registry = None
         self._streaming_task: Optional[asyncio.Task] = None
+        self._engine: MeetingEngine | None = None
         self._current_active_human: str | None = None
 
     def get_info(self) -> dict:
@@ -241,6 +266,8 @@ class Room:
             username: 사용자 이름
             websocket: WebSocket 연결
         """
+        is_reconnecting = username in self.input_queues
+        self.create_user_queue(username)
         await self.connection_manager.connect(
             username,
             websocket,
@@ -270,6 +297,24 @@ class Room:
                 json.dumps(participants_event), username
             )
 
+        snapshot_event = self._build_state_snapshot_event()
+        if snapshot_event is not None:
+            await self.connection_manager.send_personal_message(
+                json.dumps(snapshot_event),
+                username,
+            )
+
+        if is_reconnecting:
+            online_event = format_semantic_event(
+                "participant_status_changed",
+                participant_name=username,
+                status="idle",
+            )
+            await self.connection_manager.broadcast(json.dumps(online_event))
+            reconnect_event = format_system_event(f"{username}님이 다시 연결되었습니다.")
+            await self.connection_manager.broadcast(json.dumps(reconnect_event))
+            return
+
         # Broadcast structured join event to all (including new joiner)
         user_joined_event = format_semantic_event(
             "user_joined",
@@ -281,6 +326,20 @@ class Room:
         # Keep existing system message for chat display
         join_event = format_system_event(f"{username}님이 입장했습니다.")
         await self.connection_manager.broadcast(json.dumps(join_event))
+
+    async def disconnect(self, username: str):
+        """연결만 해제하고 입력 큐는 보존한다."""
+        self.connection_manager.disconnect(username)
+        offline_event = format_semantic_event(
+            "participant_status_changed",
+            participant_name=username,
+            status="offline",
+        )
+        await self.connection_manager.broadcast(json.dumps(offline_event))
+        disconnect_event = format_system_event(
+            f"{username}님의 연결이 끊겼습니다. 재연결을 기다립니다."
+        )
+        await self.connection_manager.broadcast(json.dumps(disconnect_event))
 
     async def leave(self, username: str):
         """사용자 퇴장 처리.
@@ -303,10 +362,28 @@ class Room:
                 if callable(remove_profile):
                     remove_profile(username)
 
-        self.connection_manager.disconnect(username)
+        await self.disconnect(username)
         self.remove_user_queue(username)
         leave_event = format_system_event(f"{username}님이 퇴장했습니다.")
         await self.connection_manager.broadcast(json.dumps(leave_event))
+
+    def _build_state_snapshot_event(self) -> dict[str, Any] | None:
+        """현재 회의 상태를 신규 접속자에게 보낼 snapshot 이벤트로 구성한다."""
+        if self._engine is None:
+            return None
+        if self._streaming_task is None or self._streaming_task.done():
+            return None
+
+        setup_state = self._engine.setup_state
+        top_profiles = (
+            _serialize_top_profiles(setup_state.top_profiles)
+            if setup_state is not None
+            else {}
+        )
+        return format_state_snapshot_event(
+            self._engine.runtime_state,
+            top_profiles=top_profiles,
+        )
 
     async def handle_message(self, username: str, data: str):
         """메시지 처리.
@@ -414,24 +491,14 @@ class Room:
     async def _stream_engine_events(self, engine: MeetingEngine):
         """MeetingEngine 이벤트를 스트리밍하여 브로드캐스트."""
         try:
+            self._engine = engine
             # Ensure setup is complete and broadcast profiles to clients
             setup_state = engine.setup_state
             if setup_state is None:
                 setup_state = engine.setup()
             self.participant_registry = getattr(setup_state, "participant_registry", None)
 
-            # Broadcast agent profiles to all clients (strip llm recursively)
-            def _strip_llm(d: dict) -> dict:
-                d.pop("llm", None)
-                for child in d.get("agents") or []:
-                    if isinstance(child, dict):
-                        _strip_llm(child)
-                return d
-
-            top_profiles_data = {
-                name: _strip_llm(profile.model_dump())
-                for name, profile in setup_state.top_profiles.items()
-            }
+            top_profiles_data = _serialize_top_profiles(setup_state.top_profiles)
             profiles_event = format_semantic_event(
                 "agent_profiles",
                 top_profiles=top_profiles_data,
@@ -458,5 +525,6 @@ class Room:
             except asyncio.CancelledError:
                 pass
             self._streaming_task = None
+        self._engine = None
         self.workflow = None
         self.participant_registry = None

@@ -7,6 +7,8 @@ from textual.widgets import Markdown, Static
 
 from doorae.config import Settings
 from doorae.interfaces.tui import (
+    ConnectionStatus,
+    ConnectionStatusChanged,
     HumanTurnStarted,
     MeetingTuiApp,
     ParticipantPanel,
@@ -320,6 +322,42 @@ async def test_server_connected_removes_spinner_and_shows_connected_message(
 
         assert [spinner for spinner in app.query(SpinnerWidget)] == []
         assert any("서버에 연결되었습니다." in text for text in _conversation_texts(app))
+
+
+@pytest.mark.asyncio
+async def test_connection_status_changed_updates_status_banner() -> None:
+    app = DummyMeetingTuiApp(
+        settings=Settings(),
+        profiles_path="config/agent_profiles.yaml",
+        initial_message="hello",
+        server_url="ws://localhost:8000/ws/room-123?username=alice",
+        server_username="alice",
+    )
+
+    async with app.run_test() as pilot:
+        app.on_connection_status_changed(
+            ConnectionStatusChanged(
+                status=ConnectionStatus.RECONNECTING,
+                attempt=2,
+                next_retry=4.0,
+            )
+        )
+        await pilot.pause()
+
+        banner = app.query_one("#connection-status", Static)
+        assert "재연결 중" in _static_text(banner)
+        assert "시도 2" in _static_text(banner)
+
+        app.on_connection_status_changed(
+            ConnectionStatusChanged(
+                status=ConnectionStatus.CONNECTED,
+                attempt=0,
+                next_retry=None,
+            )
+        )
+        await pilot.pause()
+
+        assert _static_text(banner) == ""
 
 
 @pytest.mark.asyncio

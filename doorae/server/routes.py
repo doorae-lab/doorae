@@ -137,7 +137,7 @@ async def websocket_endpoint(
     except Exception as e:
         logger.error(f"WebSocket error for {username} in room {room_id}: {e}")
     finally:
-        await room.leave(username)
+        await room.disconnect(username)
 
 
 @router.post("/api/rooms/{room_id}/start")
