@@ -400,6 +400,9 @@
 
         function handleSemanticEvent(eventType, eventData) {
             switch (eventType) {
+                case 'state_snapshot':
+                    handleStateSnapshot(eventData);
+                    break;
                 case 'speaker_changed':
                     handleSpeakerChanged(eventData);
                     break;
@@ -427,6 +430,37 @@
                     break;
                 default:
                     console.debug('무시된 semantic 이벤트:', eventType, eventData);
+            }
+        }
+
+        function handleStateSnapshot(data) {
+            if (!data || typeof data !== 'object') {
+                return;
+            }
+
+            if (Array.isArray(data.agendas) && typeof data.current_agenda_idx === 'number') {
+                agendas = data.agendas;
+                currentAgendaIdx = data.current_agenda_idx;
+                renderAgendaBar();
+            }
+
+            const participantStatuses = data.participant_statuses;
+            if (participantStatuses && typeof participantStatuses === 'object') {
+                const waitingUser = Object.entries(participantStatuses).find(([, status]) => status === 'waiting_input');
+                if (waitingUser) {
+                    setInputEnabled(waitingUser[0] === username);
+                }
+            }
+
+            const delegatedSpeaker = typeof data.current_delegated_speaker === 'string'
+                ? data.current_delegated_speaker
+                : '';
+            const activeSpeaker = delegatedSpeaker || data.current_speaker;
+            if (typeof activeSpeaker === 'string' && activeSpeaker) {
+                handleSpeakerChanged({
+                    speaker: activeSpeaker,
+                    is_delegated: Boolean(delegatedSpeaker)
+                });
             }
         }
 
@@ -474,9 +508,15 @@
                 return;
             }
 
+            if (data.username === username) {
+                addSystemMessage('지금은 당신의 발언 차례입니다.');
+                setInputEnabled(true);
+                document.getElementById('messageInput').focus();
+                return;
+            }
+
             addSystemMessage(`${data.username}님의 발언 차례입니다.`);
-            setInputEnabled(true);
-            document.getElementById('messageInput').focus();
+            setInputEnabled(false);
         }
 
         function handleAgendaUpdated(data) {
@@ -497,6 +537,7 @@
             meetingEnded = true;
             renderAgendaBar();
             addSystemMessage('회의가 종료되었습니다.', 'meeting-ended');
+            document.getElementById('chatScreen').classList.add('meeting-ended');
             setInputEnabled(false);
         }
 
@@ -591,11 +632,13 @@
 
         function finalizeCurrentStream() {
             if (!currentMessageEl) {
+                currentSpeaker = null;
                 return;
             }
 
             currentMessageEl.classList.remove('streaming');
             currentMessageEl = null;
+            currentSpeaker = null;
         }
 
         function renderAgendaBar() {
