@@ -2,9 +2,11 @@
 
 import json
 
-import pytest
 import asyncio
+import pytest
 from doorae.core.profile import AgentProfile
+from doorae.interfaces.engine import MeetingEngineRuntimeState
+from doorae.server.events import format_state_snapshot_event
 from doorae.server.room import Room
 from doorae.server.room_manager import RoomManager, get_room_manager
 
@@ -31,6 +33,24 @@ class MockConnectionManager:
 
     def get_connection_count(self):
         return len(self.connections)
+
+class DummyStreamingTask:
+    def done(self) -> bool:
+        return False
+
+
+class DummyEngine:
+    def __init__(
+        self,
+        runtime_state: MeetingEngineRuntimeState,
+        top_profiles: dict[str, AgentProfile],
+    ) -> None:
+        self.runtime_state = runtime_state
+        self.setup_state = type(
+            "SetupState",
+            (),
+            {"top_profiles": top_profiles},
+        )()
 
 
 class MockParticipantRegistry:
@@ -364,6 +384,92 @@ async def test_first_user_gets_empty_participants_list():
         if "participants_list" in pm[0]
     ]
     assert len(participants_msgs) == 0
+
+
+def test_format_state_snapshot_event_serializes_runtime_state() -> None:
+    runtime_state = MeetingEngineRuntimeState(
+        current_speaker="Alice",
+        current_agenda_idx=1,
+        agendas=[{"title": "예산", "status": "in_progress"}],
+        pending_speakers=["Bob"],
+        speaker_counts={"Alice": 2},
+        participant_statuses={"Alice": "speaking", "Bob": "idle"},
+    )
+    top_profiles = {
+        "Alice": AgentProfile(
+            name="Alice",
+            role="participant",
+            responsibilities=["회의 참여"],
+            expertise=["예산"],
+            is_human=True,
+        )
+    }
+
+    event = format_state_snapshot_event(runtime_state, top_profiles)
+
+    assert event["type"] == "semantic:state_snapshot"
+    assert event["data"]["current_speaker"] == "Alice"
+    assert event["data"]["current_agenda_idx"] == 1
+    assert event["data"]["pending_speakers"] == ["Bob"]
+    assert event["data"]["speaker_counts"] == {"Alice": 2}
+    assert event["data"]["participant_statuses"] == {"Alice": "speaking", "Bob": "idle"}
+    assert event["data"]["top_profiles"]["Alice"]["name"] == "Alice"
+
+
+@pytest.mark.asyncio
+async def test_join_sends_state_snapshot_when_workflow_is_running():
+    room = Room(room_id="test", name="Test")
+    mock_cm = MockConnectionManager()
+    mock_cm.connections["Alice"] = "ws_alice"
+    room.connection_manager = mock_cm
+    room._streaming_task = DummyStreamingTask()
+    room._engine = DummyEngine(
+        runtime_state=MeetingEngineRuntimeState(
+            current_speaker="Alice",
+            current_agenda_idx=0,
+            agendas=[{"title": "예산", "status": "in_progress"}],
+            pending_speakers=["Bob"],
+            speaker_counts={"Alice": 1},
+            participant_statuses={"Alice": "speaking", "Bob": "idle"},
+        ),
+        top_profiles={
+            "Alice": AgentProfile(
+                name="Alice",
+                role="participant",
+                responsibilities=["회의 참여"],
+                expertise=["예산"],
+                is_human=True,
+            )
+        },
+    )
+
+    await room.join("Bob", "ws_bob")
+
+    personal_messages = [json.loads(message) for message, username in mock_cm.personal_messages if username == "Bob"]
+    message_types = [message["type"] for message in personal_messages]
+    assert message_types == [
+        "semantic:participants_list",
+        "semantic:state_snapshot",
+    ]
+    snapshot = personal_messages[1]
+    assert snapshot["data"]["current_speaker"] == "Alice"
+    assert snapshot["data"]["pending_speakers"] == ["Bob"]
+    assert snapshot["data"]["participant_statuses"]["Alice"] == "speaking"
+
+
+@pytest.mark.asyncio
+async def test_join_skips_state_snapshot_when_workflow_is_not_running():
+    room = Room(room_id="test", name="Test")
+    mock_cm = MockConnectionManager()
+    mock_cm.connections["Alice"] = "ws_alice"
+    room.connection_manager = mock_cm
+
+    await room.join("Bob", "ws_bob")
+
+    personal_messages = [json.loads(message) for message, username in mock_cm.personal_messages if username == "Bob"]
+    assert [message["type"] for message in personal_messages] == [
+        "semantic:participants_list",
+    ]
 
 
 @pytest.mark.asyncio

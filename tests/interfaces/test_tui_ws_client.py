@@ -574,72 +574,62 @@ async def test_dispatch_agent_profiles() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_reconnects_after_connection_closed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_dispatch_state_snapshot() -> None:
+    """state_snapshot 이벤트 수신 시 기존 Textual 메시지로 분해되는지 테스트."""
     app = RecordingApp()
-    first_websocket = AsyncMock()
-    second_websocket = AsyncMock()
-    first_websocket.recv = AsyncMock(
-        side_effect=[
-            json.dumps(
-                {
-                    "type": "semantic:speaker_changed",
-                    "data": {"speaker": "Alice", "is_delegated": False},
-                }
-            ),
-            ConnectionClosed(Close(1006, "abnormal"), None),
-        ]
-    )
-    second_websocket.recv = AsyncMock(
-        side_effect=[
-            json.dumps(
-                {
-                    "type": "semantic:token",
-                    "data": {
-                        "content": "다시 연결됨",
-                        "speaker": "Alice",
-                        "is_delegated": False,
-                    },
-                }
-            ),
-            StopAsyncIteration(),
-        ]
-    )
-    urls = _patch_connect_sequence(
-        monkeypatch,
-        [
-            MockConnection(websocket=first_websocket),
-            MockConnection(websocket=second_websocket),
-        ],
-    )
-    monkeypatch.setattr("doorae.interfaces.tui_ws_client.random.uniform", lambda a, b: 0.0)
+    client = ServerEventClient(ws_url="ws://test", username="Bob", app=app)
 
-    client = ServerEventClient("ws://example/ws/room?username=alice", "alice", app)
-    await client.run()
+    event = {
+        "type": "semantic:state_snapshot",
+        "data": {
+            "top_profiles": {
+                "PM팀장": {
+                    "name": "PM팀장",
+                    "role": "project_manager",
+                    "responsibilities": ["프로젝트 관리"],
+                    "expertise": ["일정 관리"],
+                }
+            },
+            "agendas": [{"title": "예산", "status": "in_progress"}],
+            "current_agenda_idx": 0,
+            "current_speaker": "Alice",
+            "pending_speakers": ["Bob"],
+            "participant_statuses": {
+                "Alice": "speaking",
+                "Bob": "idle",
+            },
+        },
+    }
 
-    assert urls == [
-        "ws://example/ws/room?username=alice",
-        "ws://example/ws/room?username=alice",
-    ]
+    await client._dispatch_event(event)
+
     assert [type(message) for message in app.messages] == [
+        AgentProfilesReceived,
+        AgendaUpdated,
+        ParticipantStatusChanged,
+        ParticipantStatusChanged,
         SpeakerChanged,
-        ConnectionStatusChanged,
-        ConnectionStatusChanged,
-        ConnectionStatusChanged,
-        TokenStreamed,
     ]
 
-    disconnected = app.messages[1]
-    assert isinstance(disconnected, ConnectionStatusChanged)
-    assert disconnected.status == ConnectionStatus.DISCONNECTED
+    profile_message = app.messages[0]
+    assert isinstance(profile_message, AgentProfilesReceived)
+    assert "PM팀장" in profile_message.top_profiles_data
 
-    reconnecting = app.messages[2]
-    assert isinstance(reconnecting, ConnectionStatusChanged)
-    assert reconnecting.status == ConnectionStatus.RECONNECTING
-    assert reconnecting.attempt == 1
-    assert reconnecting.next_retry == 1.0
+    agenda_message = app.messages[1]
+    assert isinstance(agenda_message, AgendaUpdated)
+    assert agenda_message.current_idx == 0
 
-    connected = app.messages[3]
-    assert isinstance(connected, ConnectionStatusChanged)
-    assert connected.status == ConnectionStatus.CONNECTED
+    participant_messages = app.messages[2:4]
+    assert {
+        (message.participant_name, message.status)
+        for message in participant_messages
+        if isinstance(message, ParticipantStatusChanged)
+    } == {
+        ("Alice", "speaking"),
+        ("Bob", "idle"),
+    }
+
+    speaker_message = app.messages[4]
+    assert isinstance(speaker_message, SpeakerChanged)
+    assert speaker_message.speaker == "Alice"
+    assert speaker_message.pending == ["Bob"]

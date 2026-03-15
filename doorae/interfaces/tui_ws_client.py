@@ -200,6 +200,65 @@ class ServerEventClient:
                 )
             return
 
+        if semantic_type == "state_snapshot":
+            top_profiles = data.get("top_profiles")
+            if isinstance(top_profiles, dict):
+                self._app.post_message(
+                    AgentProfilesReceived(top_profiles_data=top_profiles)
+                )
+
+            pending = data.get("pending_speakers")
+            if isinstance(pending, list):
+                self._pending_speakers = [
+                    speaker for speaker in pending if isinstance(speaker, str)
+                ]
+
+            agendas = data.get("agendas")
+            current_idx = data.get("current_agenda_idx")
+            if isinstance(agendas, list) and isinstance(current_idx, int):
+                self._app.post_message(
+                    AgendaUpdated(agendas=agendas, current_idx=current_idx)
+                )
+
+            participant_statuses = data.get("participant_statuses")
+            waiting_human: str | None = None
+            if isinstance(participant_statuses, dict):
+                for participant_name, status in participant_statuses.items():
+                    if not isinstance(participant_name, str) or not isinstance(status, str):
+                        continue
+                    self._app.post_message(
+                        ParticipantStatusChanged(
+                            participant_name=participant_name,
+                            status=status,
+                        )
+                    )
+                    if status == "waiting_input" and waiting_human is None:
+                        waiting_human = participant_name
+
+            speaker = data.get("current_speaker")
+            if isinstance(speaker, str) and speaker:
+                self._app.post_message(
+                    SpeakerChanged(
+                        speaker=speaker,
+                        pending=list(self._pending_speakers),
+                        is_delegated=False,
+                    )
+                )
+
+            delegated_speaker = data.get("current_delegated_speaker")
+            if isinstance(delegated_speaker, str) and delegated_speaker:
+                self._app.post_message(
+                    SpeakerChanged(
+                        speaker=delegated_speaker,
+                        pending=list(self._pending_speakers),
+                        is_delegated=True,
+                    )
+                )
+
+            if waiting_human is not None:
+                self._app.post_message(HumanTurnStarted(username=waiting_human))
+            return
+
         if semantic_type == "speaker_changed":
             speaker = data.get("speaker")
             if isinstance(speaker, str) and speaker:
