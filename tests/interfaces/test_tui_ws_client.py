@@ -466,3 +466,65 @@ async def test_dispatch_agent_profiles() -> None:
     profile_msgs = [m for m in app.messages if isinstance(m, AgentProfilesReceived)]
     assert len(profile_msgs) == 1
     assert "PM팀장" in profile_msgs[0].top_profiles_data
+
+
+@pytest.mark.asyncio
+async def test_dispatch_state_snapshot() -> None:
+    """state_snapshot 이벤트 수신 시 기존 Textual 메시지로 분해되는지 테스트."""
+    app = RecordingApp()
+    client = ServerEventClient(ws_url="ws://test", username="Bob", app=app)
+
+    event = {
+        "type": "semantic:state_snapshot",
+        "data": {
+            "top_profiles": {
+                "PM팀장": {
+                    "name": "PM팀장",
+                    "role": "project_manager",
+                    "responsibilities": ["프로젝트 관리"],
+                    "expertise": ["일정 관리"],
+                }
+            },
+            "agendas": [{"title": "예산", "status": "in_progress"}],
+            "current_agenda_idx": 0,
+            "current_speaker": "Alice",
+            "pending_speakers": ["Bob"],
+            "participant_statuses": {
+                "Alice": "speaking",
+                "Bob": "idle",
+            },
+        },
+    }
+
+    await client._dispatch_event(event)
+
+    assert [type(message) for message in app.messages] == [
+        AgentProfilesReceived,
+        AgendaUpdated,
+        ParticipantStatusChanged,
+        ParticipantStatusChanged,
+        SpeakerChanged,
+    ]
+
+    profile_message = app.messages[0]
+    assert isinstance(profile_message, AgentProfilesReceived)
+    assert "PM팀장" in profile_message.top_profiles_data
+
+    agenda_message = app.messages[1]
+    assert isinstance(agenda_message, AgendaUpdated)
+    assert agenda_message.current_idx == 0
+
+    participant_messages = app.messages[2:4]
+    assert {
+        (message.participant_name, message.status)
+        for message in participant_messages
+        if isinstance(message, ParticipantStatusChanged)
+    } == {
+        ("Alice", "speaking"),
+        ("Bob", "idle"),
+    }
+
+    speaker_message = app.messages[4]
+    assert isinstance(speaker_message, SpeakerChanged)
+    assert speaker_message.speaker == "Alice"
+    assert speaker_message.pending == ["Bob"]
