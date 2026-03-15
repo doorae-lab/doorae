@@ -27,6 +27,7 @@ from doorae.graph.nodes import (
     condition_router,
     initialize_mcp_tools,
 )
+from doorae.graph.participant_registry import ParticipantRegistry
 
 
 def create_meeting_workflow(
@@ -36,6 +37,7 @@ def create_meeting_workflow(
     mcp_tools: dict[str, list] = None,
     input_provider: Optional[InputProvider] = None,
     profiles_override: Optional[dict[str, AgentProfile]] = None,
+    participant_registry: Optional[ParticipantRegistry] = None,
 ):
     """안건 기반 회의 워크플로우 생성
 
@@ -69,12 +71,19 @@ def create_meeting_workflow(
         load_agent_profiles(profiles_path),
         profiles_override,
     )
+    participant_registry = participant_registry or ParticipantRegistry()
+    for profile in profiles.values():
+        participant_registry.add(profile)
 
     # 2. StateGraph 생성
     workflow = StateGraph(MeetingState)
 
     # 3. refill_speakers 노드 추가
-    refill_node = RefillSpeakersNode(model=main_model, valid_speakers=set(profiles.keys()))
+    refill_node = RefillSpeakersNode(
+        model=main_model,
+        valid_speakers=set(profiles.keys()),
+        registry=participant_registry,
+    )
     workflow.add_node("refill_speakers", refill_node)
 
     # 4. summarize 노드 추가
@@ -84,31 +93,35 @@ def create_meeting_workflow(
     # 5. process_response 노드 추가
     process_node = ProcessResponseNode(
         model=task_model,
-        valid_speakers=list(profiles.keys())
+        valid_speakers=list(profiles.keys()),
+        registry=participant_registry,
     )
     workflow.add_node("process_response", process_node)
 
-    # 6. 각 에이전트 노드 추가 (NodeRegistry 활용)
+    # 6. 단일 participant dispatch 노드 추가
+    agent_models: dict[str, BaseChatModel] = {}
     for name, profile in profiles.items():
-        node_type = "human" if profile.is_human else "agent"
         if profile.is_human:
-            node_model = None
-        elif profile.llm is None:
-            # Keep backwards compatibility: caller-provided main_model should still
-            # drive agent turns when no per-agent LLM override is configured.
-            node_model = main_model
+            continue
+        if profile.llm is None:
+            agent_models[name] = main_model
         else:
-            node_model = create_agent_llm(profile=profile, settings=settings, streaming=True)
-        node = NodeRegistry.create(
-            node_type,
-            profile=profile,
-            model=node_model,
-            all_agent_names=list(profiles.keys()),
-            all_profiles=profiles,
-            mcp_tools=mcp_tools,
+            agent_models[name] = create_agent_llm(
+                profile=profile,
+                settings=settings,
+                streaming=True,
+            )
+    workflow.add_node(
+        "participant",
+        NodeRegistry.create(
+            "dispatch",
+            registry=participant_registry,
             input_provider=input_provider,
-        )
-        workflow.add_node(name.lower(), node)
+            agent_models=agent_models,
+            mcp_tools=mcp_tools,
+            settings=settings,
+        ),
+    )
 
     # 7. route_next 패스쓰루 노드 (fan-in join point)
     workflow.add_node("route_next", lambda state: {})
@@ -116,19 +129,20 @@ def create_meeting_workflow(
     # 8. 진입점: refill_speakers
     workflow.set_entry_point("refill_speakers")
 
-    # 9. 에이전트 → [summarize ∥ process_response] (fan-out, 병렬 실행)
-    for name in profiles.keys():
-        workflow.add_edge(name.lower(), "summarize")
-        workflow.add_edge(name.lower(), "process_response")
+    # 9. participant → [summarize ∥ process_response] (fan-out, 병렬 실행)
+    workflow.add_edge("participant", "summarize")
+    workflow.add_edge("participant", "process_response")
 
     # 10. [summarize, process_response] → route_next (fan-in)
     workflow.add_edge("summarize", "route_next")
     workflow.add_edge("process_response", "route_next")
 
     # 11. route_next → condition_router
-    available_targets = {name.lower(): name.lower() for name in profiles.keys()}
-    available_targets["refill_speakers"] = "refill_speakers"
-    available_targets[END] = END
+    available_targets = {
+        "participant": "participant",
+        "refill_speakers": "refill_speakers",
+        END: END,
+    }
 
     workflow.add_conditional_edges(
         "route_next",
@@ -144,7 +158,9 @@ def create_meeting_workflow(
     )
 
     # 13. 컴파일
-    return workflow.compile()
+    compiled_workflow = workflow.compile()
+    setattr(compiled_workflow, "participant_registry", participant_registry)
+    return compiled_workflow
 
 
 def build_initial_state(
@@ -174,6 +190,7 @@ def build_initial_state(
         "current_agenda_idx": 0,
         "pending_proposals": [],
         "pending_speakers": [],
+        "participants": {name: "participant" for name in human_names},
         "speaker_counts": {},
         "participant_statuses": {},
         "consecutive_host_delegations": 0,

@@ -64,6 +64,25 @@ class RecordingCallback:
         self.tool_calls.append((name, status))
 
 
+class DummyParticipantRegistry:
+    def __init__(self, profiles: dict[str, AgentProfile] | None = None) -> None:
+        self._profiles = dict(profiles or {})
+
+    def add(self, profile: AgentProfile) -> None:
+        self._profiles[profile.name] = profile
+
+    def remove(self, name: str) -> None:
+        self._profiles.pop(name, None)
+
+    @property
+    def human_name_lookup(self) -> dict[str, str]:
+        return {
+            name.lower(): name
+            for name, profile in self._profiles.items()
+            if profile.is_human
+        }
+
+
 def _make_profile(name: str, is_human: bool = False, children: list[AgentProfile] | None = None):
     return AgentProfile(
         name=name,
@@ -115,6 +134,8 @@ def test_setup_builds_shared_context_with_flattened_humans() -> None:
     assert setup_state.graph_config == {"recursion_limit": 321}
     assert setup_state.human_names == ["Alice", "Bob"]
     assert setup_state.human_name_lookup == {"alice": "Alice", "bob": "Bob"}
+    assert setup_state.participant_registry is not None
+    assert setup_state.participant_registry.human_name_lookup == {"alice": "Alice", "bob": "Bob"}
     assert engine.runtime_state.participant_statuses == {"Host": "idle", "Alice": "idle", "Bob": "idle"}
     assert engine.setup_state is setup_state
 
@@ -166,6 +187,33 @@ def test_setup_allows_runtime_profile_to_shadow_nested_agent_name() -> None:
     }
 
 
+def test_setup_prefers_workflow_registry_when_factory_returns_one() -> None:
+    top_profiles = {"Alice": _make_profile("Alice", is_human=True)}
+    runtime_registry = DummyParticipantRegistry(top_profiles)
+    mock_workflow = object()
+    initial_state = {"agendas": [], "current_agenda_idx": 0}
+
+    with patch("doorae.interfaces.engine.load_agent_profiles", return_value=top_profiles), patch(
+        "doorae.interfaces.engine.create_meeting_workflow",
+        return_value=(mock_workflow, runtime_registry),
+    ), patch(
+        "doorae.interfaces.engine.load_agendas",
+        return_value=[],
+    ), patch(
+        "doorae.interfaces.engine.build_initial_state",
+        return_value=initial_state,
+    ):
+        engine = MeetingEngine(
+            initial_message="회의를 시작합니다",
+            settings=Settings(),
+        )
+        setup_state = engine.setup()
+
+    assert setup_state.workflow is mock_workflow
+    assert setup_state.participant_registry is runtime_registry
+    assert setup_state.human_name_lookup == {"alice": "Alice"}
+
+
 @pytest.mark.asyncio
 async def test_run_dispatches_callback_protocol_from_streamed_events() -> None:
     events = [
@@ -181,8 +229,8 @@ async def test_run_dispatches_callback_protocol_from_streamed_events() -> None:
         },
         {
             "event": "on_chain_start",
-            "name": "alice",
-            "data": {},
+            "name": "participant",
+            "data": {"input": {"pending_speakers": ["Alice"]}},
         },
         {
             "event": "on_chat_model_start",
@@ -233,7 +281,7 @@ async def test_run_dispatches_callback_protocol_from_streamed_events() -> None:
         workflow=workflow,
         initial_state={"messages": []},
         graph_config={"recursion_limit": 99},
-        human_name_lookup={"alice": "Alice"},
+        participant_registry=SimpleNamespace(human_name_lookup={"alice": "Alice"}),
     )
 
     callback = RecordingCallback()

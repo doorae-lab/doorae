@@ -24,6 +24,7 @@ def test_meeting_state_structure():
     assert 'agendas' in hints
     assert 'current_agenda_idx' in hints
     assert 'pending_speakers' in hints
+    assert 'participants' in hints
     assert 'speaker_counts' in hints
     assert 'consecutive_host_delegations' in hints
 
@@ -41,6 +42,7 @@ def test_meeting_state_inherits_messages_state():
     # MeetingState의 추가 필드 확인
     assert 'agendas' in hints
     assert 'pending_speakers' in hints
+    assert 'participants' in hints
 
 
 def test_meeting_state_inherits_messages_state():
@@ -56,6 +58,7 @@ def test_meeting_state_inherits_messages_state():
     # MeetingState의 추가 필드 확인
     assert 'agendas' in hints
     assert 'pending_speakers' in hints
+    assert 'participants' in hints
 
 
 def test_meeting_state_defaults():
@@ -66,6 +69,7 @@ def test_meeting_state_defaults():
         "agendas": [],
         "current_agenda_idx": 0,
         "pending_speakers": [],
+        "participants": {},
         "speaker_counts": {},
         "consecutive_host_delegations": 0,
         "start_time": 0.0,

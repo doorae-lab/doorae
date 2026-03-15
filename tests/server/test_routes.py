@@ -1,6 +1,7 @@
 """Routes 테스트."""
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from fastapi.testclient import TestClient
 from doorae.server.app import create_app
@@ -218,6 +219,7 @@ def test_start_workflow_uses_unified_workflow(client, monkeypatch):
     room_id = create_response.json()["id"]
 
     calls = {}
+    mock_registry = object()
 
     class MockSettings:
         agent_profiles_path = "config/agent_profiles.yaml"
@@ -228,6 +230,16 @@ def test_start_workflow_uses_unified_workflow(client, monkeypatch):
     class MockEngine:
         def __init__(self, **kwargs):
             calls["engine_kwargs"] = kwargs
+            self._setup_state = None
+
+        @property
+        def setup_state(self):
+            return self._setup_state
+
+        def setup(self):
+            calls["setup_called"] = calls.get("setup_called", 0) + 1
+            self._setup_state = SimpleNamespace(participant_registry=mock_registry)
+            return self._setup_state
 
     monkeypatch.setattr("doorae.server.routes.get_settings", lambda: MockSettings())
     monkeypatch.setattr("doorae.server.routes.MeetingEngine", MockEngine)
@@ -248,6 +260,8 @@ def test_start_workflow_uses_unified_workflow(client, monkeypatch):
         assert "profiles_override" in engine_kwargs
         assert "Alice" in engine_kwargs["profiles_override"]
         assert engine_kwargs["profiles_override"]["Alice"].is_human is True
+        assert calls["setup_called"] == 1
+        assert room.participant_registry is mock_registry
 
         room.start_workflow_streaming.assert_awaited_once()
         assert isinstance(room.start_workflow_streaming.await_args.kwargs["engine"], MockEngine)

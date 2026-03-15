@@ -1,11 +1,15 @@
 """ProcessResponseNode 테스트"""
 
 import inspect
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-from unittest.mock import AsyncMock, MagicMock
+
 from doorae.graph.constants import HOST_END_MEETING_COMMAND
 from doorae.graph.nodes.process import ProcessResponseNode, NodeType
+from doorae.graph.participant_registry import ParticipantRegistry
+from doorae.core.profile import AgentProfile
 
 
 class TestProcessResponseNode:
@@ -147,6 +151,40 @@ class TestProcessResponseNode:
         assert mentions == ["PM"]
         model.bind.assert_called_once_with(max_tokens=64)
         response_model.ainvoke.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_extract_mentions_reads_registry_dynamically(self):
+        registry = ParticipantRegistry(
+            {
+                "Host": AgentProfile(
+                    name="Host",
+                    role="host",
+                    responsibilities=["진행"],
+                    expertise=["퍼실리테이션"],
+                ),
+                "PM": AgentProfile(
+                    name="PM",
+                    role="participant",
+                    responsibilities=["참여"],
+                    expertise=["일반"],
+                ),
+            }
+        )
+        node = ProcessResponseNode(model=MagicMock(), registry=registry)
+        registry.add(
+            AgentProfile(
+                name="TechLead",
+                role="participant",
+                responsibilities=["참여"],
+                expertise=["일반"],
+            )
+        )
+
+        mentions = await node._extract_mentions(
+            AIMessage(content="@TechLead 의견 부탁드립니다.", name="Host")
+        )
+
+        assert mentions == ["TechLead"]
 
     def test_process_response_node_has_no_meeting_end_llm_fallback(self):
         """회의 종료 LLM fallback이 제거되었는지 확인"""
