@@ -25,7 +25,7 @@ def test_condition_router_with_pending():
     }
 
     result = condition_router(state)
-    assert result == "pm"  # 첫 번째 pending speaker
+    assert result == "participant"
 
 
 def test_condition_router_empty_queue():
@@ -162,7 +162,7 @@ def test_workflow_parallel_summarize_process():
         "route_next 패스쓰루 노드가 그래프에 존재해야 합니다"
     )
 
-    # 에이전트 노드가 summarize와 process_response 둘 다로 연결되어야 함
+    # participant 노드가 summarize와 process_response 둘 다로 연결되어야 함
     # (직렬이 아닌 병렬 fan-out)
     edges_by_source = {}
     for edge in graph.edges:
@@ -185,13 +185,7 @@ def test_workflow_parallel_summarize_process():
         "process_response → route_next 엣지가 있어야 합니다"
     )
 
-    # 최소 하나의 에이전트 노드가 summarize와 process_response 둘 다로 fan-out
-    agent_fan_out_found = False
-    for src, targets in edges_by_source.items():
-        if "summarize" in targets and "process_response" in targets:
-            agent_fan_out_found = True
-            break
-
-    assert agent_fan_out_found, (
-        "최소 하나의 에이전트 노드가 summarize와 process_response로 fan-out해야 합니다"
+    participant_targets = edges_by_source.get("participant", set())
+    assert participant_targets == {"summarize", "process_response"}, (
+        "participant 노드가 summarize와 process_response로 fan-out해야 합니다"
     )

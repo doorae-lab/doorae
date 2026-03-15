@@ -1,73 +1,44 @@
-"""AgentNode - AI 에이전트 노드"""
+"""AgentNode - AI 에이전트 노드."""
 
-from typing import Dict, Any, List, Optional
-from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
+from __future__ import annotations
+
+from typing import Any, Dict, List, Mapping, Optional
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from loguru import logger
 
+from doorae.agents.base_agent import BaseAgent
 from doorae.core.date_context import format_today_context
 from doorae.core.profile import AgentProfile
-from doorae.agents.base_agent import BaseAgent
+from doorae.graph.agenda_tools import (
+    create_approve_tool,
+    create_propose_tool,
+    create_reject_tool,
+)
+from doorae.graph.constants import (
+    HOST_END_MEETING_COMMAND,
+    HOST_ROLE_NAME,
+    STATUS_EMOJI,
+    STATUS_TEXT,
+)
 from doorae.graph.nodes.base import BaseNode, NodeType
 from doorae.graph.nodes.registry import register_node
 from doorae.graph.state import MeetingState, ParticipantStatus
-from doorae.graph.constants import (
-    STATUS_EMOJI,
-    STATUS_TEXT,
-    HOST_ROLE_NAME,
-    HOST_END_MEETING_COMMAND,
-)
-from doorae.graph.agenda_tools import (
-    create_propose_tool,
-    create_approve_tool,
-    create_reject_tool,
-)
 from doorae.graph.sub_agent_tool import create_sub_agent_tool
 
 
-@register_node("agent", category="agents")
-class AgentNode(BaseNode):
-    """AI 에이전트 노드
-
-    LLM 기반 에이전트로 회의에 참여하여 발언합니다.
-    BaseAgent를 래핑하여 MCP 도구 사용을 지원합니다.
-
-    Attributes:
-        profile: 에이전트 프로필 (이름, 역할, 책임 등)
-        agent: BaseAgent 인스턴스
-        all_agent_names: 전체 참여자 목록
-        all_profiles: 전체 프로필 딕셔너리
-    """
-
-    node_type = NodeType.AGENT
-    requires_llm = True
-    requires_tools = True
+class AgentNodeExecutor:
+    """Reusable execution logic for AI participant turns."""
 
     def __init__(
         self,
         profile: AgentProfile,
         model=None,
         tools: Optional[list] = None,
-        all_agent_names: Optional[list[str]] = None,
-        all_profiles: Optional[dict] = None,
         mcp_tools: Optional[dict] = None,
         settings=None,
-        **kwargs,
-    ):
-        """초기화
-
-        Args:
-            profile: 에이전트 프로필
-            model: LLM 모델 인스턴스 (None이면 profile 기반으로 생성)
-            tools: MCP tools 리스트 (선택)
-            all_agent_names: 전체 참여자 목록
-            all_profiles: 전체 프로필 딕셔너리
-            mcp_tools: 서버별 MCP tools 딕셔너리 {server_name: [tools]}
-            settings: 글로벌 설정 (선택)
-            **kwargs: 추가 파라미터 (무시됨)
-        """
+    ) -> None:
         self.profile = profile
-        self.all_agent_names = all_agent_names or []
-        self.all_profiles = all_profiles or {}
         self.sub_agent_tools: list = []
         self._mcp_tools = mcp_tools or {}
 
@@ -80,7 +51,6 @@ class AgentNode(BaseNode):
                 streaming=True,
             )
 
-        # mcp_tools에서 agent_tools 자동 추출
         if tools is None and self._mcp_tools and profile.mcp_tools:
             tools = []
             for server_name in profile.mcp_tools:
@@ -92,15 +62,12 @@ class AgentNode(BaseNode):
                     f"(서버: {', '.join(profile.mcp_tools)})"
                 )
 
-        # BaseAgent 생성
         self.agent = BaseAgent(name=profile.name, profile=profile, llm=model)
 
-        # MCP 도구 바인딩
         if tools:
             self.agent.bind_mcp_tools(tools)
             logger.info(f"[{profile.name}] 🔧 MCP 도구 바인딩: {len(tools)}개")
 
-        # supervisor profile이면 하위 에이전트를 tool로 바인딩
         if profile.is_supervisor():
             for sub_profile in profile.agents or []:
                 sub_tool = create_sub_agent_tool(
@@ -116,15 +83,14 @@ class AgentNode(BaseNode):
                     f"{len(self.sub_agent_tools)}개"
                 )
 
-    async def execute(self, state: MeetingState) -> Dict[str, Any]:
-        """에이전트 발언 생성
-
-        Args:
-            state: 현재 회의 상태
-
-        Returns:
-            생성된 메시지를 포함한 상태 업데이트 딕셔너리
-        """
+    async def execute(
+        self,
+        state: MeetingState,
+        *,
+        all_agent_names: Optional[list[str]] = None,
+        all_profiles: Optional[Mapping[str, AgentProfile]] = None,
+    ) -> Dict[str, Any]:
+        """에이전트 발언 생성."""
         messages = state.get("messages", [])
         agendas = state.get("agendas", [])
         current_idx = state.get("current_agenda_idx", 0)
@@ -132,7 +98,6 @@ class AgentNode(BaseNode):
         pending_proposals: List[dict] = list(state.get("pending_proposals", []))
         participant_statuses: Dict[str, str] = dict(state.get("participant_statuses", {}))
 
-        # 대화 기록을 명확한 포맷으로 변환
         formatted_messages = []
         for msg in messages:
             content = getattr(msg, "content", "") or ""
@@ -143,26 +108,25 @@ class AgentNode(BaseNode):
             msg_type = type(msg).__name__
 
             if msg_type == "HumanMessage":
-                formatted_messages.append(
-                    HumanMessage(content=f"[회의 시작 요청]\n{content}")
-                )
+                formatted_messages.append(HumanMessage(content=f"[회의 시작 요청]\n{content}"))
             elif msg_type == "AIMessage" and name:
-                formatted_messages.append(
-                    HumanMessage(content=f"[{name}의 발언]\n{content}")
-                )
+                formatted_messages.append(HumanMessage(content=f"[{name}의 발언]\n{content}"))
 
-        # 현재 발언 요청 추가
         formatted_messages.append(
             HumanMessage(
-                content=f"이제 {self.profile.name}({self.profile.role})로서 위 대화에 이어 발언해 주세요. 한국어로 간결하게 응답하세요."
+                content=(
+                    f"이제 {self.profile.name}({self.profile.role})로서 위 대화에 이어 "
+                    "발언해 주세요. 한국어로 간결하게 응답하세요."
+                )
             )
         )
 
-        # 프롬프트 구성
-        agent_prompt = self._build_agent_prompt()
+        agent_prompt = self._build_agent_prompt(
+            all_agent_names=all_agent_names,
+            all_profiles=all_profiles,
+        )
         agenda_context = self._format_agenda_context(agendas, current_idx)
 
-        # 요약을 시스템 프롬프트에 포함
         if summary:
             enhanced_prompt = f"""{agent_prompt}
 
@@ -173,26 +137,20 @@ class AgentNode(BaseNode):
         else:
             enhanced_prompt = f"{agent_prompt}\n\n{agenda_context}"
 
-        # Host인 경우 대기 중인 후보 안건 컨텍스트 추가
         if self.profile.name == HOST_ROLE_NAME and pending_proposals:
             enhanced_prompt += "\n\n" + self._format_proposals_context(pending_proposals)
 
-        # 시스템 메시지 + 포맷된 대화 기록
         system_msg = SystemMessage(content=enhanced_prompt)
         all_messages = [system_msg] + formatted_messages
 
-        # 안건 Tool 구성 (Closure 패턴)
         agenda_actions: list = []
         agenda_tools = [create_propose_tool(agenda_actions, self.profile.name)]
-
-        # Host이고 후보가 있으면 approve/reject Tool 추가
         if self.profile.name == HOST_ROLE_NAME and pending_proposals:
             agenda_tools.append(create_approve_tool(agenda_actions, pending_proposals))
             agenda_tools.append(create_reject_tool(agenda_actions, pending_proposals))
 
         all_tools = agenda_tools + self.sub_agent_tools
 
-        # BaseAgent의 invoke_with_tools 사용
         config = {
             "tags": ["participant", f"speaker:{self.profile.name}"],
             "run_name": self.profile.name,
@@ -200,12 +158,14 @@ class AgentNode(BaseNode):
         participant_statuses[self.profile.name] = ParticipantStatus.speaking.value
         if all_tools or getattr(self.agent, "_mcp_tools", []):
             participant_statuses[self.profile.name] = ParticipantStatus.tool_calling.value
+
         response = await self.agent.invoke_with_tools(
-            all_messages, config=config, extra_tools=all_tools
+            all_messages,
+            config=config,
+            extra_tools=all_tools,
         )
         response.name = self.profile.name
 
-        # 빈 응답 처리
         content = getattr(response, "content", "") or ""
         if not content.strip():
             response = AIMessage(
@@ -219,34 +179,35 @@ class AgentNode(BaseNode):
             "participant_statuses": participant_statuses,
         }
 
-        # 안건 액션 처리
         if agenda_actions:
-            agenda_updates = self._apply_agenda_actions(
-                agenda_actions, pending_proposals, agendas
+            result.update(
+                self._apply_agenda_actions(
+                    agenda_actions,
+                    pending_proposals,
+                    agendas,
+                )
             )
-            result.update(agenda_updates)
 
         return result
 
-    def _build_agent_prompt(self) -> str:
-        """프로필에서 에이전트 프롬프트 생성
-
-        Returns:
-            에이전트 시스템 프롬프트
-        """
+    def _build_agent_prompt(
+        self,
+        *,
+        all_agent_names: Optional[list[str]] = None,
+        all_profiles: Optional[Mapping[str, AgentProfile]] = None,
+    ) -> str:
+        """프로필에서 에이전트 프롬프트 생성."""
         participants_section = ""
-        if self.all_agent_names:
-            others = [p for p in self.all_agent_names if p != self.profile.name]
+        names = all_agent_names or []
+        profiles = all_profiles or {}
+        if names:
+            others = [participant for participant in names if participant != self.profile.name]
             if others:
-                # is_human인 참여자에 * 표시
                 formatted_participants = []
                 for name in others:
-                    if name in self.all_profiles:
-                        participant_profile = self.all_profiles[name]
-                        if participant_profile.is_human:
-                            formatted_participants.append(f"{name}*")
-                        else:
-                            formatted_participants.append(name)
+                    participant_profile = profiles.get(name)
+                    if participant_profile is not None and participant_profile.is_human:
+                        formatted_participants.append(f"{name}*")
                     else:
                         formatted_participants.append(name)
 
@@ -262,7 +223,6 @@ class AgentNode(BaseNode):
 조사나 존칭은 붙여도 되지만, 반드시 @이름 prefix를 포함해야 합니다.
                 """
 
-        # metadata 섹션 생성
         metadata_section = ""
         if self.profile.metadata:
             metadata_lines = ["", "## Context Metadata"]
@@ -270,16 +230,11 @@ class AgentNode(BaseNode):
             metadata_lines.append("")
 
             for key, value in self.profile.metadata.items():
-                # 리스트면 쉼표로 구분
-                if isinstance(value, list):
-                    value_str = ", ".join(str(v) for v in value)
-                else:
-                    value_str = str(value)
+                value_str = ", ".join(str(v) for v in value) if isinstance(value, list) else str(value)
                 metadata_lines.append(f"- **{key}**: {value_str}")
 
             metadata_lines.append("")
             metadata_lines.append("💡 이 정보를 MCP 도구(예: GitHub) 호출 시 적극 활용하세요.")
-
             metadata_section = "\n".join(metadata_lines)
 
         host_end_protocol_section = ""
@@ -296,27 +251,28 @@ class AgentNode(BaseNode):
 {HOST_END_MEETING_COMMAND}
             """
 
-        # role_defaults 로드 및 적용
         role_defaults_section = ""
         try:
-            import yaml as _yaml
             import os
+            import yaml as _yaml
+
             defaults_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
-                "config", "role_defaults.yaml"
+                os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                ),
+                "config",
+                "role_defaults.yaml",
             )
             if os.path.exists(defaults_path):
-                with open(defaults_path, 'r', encoding='utf-8') as f:
-                    defaults_config = _yaml.safe_load(f)
+                with open(defaults_path, "r", encoding="utf-8") as file:
+                    defaults_config = _yaml.safe_load(file)
                 defaults = defaults_config.get("role_defaults", {})
-
-                # _all 규칙 + 역할별 규칙 결합
                 rules = list(defaults.get("_all", []))
-                role_rules = defaults.get(self.profile.role, [])
-                rules.extend(role_rules)
-
+                rules.extend(defaults.get(self.profile.role, []))
                 if rules:
-                    role_defaults_section = "\n\n## 역할 행동 규칙\n" + "\n".join(f"- {r}" for r in rules)
+                    role_defaults_section = "\n\n## 역할 행동 규칙\n" + "\n".join(
+                        f"- {rule}" for rule in rules
+                    )
         except Exception:
             pass
 
@@ -325,44 +281,28 @@ class AgentNode(BaseNode):
 {format_today_context()}
 
 ## 책임
-{chr(10).join(f'- {r}' for r in self.profile.responsibilities)}
+{chr(10).join(f'- {responsibility}' for responsibility in self.profile.responsibilities)}
 
 ## 전문 분야
-{chr(10).join(f'- {e}' for e in self.profile.expertise)}
+{chr(10).join(f'- {expertise}' for expertise in self.profile.expertise)}
 {participants_section}{metadata_section}{host_end_protocol_section}{role_defaults_section}
 간결하고 전문적으로 한국어로 응답하세요."""
 
-    def _format_agenda_context(
-        self, agendas: list[dict], current_idx: int
-    ) -> str:
-        """안건 정보를 프롬프트용으로 포맷팅
-
-        Args:
-            agendas: 안건 리스트
-            current_idx: 현재 안건 인덱스
-
-        Returns:
-            포맷된 안건 컨텍스트 문자열
-        """
+    def _format_agenda_context(self, agendas: list[dict], current_idx: int) -> str:
+        """안건 정보를 프롬프트용으로 포맷팅."""
         if not agendas:
             return ""
 
-        # 전체 안건 목록
         agenda_lines = ["## 📋 회의 안건", ""]
-        for i, agenda in enumerate(agendas):
+        for index, agenda in enumerate(agendas):
             emoji = STATUS_EMOJI.get(agenda.get("status", "pending"), "❓")
             title = agenda.get("title", "")
-
-            # 상태 텍스트
             status_str = STATUS_TEXT.get(agenda.get("status", "pending"), "")
-
-            # 현재 안건 표시
-            marker = " ← 현재 안건" if i == current_idx else ""
-            agenda_lines.append(f"{i+1}. {emoji} {title} ({status_str}){marker}")
+            marker = " ← 현재 안건" if index == current_idx else ""
+            agenda_lines.append(f"{index+1}. {emoji} {title} ({status_str}){marker}")
 
         agenda_lines.append("")
 
-        # 현재 안건 상세 정보
         if 0 <= current_idx < len(agendas):
             current_agenda = agendas[current_idx]
             agenda_lines.extend(
@@ -374,44 +314,48 @@ class AgentNode(BaseNode):
 
             if current_agenda.get("description"):
                 agenda_lines.append(f"**설명**: {current_agenda['description']}")
-
             if current_agenda.get("required_speakers"):
                 speakers = ", ".join(current_agenda["required_speakers"])
                 agenda_lines.append(f"**필수 발언자**: {speakers}")
-
             if current_agenda.get("owner"):
                 agenda_lines.append(f"**담당자**: {current_agenda['owner']}")
-
             if current_agenda.get("decision"):
                 agenda_lines.append(f"**결정사항**: {current_agenda['decision']}")
 
-            # 안건 scope 경계 자동 생성
             scope_notes = []
-
-            # 이전 안건과의 관계
             if current_idx > 0:
                 prev_agenda = agendas[current_idx - 1]
                 prev_title = prev_agenda.get("title", "")
                 if prev_agenda.get("status") == "completed":
-                    scope_notes.append(f"'{prev_title}'에서 이미 논의된 내용은 반복하지 마세요. 새로운 관점만 추가하세요.")
+                    scope_notes.append(
+                        f"'{prev_title}'에서 이미 논의된 내용은 반복하지 마세요. 새로운 관점만 추가하세요."
+                    )
 
-            # 다음 안건과의 관계
             if current_idx < len(agendas) - 1:
                 next_agenda = agendas[current_idx + 1]
                 next_title = next_agenda.get("title", "")
-                scope_notes.append(f"'{next_title}'에서 다룰 내용은 이 안건에서 논의하지 마세요.")
+                scope_notes.append(
+                    f"'{next_title}'에서 다룰 내용은 이 안건에서 논의하지 마세요."
+                )
 
-            # 안건 유형별 자동 지시사항
             title_lower = current_agenda.get("title", "").lower()
             if "리뷰" in title_lower or "현황" in title_lower:
-                scope_notes.append("리뷰/현황 안건: MCP 도구로 데이터를 조회한 후 수치 기반으로 논의하세요. 이슈/PR 전수 나열은 피하고 핵심 지표 3-5개로 요약하세요.")
+                scope_notes.append(
+                    "리뷰/현황 안건: MCP 도구로 데이터를 조회한 후 수치 기반으로 논의하세요. "
+                    "이슈/PR 전수 나열은 피하고 핵심 지표 3-5개로 요약하세요."
+                )
             if "계획" in title_lower or "플래닝" in title_lower:
-                scope_notes.append("계획 안건: 구체적인 일정, 담당자, 완료 기준을 포함하세요. 추상적인 방향만 제시하지 마세요.")
+                scope_notes.append(
+                    "계획 안건: 구체적인 일정, 담당자, 완료 기준을 포함하세요. "
+                    "추상적인 방향만 제시하지 마세요."
+                )
             if "로드맵" in title_lower or "우선순위" in title_lower:
-                scope_notes.append("로드맵 안건: '무엇을 할 것인가'(목표, 우선순위)에 집중하세요. 구체적 일정/데드라인은 별도 계획 안건에서 다룹니다.")
+                scope_notes.append(
+                    "로드맵 안건: '무엇을 할 것인가'(목표, 우선순위)에 집중하세요. "
+                    "구체적 일정/데드라인은 별도 계획 안건에서 다룹니다."
+                )
 
             agenda_lines.append("")
-
             if scope_notes:
                 agenda_lines.append("## 🎯 현재 안건 지침")
                 for note in scope_notes:
@@ -422,21 +366,14 @@ class AgentNode(BaseNode):
         return "\n".join(agenda_lines)
 
     def _format_proposals_context(self, proposals: List[dict]) -> str:
-        """Host 프롬프트용 대기 중인 안건 후보 목록 포맷팅
-
-        Args:
-            proposals: pending_proposals 리스트
-
-        Returns:
-            포맷된 안건 후보 컨텍스트 문자열
-        """
+        """Host 프롬프트용 대기 중인 안건 후보 목록 포맷팅."""
         lines = ["## ⏳ 대기 중인 안건 후보 (Host 승인 필요)", ""]
-        for i, proposal in enumerate(proposals):
+        for index, proposal in enumerate(proposals):
             title = proposal.get("title", "")
             description = proposal.get("description", "")
             proposed_by = proposal.get("proposed_by", "")
             desc_str = f" — {description}" if description else ""
-            lines.append(f"{i}. [{proposed_by}] {title}{desc_str}")
+            lines.append(f"{index}. [{proposed_by}] {title}{desc_str}")
         lines.append("")
         lines.append("💡 approve_agenda(index) 또는 reject_agenda(index, reason)로 처리하세요.")
         return "\n".join(lines)
@@ -447,21 +384,9 @@ class AgentNode(BaseNode):
         pending_proposals: List[dict],
         agendas: List[dict],
     ) -> Dict[str, Any]:
-        """안건 액션을 state update dict로 변환
-
-        Args:
-            actions: agenda_actions container에 기록된 액션 목록
-            pending_proposals: 현재 후보 안건 리스트
-            agendas: 현재 정식 안건 리스트
-
-        Returns:
-            state 업데이트 딕셔너리 {"pending_proposals": [...], "agendas": [...]}
-        """
+        """안건 액션을 state update dict로 변환."""
         new_proposals = list(pending_proposals)
         new_agendas = list(agendas)
-
-        # approve/reject는 인덱스 기반이므로 제거 시 뒤에서부터 처리
-        # (여러 번 처리 시 인덱스 drift 방지)
         remove_indices = set()
 
         for action in actions:
@@ -469,29 +394,84 @@ class AgentNode(BaseNode):
             if act == "propose":
                 new_proposals.append(action["data"])
                 logger.info(
-                    f"[{self.profile.name}] 📋 안건 후보 등록: '{action['data'].get('title', '')}'"
+                    f"[{self.profile.name}] 📋 안건 후보 등록: "
+                    f"'{action['data'].get('title', '')}'"
                 )
             elif act == "approve":
-                idx = action.get("index")
-                if idx is not None and 0 <= idx < len(pending_proposals) and idx not in remove_indices:
-                    remove_indices.add(idx)
+                index = action.get("index")
+                if (
+                    index is not None
+                    and 0 <= index < len(pending_proposals)
+                    and index not in remove_indices
+                ):
+                    remove_indices.add(index)
                     new_agendas.append(action["data"])
                     logger.info(
-                        f"[{self.profile.name}] ✅ 안건 승인: '{action['data'].get('title', '')}'"
+                        f"[{self.profile.name}] ✅ 안건 승인: "
+                        f"'{action['data'].get('title', '')}'"
                     )
             elif act == "reject":
-                idx = action.get("index")
-                if idx is not None and 0 <= idx < len(pending_proposals):
-                    remove_indices.add(idx)
-                    logger.info(
-                        f"[{self.profile.name}] ❌ 안건 거절 (idx={idx})"
-                    )
+                index = action.get("index")
+                if index is not None and 0 <= index < len(pending_proposals):
+                    remove_indices.add(index)
+                    logger.info(f"[{self.profile.name}] ❌ 안건 거절 (idx={index})")
 
-        # 제거 대상 인덱스를 역순으로 제거 (인덱스 drift 방지)
-        # pending_proposals 기준 인덱스이므로 new_proposals에서 제거
-        # propose로 추가된 항목은 기존 proposals 뒤에 붙으므로 기존 인덱스는 유효
-        for idx in sorted(remove_indices, reverse=True):
-            if idx < len(new_proposals):
-                new_proposals.pop(idx)
+        for index in sorted(remove_indices, reverse=True):
+            if index < len(new_proposals):
+                new_proposals.pop(index)
 
         return {"pending_proposals": new_proposals, "agendas": new_agendas}
+
+
+@register_node("agent", category="agents")
+class AgentNode(BaseNode):
+    """AI 에이전트 노드."""
+
+    node_type = NodeType.AGENT
+    requires_llm = True
+    requires_tools = True
+
+    def __init__(
+        self,
+        profile: AgentProfile,
+        model=None,
+        tools: Optional[list] = None,
+        all_agent_names: Optional[list[str]] = None,
+        all_profiles: Optional[dict] = None,
+        mcp_tools: Optional[dict] = None,
+        settings=None,
+        **kwargs,
+    ):
+        self.profile = profile
+        self.all_agent_names = all_agent_names or []
+        self.all_profiles = all_profiles or {}
+        self._executor = AgentNodeExecutor(
+            profile=profile,
+            model=model,
+            tools=tools,
+            mcp_tools=mcp_tools,
+            settings=settings,
+        )
+        self.agent = self._executor.agent
+        self.sub_agent_tools = self._executor.sub_agent_tools
+
+    async def execute(self, state: MeetingState) -> Dict[str, Any]:
+        return await self._executor.execute(
+            state,
+            all_agent_names=self.all_agent_names,
+            all_profiles=self.all_profiles,
+        )
+
+    def _build_agent_prompt(self) -> str:
+        return self._executor._build_agent_prompt(
+            all_agent_names=self.all_agent_names,
+            all_profiles=self.all_profiles,
+        )
+
+    def _apply_agenda_actions(
+        self,
+        actions: List[dict],
+        pending_proposals: List[dict],
+        agendas: List[dict],
+    ) -> Dict[str, Any]:
+        return self._executor._apply_agenda_actions(actions, pending_proposals, agendas)

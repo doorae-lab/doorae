@@ -22,6 +22,7 @@ def test_returns_required_keys():
     assert "agendas" in result
     assert "current_agenda_idx" in result
     assert "pending_speakers" in result
+    assert "participants" in result
     assert "speaker_counts" in result
     assert "max_turns" in result
     assert "start_time" in result
@@ -60,3 +61,17 @@ def test_initial_message_as_human_message():
 
     assert isinstance(result["messages"][0], HumanMessage)
     assert result["messages"][0].content == "회의를 시작합니다"
+
+
+def test_build_initial_state_tracks_human_participants() -> None:
+    settings = MagicMock()
+    settings.max_turns = 100
+
+    result = build_initial_state(
+        settings=settings,
+        initial_message="시작",
+        human_names=["Alice", "Bob"],
+        agendas=[],
+    )
+
+    assert result["participants"] == {"Alice": "participant", "Bob": "participant"}

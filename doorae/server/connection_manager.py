@@ -51,30 +51,40 @@ class ConnectionManager:
             message: 전송할 메시지
             username: 대상 사용자 이름
         """
-        if username in self.connections:
-            try:
-                await self.connections[username].send_text(message)
-            except Exception:
-                logger.warning(f"Failed to send message to {username}")
+        connection = self.connections.get(username)
+        if connection is None:
+            return
+
+        try:
+            await connection.send_text(message)
+        except Exception:
+            logger.warning(f"Failed to send message to {username}")
+            if self.connections.get(username) is connection:
                 self.disconnect(username)
 
     async def broadcast(self, message: str):
         """모든 연결된 사용자에게 메시지 브로드캐스트.
 
         개별 연결 실패 시 해당 연결만 정리하고 나머지에는 계속 전송.
+        순회 중 다른 코루틴이 connect/disconnect를 수행할 수 있으므로
+        연결 목록 스냅샷을 기준으로 전송한다.
 
         Args:
             message: 전송할 메시지
         """
-        disconnected = []
-        for username, connection in self.connections.items():
+        disconnected: list[tuple[str, WebSocket]] = []
+        for username, connection in list(self.connections.items()):
+            if self.connections.get(username) is not connection:
+                continue
             try:
                 await connection.send_text(message)
             except Exception:
                 logger.warning(f"Failed to broadcast to {username}")
-                disconnected.append(username)
-        for username in disconnected:
-            self.disconnect(username)
+                if self.connections.get(username) is connection:
+                    disconnected.append((username, connection))
+        for username, connection in disconnected:
+            if self.connections.get(username) is connection:
+                self.disconnect(username)
 
     def get_connection_count(self) -> int:
         """현재 연결된 사용자 수 반환.

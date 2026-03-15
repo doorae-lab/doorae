@@ -47,7 +47,7 @@ def test_workflow_runtime_profile_shadows_nested_agent_name() -> None:
 
     mock_provider = AsyncMock(spec=InputProvider)
     mock_model = MagicMock()
-    captured_profiles: dict[str, AgentProfile] = {}
+    captured_registry = None
 
     base_profiles = {
         "TechLead": AgentProfile(
@@ -82,10 +82,9 @@ def test_workflow_runtime_profile_shadows_nested_agent_name() -> None:
     }
 
     def _fake_create(node_type: str, **kwargs: object) -> object:
-        profile = kwargs["profile"]
-        profile_name = getattr(profile, "name", "unknown")
-        captured_profiles[str(profile_name)] = profile
-        return MagicMock(name=f"{node_type}_{profile_name}_node")
+        nonlocal captured_registry
+        captured_registry = kwargs["registry"]
+        return MagicMock(name=f"{node_type}_node")
 
     with patch("doorae.graph.workflow.create_main_llm", return_value=mock_model), patch(
         "doorae.graph.workflow.create_task_llm", return_value=mock_model
@@ -99,9 +98,10 @@ def test_workflow_runtime_profile_shadows_nested_agent_name() -> None:
         )
 
     assert workflow is not None
-    assert set(captured_profiles) == {"TechLead", "Backend"}
-    assert captured_profiles["TechLead"].get_child_names() == ["Frontend"]
-    assert captured_profiles["Backend"].is_human is True
+    assert captured_registry is not None
+    assert captured_registry.all_names == ["TechLead", "Backend"]
+    assert captured_registry.get("TechLead").get_child_names() == ["Frontend"]
+    assert captured_registry.get("Backend").is_human is True
 
 
 def test_workflow_uses_create_agent_llm_for_ai_profiles():
@@ -186,10 +186,8 @@ def test_workflow_reuses_main_model_when_profile_llm_not_set() -> None:
         captured: dict[str, object] = {}
 
         def _fake_create(node_type: str, **kwargs: object) -> object:
-            profile = kwargs["profile"]
-            profile_name = getattr(profile, "name", "unknown")
-            captured[str(profile_name)] = kwargs.get("model")
-            return MagicMock(name=f"{node_type}_{profile_name}_node")
+            captured.update(kwargs.get("agent_models", {}))
+            return MagicMock(name=f"{node_type}_node")
 
         return captured, _fake_create
 
