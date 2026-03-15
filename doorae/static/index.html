@@ -103,6 +103,26 @@
             opacity: 0.9;
         }
 
+        .agenda-bar {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 20px;
+            background: #eef2ff;
+            border-bottom: 1px solid #d6dcff;
+            color: #344054;
+            font-size: 0.95em;
+        }
+
+        .agenda-title {
+            font-weight: 600;
+        }
+
+        .agenda-meta {
+            color: #667085;
+            white-space: nowrap;
+        }
+
         .messages {
             flex: 1;
             padding: 20px;
@@ -138,10 +158,37 @@
             color: #333;
         }
 
+        .message.ai {
+            border-left: 4px solid #667eea;
+        }
+
+        .message.streaming .content::after {
+            content: '▍';
+            margin-left: 2px;
+            color: #667eea;
+            animation: blink 1s steps(1) infinite;
+        }
+
+        .message.meeting-ended {
+            background: #fff4e5;
+            color: #b54708;
+        }
+
         .message .sender {
             font-weight: 600;
             margin-bottom: 5px;
             font-size: 0.9em;
+        }
+
+        .message .badge {
+            display: inline-block;
+            margin-left: 8px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #eef2ff;
+            color: #4f46e5;
+            font-size: 0.72em;
+            font-weight: 600;
         }
 
         .message .content {
@@ -190,8 +237,20 @@
             background: #5568d3;
         }
 
+        .input-area button:disabled,
+        .input-area input:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         .hidden {
             display: none;
+        }
+
+        @keyframes blink {
+            50% {
+                opacity: 0;
+            }
         }
     </style>
 </head>
@@ -216,6 +275,10 @@
                 <h2>채팅방</h2>
                 <div class="username" id="currentUsername"></div>
             </div>
+            <div class="agenda-bar" id="agendaBar">
+                <span class="agenda-title" id="currentAgenda">안건 대기 중...</span>
+                <span class="agenda-meta" id="agendaMeta">회의 준비 중</span>
+            </div>
             <div class="messages" id="messages"></div>
             <div class="input-area">
                 <input
@@ -224,7 +287,7 @@
                     placeholder="메시지 입력..."
                     onkeypress="handleKeyPress(event)"
                 />
-                <button onclick="sendMessage()">전송</button>
+                <button id="sendButton" onclick="sendMessage()">전송</button>
             </div>
         </div>
     </div>
@@ -233,6 +296,11 @@
         let ws = null;
         let username = '';
         let roomId = 'default-room'; // TODO: 회의방 선택 기능
+        let currentSpeaker = null;
+        let currentMessageEl = null;
+        let currentAgendaIdx = -1;
+        let agendas = [];
+        let meetingEnded = false;
 
         // 채팅 참여
         async function joinChat() {
@@ -308,6 +376,15 @@
 
         // 메시지 처리
         function handleMessage(data) {
+            if (!data || typeof data.type !== 'string') {
+                return;
+            }
+
+            if (data.type.startsWith('semantic:')) {
+                handleSemanticEvent(data.type.slice('semantic:'.length), data.data || {});
+                return;
+            }
+
             if (data.type === 'system') {
                 addSystemMessage(data.data.message);
             } else if (data.type === 'message') {
@@ -321,12 +398,114 @@
             }
         }
 
+        function handleSemanticEvent(eventType, eventData) {
+            switch (eventType) {
+                case 'speaker_changed':
+                    handleSpeakerChanged(eventData);
+                    break;
+                case 'token':
+                    handleToken(eventData);
+                    break;
+                case 'turn_completed':
+                    handleTurnCompleted();
+                    break;
+                case 'human_turn_started':
+                    handleHumanTurnStarted(eventData);
+                    break;
+                case 'agenda_updated':
+                    handleAgendaUpdated(eventData);
+                    break;
+                case 'meeting_ended':
+                    handleMeetingEnded(eventData);
+                    break;
+                case 'agent_profiles':
+                case 'pending_speakers_changed':
+                case 'participant_status_changed':
+                case 'tool_call':
+                case 'participants_list':
+                case 'user_joined':
+                    break;
+                default:
+                    console.debug('무시된 semantic 이벤트:', eventType, eventData);
+            }
+        }
+
+        function handleSpeakerChanged(data) {
+            if (!data || typeof data.speaker !== 'string' || !data.speaker) {
+                return;
+            }
+
+            finalizeCurrentStream();
+            currentSpeaker = data.speaker;
+            currentMessageEl = createMessageElement(data.speaker, '', false, {
+                isAi: true,
+                streaming: true,
+                badge: data.is_delegated ? '위임' : 'AI'
+            });
+            appendMessageElement(currentMessageEl);
+        }
+
+        function handleToken(data) {
+            if (!data || typeof data.content !== 'string' || !data.content) {
+                return;
+            }
+
+            if (!currentMessageEl) {
+                handleSpeakerChanged({
+                    speaker: data.speaker || 'AI',
+                    is_delegated: Boolean(data.is_delegated)
+                });
+            }
+
+            const contentEl = currentMessageEl.querySelector('.content');
+            if (contentEl) {
+                contentEl.textContent += data.content;
+            }
+            scrollMessagesToBottom();
+        }
+
+        function handleTurnCompleted() {
+            finalizeCurrentStream();
+            currentSpeaker = null;
+        }
+
+        function handleHumanTurnStarted(data) {
+            if (!data || typeof data.username !== 'string' || !data.username) {
+                return;
+            }
+
+            addSystemMessage(`${data.username}님의 발언 차례입니다.`);
+            setInputEnabled(true);
+            document.getElementById('messageInput').focus();
+        }
+
+        function handleAgendaUpdated(data) {
+            if (!data || !Array.isArray(data.agendas) || typeof data.current_idx !== 'number') {
+                return;
+            }
+
+            agendas = data.agendas;
+            currentAgendaIdx = data.current_idx;
+            renderAgendaBar();
+        }
+
+        function handleMeetingEnded(data) {
+            if (data && Array.isArray(data.agendas)) {
+                agendas = data.agendas;
+            }
+            finalizeCurrentStream();
+            meetingEnded = true;
+            renderAgendaBar();
+            addSystemMessage('회의가 종료되었습니다.', 'meeting-ended');
+            setInputEnabled(false);
+        }
+
         // 메시지 전송
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const content = input.value.trim();
 
-            if (!content || !ws) return;
+            if (!content || !ws || meetingEnded) return;
 
             ws.send(JSON.stringify({ content }));
             input.value = '';
@@ -341,34 +520,108 @@
 
         // 채팅 메시지 추가
         function addChatMessage(sender, content, isSent) {
-            const messagesDiv = document.getElementById('messages');
+            appendMessageElement(createMessageElement(sender, content, isSent));
+        }
+
+        // 시스템 메시지 추가
+        function addSystemMessage(message, extraClass = '') {
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+            messageDiv.className = `message system ${extraClass}`.trim();
+            messageDiv.textContent = message;
+            appendMessageElement(messageDiv);
+        }
+
+        function createMessageElement(sender, content, isSent, options = {}) {
+            const messageDiv = document.createElement('div');
+            const classes = ['message', isSent ? 'sent' : 'received'];
+
+            if (options.isAi) {
+                classes.push('ai');
+            }
+
+            if (options.streaming) {
+                classes.push('streaming');
+            }
+
+            messageDiv.className = classes.join(' ');
 
             const time = new Date().toLocaleTimeString('ko-KR', {
                 hour: '2-digit',
                 minute: '2-digit'
             });
 
-            messageDiv.innerHTML = `
-                ${!isSent ? `<div class="sender">${sender}</div>` : ''}
-                <div class="content">${escapeHtml(content)}</div>
-                <div class="time">${time}</div>
-            `;
+            if (!isSent) {
+                const senderDiv = document.createElement('div');
+                senderDiv.className = 'sender';
+                senderDiv.textContent = sender || 'AI';
 
+                if (options.badge) {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge';
+                    badge.textContent = options.badge;
+                    senderDiv.appendChild(badge);
+                }
+
+                messageDiv.appendChild(senderDiv);
+            }
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'content';
+            contentDiv.textContent = content;
+            messageDiv.appendChild(contentDiv);
+
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'time';
+            timeDiv.textContent = time;
+            messageDiv.appendChild(timeDiv);
+
+            return messageDiv;
+        }
+
+        function appendMessageElement(messageDiv) {
+            const messagesDiv = document.getElementById('messages');
             messagesDiv.appendChild(messageDiv);
+            scrollMessagesToBottom();
+        }
+
+        function scrollMessagesToBottom() {
+            const messagesDiv = document.getElementById('messages');
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // 시스템 메시지 추가
-        function addSystemMessage(message) {
-            const messagesDiv = document.getElementById('messages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message system';
-            messageDiv.textContent = message;
+        function finalizeCurrentStream() {
+            if (!currentMessageEl) {
+                return;
+            }
 
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            currentMessageEl.classList.remove('streaming');
+            currentMessageEl = null;
+        }
+
+        function renderAgendaBar() {
+            const titleEl = document.getElementById('currentAgenda');
+            const metaEl = document.getElementById('agendaMeta');
+
+            if (!Array.isArray(agendas) || currentAgendaIdx < 0 || !agendas[currentAgendaIdx]) {
+                titleEl.textContent = meetingEnded ? '회의 종료' : '안건 대기 중...';
+                metaEl.textContent = meetingEnded ? '모든 토론이 종료되었습니다' : '회의 준비 중';
+                return;
+            }
+
+            const currentAgenda = agendas[currentAgendaIdx];
+            const title = currentAgenda.title || `안건 ${currentAgendaIdx + 1}`;
+            const status = currentAgenda.status || 'pending';
+            titleEl.textContent = `${currentAgendaIdx + 1}. ${title}`;
+            metaEl.textContent = meetingEnded
+                ? '회의 종료'
+                : `상태: ${status}`;
+        }
+
+        function setInputEnabled(enabled) {
+            const input = document.getElementById('messageInput');
+            const button = document.getElementById('sendButton');
+            input.disabled = !enabled;
+            button.disabled = !enabled;
         }
 
         // HTML 이스케이프
