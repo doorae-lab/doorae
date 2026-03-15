@@ -24,6 +24,7 @@ from doorae.interfaces.tui import (
     ToolCallEnded,
     ToolCallStarted,
     TurnCompleted,
+    UserMessageReceived,
 )
 from doorae.interfaces.tui_ws_client import ServerEventClient, _format_connection_closed
 
@@ -633,3 +634,40 @@ async def test_dispatch_state_snapshot() -> None:
     assert isinstance(speaker_message, SpeakerChanged)
     assert speaker_message.speaker == "Alice"
     assert speaker_message.pending == ["Bob"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_message_event() -> None:
+    """message 타입 이벤트가 UserMessageReceived로 변환되는지 테스트."""
+    app = RecordingApp()
+    client = ServerEventClient(ws_url="ws://test", username="Bob", app=app)
+
+    event = {
+        "type": "message",
+        "data": {"content": "안녕하세요", "sender": "Alice"},
+        "timestamp": "2026-03-15T12:00:00",
+    }
+    await client._dispatch_event(event)
+
+    assert len(app.messages) == 1
+    msg = app.messages[0]
+    assert isinstance(msg, UserMessageReceived)
+    assert msg.content == "안녕하세요"
+    assert msg.sender == "Alice"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_message_event_ignores_empty() -> None:
+    """content가 비어있는 message 이벤트는 무시되는지 테스트."""
+    app = RecordingApp()
+    client = ServerEventClient(ws_url="ws://test", username="Bob", app=app)
+
+    for data in [
+        {"content": "", "sender": "Alice"},
+        {"content": None, "sender": "Alice"},
+        {"sender": "Alice"},
+        {},
+    ]:
+        await client._dispatch_event({"type": "message", "data": data})
+
+    assert app.messages == []

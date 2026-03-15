@@ -288,7 +288,10 @@ async def test_run_dispatches_callback_protocol_from_streamed_events() -> None:
     await engine.run(callback)
 
     assert len(callback.raw_events) == len(events)
-    assert callback.agenda_updates == [([{"title": "안건 1", "status": "in_progress"}], 0)]
+    assert callback.agenda_updates == [
+        ([{"title": "안건 1", "status": "in_progress"}], 0),
+        ([{"title": "안건 1", "status": "completed"}], 0),
+    ]
     assert callback.human_turns == ["Alice"]
     assert callback.speaker_changes == [("PM", False)]
     assert callback.tokens == [("진행합니다", "PM", False)]

@@ -24,6 +24,7 @@ from doorae.interfaces.tui import (
     ToolCallEnded,
     ToolCallStarted,
     TurnCompleted,
+    UserMessageReceived,
 )
 
 if TYPE_CHECKING:
@@ -182,6 +183,17 @@ class ServerEventClient:
                 message = data.get("error")
                 if isinstance(message, str) and message:
                     self._emit_error(message)
+            return
+
+        if event_type == "message":
+            data = event.get("data", {})
+            if isinstance(data, dict):
+                content = data.get("content")
+                sender = data.get("sender")
+                if isinstance(content, str) and isinstance(sender, str) and content:
+                    self._app.post_message(
+                        UserMessageReceived(content=content, sender=sender)
+                    )
             return
 
         if not event_type.startswith("semantic:"):
