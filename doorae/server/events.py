@@ -1,7 +1,9 @@
 """LangGraph 이벤트 변환 유틸리티."""
 
-from typing import Any, Dict
 from datetime import datetime
+from typing import Any, Dict
+
+from doorae.interfaces.engine import MeetingEngineRuntimeState
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -120,6 +122,8 @@ def format_system_event(message: str) -> Dict[str, Any]:
         },
         "timestamp": datetime.now().isoformat(),
     }
+
+
 def format_semantic_event(event_type: str, **kwargs: Any) -> Dict[str, Any]:
     """MeetingEngine semantic 이벤트를 WebSocket 전송용으로 포맷팅."""
     return {
@@ -127,3 +131,22 @@ def format_semantic_event(event_type: str, **kwargs: Any) -> Dict[str, Any]:
         "data": {key: _to_jsonable(value) for key, value in kwargs.items()},
         "timestamp": datetime.now().isoformat(),
     }
+
+
+def format_state_snapshot_event(
+    runtime_state: MeetingEngineRuntimeState,
+    top_profiles: dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """회의 중간 합류 클라이언트를 위한 현재 상태 snapshot 이벤트를 포맷팅."""
+    payload: dict[str, Any] = {
+        "current_speaker": runtime_state.current_speaker,
+        "current_delegated_speaker": runtime_state.current_delegated_speaker,
+        "agendas": runtime_state.agendas,
+        "current_agenda_idx": runtime_state.current_agenda_idx,
+        "pending_speakers": runtime_state.pending_speakers,
+        "speaker_counts": runtime_state.speaker_counts,
+        "participant_statuses": runtime_state.participant_statuses,
+    }
+    if top_profiles:
+        payload["top_profiles"] = top_profiles
+    return format_semantic_event("state_snapshot", **payload)

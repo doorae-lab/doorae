@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 from typing import TYPE_CHECKING, Any
 
 from websockets import connect
@@ -12,6 +13,8 @@ from websockets.exceptions import ConnectionClosed
 from doorae.interfaces.tui import (
     AgendaUpdated,
     AgentProfilesReceived,
+    ConnectionStatus,
+    ConnectionStatusChanged,
     HumanTurnStarted,
     MeetingEnded,
     ParticipantStatusChanged,
@@ -25,6 +28,12 @@ from doorae.interfaces.tui import (
 
 if TYPE_CHECKING:
     from doorae.interfaces.tui import MeetingTuiApp
+
+
+INITIAL_RETRY_DELAY = 1.0
+MAX_RETRY_DELAY = 30.0
+BACKOFF_FACTOR = 2.0
+JITTER_FACTOR = 0.1
 
 
 def _format_connection_closed(exc: ConnectionClosed) -> str:
@@ -42,6 +51,14 @@ def _format_connection_closed(exc: ConnectionClosed) -> str:
     return "서버 연결이 종료되었습니다."
 
 
+def _compute_retry_delay(attempt: int) -> float:
+    """Return a jittered exponential backoff delay in seconds."""
+    capped_attempt = max(attempt - 1, 0)
+    base_delay = min(INITIAL_RETRY_DELAY * (BACKOFF_FACTOR**capped_attempt), MAX_RETRY_DELAY)
+    jitter = 1 + random.uniform(-JITTER_FACTOR, JITTER_FACTOR)
+    return max(0.0, base_delay * jitter)
+
+
 class ServerEventClient:
     """Receive semantic room events and adapt them into existing TUI messages."""
 
@@ -52,39 +69,72 @@ class ServerEventClient:
         self._websocket: Any = None
         self._ready = asyncio.Event()
         self.connected = asyncio.Event()
+        self._stopped = asyncio.Event()
         self._pending_speakers: list[str] = []
 
     async def run(self) -> None:
         self._ready.clear()
         self.connected.clear()
+        self._stopped.clear()
         self._pending_speakers = []
         try:
-            async with connect(self._ws_url) as websocket:
-                self._websocket = websocket
-                self.connected.set()
-                self._ready.set()
+            attempt = 0
+            has_connected = False
+            while not self._stopped.is_set():
+                should_retry = False
+                try:
+                    async with connect(self._ws_url) as websocket:
+                        self._websocket = websocket
+                        self.connected.set()
+                        connected_after_retry = attempt > 0
+                        if not has_connected:
+                            self._ready.set()
+                            has_connected = True
+                        if connected_after_retry:
+                            self._emit_status(ConnectionStatus.CONNECTED)
+                        attempt = 0
 
-                while True:
-                    try:
-                        raw_message = await websocket.recv()
-                    except ConnectionClosed as exc:
-                        self._emit_error(_format_connection_closed(exc))
-                        return
-                    except StopAsyncIteration:
-                        self._emit_error("서버 연결이 종료되었습니다.")
-                        return
+                        while not self._stopped.is_set():
+                            try:
+                                raw_message = await websocket.recv()
+                            except ConnectionClosed:
+                                should_retry = not self._stopped.is_set()
+                                break
+                            except StopAsyncIteration:
+                                should_retry = False
+                                break
 
-                    if not isinstance(raw_message, str):
-                        continue
-                    try:
-                        event = json.loads(raw_message)
-                    except json.JSONDecodeError:
-                        continue
-                    await self._dispatch_event(event)
-        except OSError as exc:
-            self._emit_error(f"서버에 연결할 수 없습니다: {exc}")
-        except Exception as exc:
-            self._emit_error(f"서버 연결 오류: {exc}")
+                            if not isinstance(raw_message, str):
+                                continue
+                            try:
+                                event = json.loads(raw_message)
+                            except json.JSONDecodeError:
+                                continue
+                            await self._dispatch_event(event)
+                except OSError:
+                    should_retry = not self._stopped.is_set()
+                except Exception as exc:
+                    self._emit_error(f"서버 연결 오류: {exc}")
+                    return
+                finally:
+                    self._websocket = None
+                    self.connected.clear()
+
+                if not should_retry:
+                    break
+
+                self._emit_status(ConnectionStatus.DISCONNECTED)
+                attempt += 1
+                delay = _compute_retry_delay(attempt)
+                self._emit_status(
+                    ConnectionStatus.RECONNECTING,
+                    attempt=attempt,
+                    next_retry=delay,
+                )
+                try:
+                    await asyncio.wait_for(self._stopped.wait(), timeout=delay)
+                except asyncio.TimeoutError:
+                    continue
         finally:
             self._websocket = None
             self.connected.clear()
@@ -113,6 +163,11 @@ class ServerEventClient:
             self._emit_error(f"입력 전송 실패: {exc}")
 
     async def close(self) -> None:
+        await self.stop()
+
+    async def stop(self) -> None:
+        self._stopped.set()
+        self._ready.set()
         if self._websocket is not None:
             await self._websocket.close()
 
@@ -143,6 +198,65 @@ class ServerEventClient:
                 self._app.post_message(
                     AgentProfilesReceived(top_profiles_data=top_profiles)
                 )
+            return
+
+        if semantic_type == "state_snapshot":
+            top_profiles = data.get("top_profiles")
+            if isinstance(top_profiles, dict):
+                self._app.post_message(
+                    AgentProfilesReceived(top_profiles_data=top_profiles)
+                )
+
+            pending = data.get("pending_speakers")
+            if isinstance(pending, list):
+                self._pending_speakers = [
+                    speaker for speaker in pending if isinstance(speaker, str)
+                ]
+
+            agendas = data.get("agendas")
+            current_idx = data.get("current_agenda_idx")
+            if isinstance(agendas, list) and isinstance(current_idx, int):
+                self._app.post_message(
+                    AgendaUpdated(agendas=agendas, current_idx=current_idx)
+                )
+
+            participant_statuses = data.get("participant_statuses")
+            waiting_human: str | None = None
+            if isinstance(participant_statuses, dict):
+                for participant_name, status in participant_statuses.items():
+                    if not isinstance(participant_name, str) or not isinstance(status, str):
+                        continue
+                    self._app.post_message(
+                        ParticipantStatusChanged(
+                            participant_name=participant_name,
+                            status=status,
+                        )
+                    )
+                    if status == "waiting_input" and waiting_human is None:
+                        waiting_human = participant_name
+
+            speaker = data.get("current_speaker")
+            if isinstance(speaker, str) and speaker:
+                self._app.post_message(
+                    SpeakerChanged(
+                        speaker=speaker,
+                        pending=list(self._pending_speakers),
+                        is_delegated=False,
+                    )
+                )
+
+            delegated_speaker = data.get("current_delegated_speaker")
+            if isinstance(delegated_speaker, str) and delegated_speaker:
+                self._app.post_message(
+                    SpeakerChanged(
+                        speaker=delegated_speaker,
+                        pending=list(self._pending_speakers),
+                        is_delegated=True,
+                    )
+                )
+
+            if waiting_human is not None:
+                self._app.post_message(HumanTurnStarted(username=waiting_human))
             return
 
         if semantic_type == "speaker_changed":
@@ -248,3 +362,17 @@ class ServerEventClient:
 
     def _emit_error(self, message: str) -> None:
         self._app.post_message(StreamError(message))
+
+    def _emit_status(
+        self,
+        status: ConnectionStatus,
+        attempt: int = 0,
+        next_retry: float | None = None,
+    ) -> None:
+        self._app.post_message(
+            ConnectionStatusChanged(
+                status=status,
+                attempt=attempt,
+                next_retry=next_retry,
+            )
+        )
