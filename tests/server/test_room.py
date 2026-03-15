@@ -15,8 +15,10 @@ class MockConnectionManager:
         self.connections: dict[str, object] = {}
         self.broadcasts: list[str] = []
         self.personal_messages: list[tuple[str, str]] = []  # (message, username)
+        self.connect_calls: list[tuple[str, object, bool]] = []
 
-    async def connect(self, username, websocket):
+    async def connect(self, username, websocket, raw_events=True):
+        self.connect_calls.append((username, websocket, raw_events))
         self.connections[username] = websocket
 
     def disconnect(self, username):
@@ -307,3 +309,14 @@ async def test_first_user_gets_empty_participants_list():
         if "participants_list" in pm[0]
     ]
     assert len(participants_msgs) == 0
+
+
+@pytest.mark.asyncio
+async def test_join_can_opt_out_of_raw_events():
+    room = Room(room_id="test", name="Test")
+    mock_cm = MockConnectionManager()
+    room.connection_manager = mock_cm
+
+    await room.join("Alice", "ws_alice", raw_events=False)
+
+    assert mock_cm.connect_calls == [("Alice", "ws_alice", False)]

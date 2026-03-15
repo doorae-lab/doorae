@@ -106,7 +106,8 @@ async def delete_room(room_id: str):
 async def websocket_endpoint(
     websocket: WebSocket,
     room_id: str,
-    username: str = Query(..., description="사용자 이름")
+    username: str = Query(..., description="사용자 이름"),
+    raw_events: bool = Query(True, description="raw 이벤트 구독 여부"),
 ):
     """WebSocket 채팅 엔드포인트.
 
@@ -117,6 +118,7 @@ async def websocket_endpoint(
         websocket: WebSocket 연결
         room_id: 회의방 ID
         username: 사용자 이름 (쿼리 파라미터)
+        raw_events: raw 이벤트 구독 여부
     """
     room_manager = get_room_manager()
     room = room_manager.get_room(room_id)
@@ -125,7 +127,7 @@ async def websocket_endpoint(
         await websocket.close(code=4004, reason="회의방을 찾을 수 없습니다.")
         return
 
-    await room.join(username, websocket)
+    await room.join(username, websocket, raw_events=raw_events)
     try:
         while True:
             data = await websocket.receive_text()
