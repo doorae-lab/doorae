@@ -470,3 +470,55 @@ async def test_join_skips_state_snapshot_when_workflow_is_not_running():
     assert [message["type"] for message in personal_messages] == [
         "semantic:participants_list",
     ]
+
+
+@pytest.mark.asyncio
+async def test_disconnect_keeps_queue_and_marks_user_offline():
+    room = Room(room_id="test", name="Test")
+    mock_cm = MockConnectionManager()
+    mock_cm.connections["Alice"] = "ws_alice"
+    room.connection_manager = mock_cm
+    queue = room.create_user_queue("Alice")
+
+    await room.disconnect("Alice")
+
+    assert room.get_user_queue("Alice") is queue
+    assert "Alice" not in mock_cm.connections
+    broadcasts = [json.loads(message) for message in mock_cm.broadcasts]
+    assert any(
+        event["type"] == "semantic:participant_status_changed"
+        and event["data"]["participant_name"] == "Alice"
+        and event["data"]["status"] == "offline"
+        for event in broadcasts
+    )
+
+
+@pytest.mark.asyncio
+async def test_leave_removes_queue_after_disconnect():
+    room = Room(room_id="test", name="Test")
+    mock_cm = MockConnectionManager()
+    mock_cm.connections["Alice"] = "ws_alice"
+    room.connection_manager = mock_cm
+    room.create_user_queue("Alice")
+
+    await room.leave("Alice")
+
+    assert room.get_user_queue("Alice") is None
+    broadcasts = [json.loads(message) for message in mock_cm.broadcasts]
+    assert any(
+        event["type"] == "system" and "퇴장" in event["data"]["message"]
+        for event in broadcasts
+    )
+
+
+@pytest.mark.asyncio
+async def test_join_reuses_existing_queue_after_disconnect():
+    room = Room(room_id="test", name="Test")
+    mock_cm = MockConnectionManager()
+    room.connection_manager = mock_cm
+    original_queue = room.create_user_queue("Alice")
+
+    await room.disconnect("Alice")
+    await room.join("Alice", "ws_alice")
+
+    assert room.get_user_queue("Alice") is original_queue

@@ -6,6 +6,7 @@ import asyncio
 import colorsys
 import random
 import time
+from enum import Enum
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
@@ -291,6 +292,25 @@ class StreamError(Message):
         self.error = error
 
 
+class ConnectionStatus(str, Enum):
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    RECONNECTING = "reconnecting"
+
+
+class ConnectionStatusChanged(Message):
+    def __init__(
+        self,
+        status: ConnectionStatus,
+        attempt: int = 0,
+        next_retry: float | None = None,
+    ) -> None:
+        super().__init__()
+        self.status = status
+        self.attempt = attempt
+        self.next_retry = next_retry
+
+
 class AgentProfilesReceived(Message):
     def __init__(self, top_profiles_data: dict[str, dict]) -> None:
         super().__init__()
@@ -519,6 +539,16 @@ class MeetingTuiApp(App[None]):
         padding: 0 1;
         background: $surface;
     }
+    #connection-status {
+        display: none;
+        height: auto;
+        padding: 0 2;
+        background: $surface-darken-1;
+        color: $warning;
+    }
+    #connection-status.visible {
+        display: block;
+    }
     #human-input-panel.visible {
         display: block;
     }
@@ -589,6 +619,7 @@ class MeetingTuiApp(App[None]):
         self._ws_client: ServerEventClient | None = None
         self._server_start_attempted = False
         self._connecting_spinner: SpinnerWidget | None = None
+        self._connection_status = ConnectionStatus.CONNECTED
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -598,6 +629,7 @@ class MeetingTuiApp(App[None]):
             with Vertical(id="right-sidebar"):
                 yield AgendaPanel(id="agenda-panel")
                 yield ParticipantPanel(id="participant-panel")
+        yield Static("", id="connection-status")
         with Vertical(id="human-input-panel"):
             yield Static(self._default_input_label(), id="human-input-label")
             yield SubmittableTextArea(id="input-area")
@@ -686,6 +718,7 @@ class MeetingTuiApp(App[None]):
             self.meeting_status = "starting"
             if not await client.wait_until_connected(timeout=10.0):
                 self.post_message(StreamError(error="서버 연결 시간이 초과되었습니다."))
+                await client.stop()
                 await client_task
                 return
             self.post_message(ServerConnected())
@@ -994,6 +1027,33 @@ class MeetingTuiApp(App[None]):
             return
         scroll.mount(Static("서버에 연결되었습니다."))
         scroll.scroll_end(animate=False)
+
+    def on_connection_status_changed(self, event: ConnectionStatusChanged) -> None:
+        status_bar = self.query_one("#connection-status", Static)
+        previous_status = self._connection_status
+        self._connection_status = event.status
+
+        if event.status == ConnectionStatus.CONNECTED:
+            status_bar.remove_class("visible")
+            status_bar.update("")
+            if previous_status in {
+                ConnectionStatus.DISCONNECTED,
+                ConnectionStatus.RECONNECTING,
+            }:
+                scroll = self._get_conversation_scroll()
+                if scroll is not None:
+                    scroll.mount(Static("서버 연결이 복구되었습니다."))
+                    scroll.scroll_end(animate=False)
+            return
+
+        if event.status == ConnectionStatus.RECONNECTING:
+            next_retry = max(1, int(round(event.next_retry or 0)))
+            status_bar.update(
+                f"⟳ 재연결 중... (시도 {event.attempt}/∞, 다음 시도: {next_retry}초)"
+            )
+        else:
+            status_bar.update("✗ 연결 끊김")
+        status_bar.add_class("visible")
 
     def on_agent_profiles_received(self, event: AgentProfilesReceived) -> None:
         from doorae.core.profile import AgentProfile, flatten_all_profiles

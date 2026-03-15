@@ -13,6 +13,8 @@ from websockets.frames import Close
 from doorae.interfaces.tui import (
     AgendaUpdated,
     AgentProfilesReceived,
+    ConnectionStatus,
+    ConnectionStatusChanged,
     HumanTurnStarted,
     MeetingEnded,
     ParticipantStatusChanged,
@@ -59,6 +61,32 @@ def _patch_connect(monkeypatch: pytest.MonkeyPatch, connection: MockConnection) 
 
     monkeypatch.setattr("doorae.interfaces.tui_ws_client.connect", fake_connect)
     return urls
+
+
+def _patch_connect_sequence(
+    monkeypatch: pytest.MonkeyPatch,
+    connections: list[MockConnection],
+) -> list[str]:
+    urls: list[str] = []
+    remaining = list(connections)
+
+    def fake_connect(ws_url: str) -> MockConnection:
+        urls.append(ws_url)
+        if not remaining:
+            raise AssertionError("unexpected reconnect")
+        return remaining.pop(0)
+
+    monkeypatch.setattr("doorae.interfaces.tui_ws_client.connect", fake_connect)
+    return urls
+
+
+async def _wait_until(predicate, timeout: float = 1.0) -> None:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while not predicate():
+        if loop.time() >= deadline:
+            raise TimeoutError("condition was not met in time")
+        await asyncio.sleep(0)
 
 
 @pytest.mark.asyncio
@@ -156,7 +184,6 @@ async def test_run_dispatches_semantic_messages(monkeypatch: pytest.MonkeyPatch)
         ParticipantStatusChanged,
         ToolCallStarted,
         ToolCallEnded,
-        StreamError,
     ]
 
     speaker_changed = app.messages[0]
@@ -195,25 +222,88 @@ async def test_run_dispatches_semantic_messages(monkeypatch: pytest.MonkeyPatch)
     assert isinstance(tool_start, ToolCallStarted)
     assert isinstance(tool_end, ToolCallEnded)
 
-    disconnect = app.messages[9]
-    assert isinstance(disconnect, StreamError)
-    assert "종료" in disconnect.error
-
-
 @pytest.mark.asyncio
-async def test_run_emits_stream_error_on_connection_failure(
+async def test_run_retries_after_initial_connection_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app = RecordingApp()
-    _patch_connect(monkeypatch, MockConnection(enter_error=OSError("Connection refused")))
+    monkeypatch.setattr("doorae.interfaces.tui_ws_client.random.uniform", lambda a, b: 0.0)
+    release = asyncio.Event()
+    websocket = AsyncMock()
+
+    async def recv_side_effect() -> str:
+        await release.wait()
+        raise ConnectionClosed(Close(1000, ""), None)
+
+    websocket.recv = AsyncMock(side_effect=recv_side_effect)
+    websocket.close = AsyncMock(side_effect=lambda: release.set())
+    urls = _patch_connect_sequence(
+        monkeypatch,
+        [
+            MockConnection(enter_error=OSError("Connection refused")),
+            MockConnection(websocket=websocket),
+        ],
+    )
 
     client = ServerEventClient("ws://example/ws/room?username=alice", "alice", app)
-    await client.run()
+    run_task = asyncio.create_task(client.run())
 
-    assert len(app.messages) == 1
-    error = app.messages[0]
-    assert isinstance(error, StreamError)
-    assert "Connection refused" in error.error
+    await _wait_until(lambda: len(urls) == 2 and client.connected.is_set(), timeout=2.0)
+    await client.stop()
+    await run_task
+
+    status_messages = [message for message in app.messages if isinstance(message, ConnectionStatusChanged)]
+    assert [(message.status, message.attempt) for message in status_messages] == [
+        (ConnectionStatus.DISCONNECTED, 0),
+        (ConnectionStatus.RECONNECTING, 1),
+        (ConnectionStatus.CONNECTED, 0),
+    ]
+    assert all(not isinstance(message, StreamError) for message in app.messages)
+
+
+@pytest.mark.asyncio
+async def test_run_reconnects_after_connection_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = RecordingApp()
+    monkeypatch.setattr("doorae.interfaces.tui_ws_client.random.uniform", lambda a, b: 0.0)
+    release = asyncio.Event()
+    first_websocket = AsyncMock()
+    first_websocket.recv = AsyncMock(
+        side_effect=ConnectionClosed(Close(1006, "connection closed abnormally"), None)
+    )
+
+    second_websocket = AsyncMock()
+
+    async def second_recv_side_effect() -> str:
+        await release.wait()
+        raise ConnectionClosed(Close(1000, ""), None)
+
+    second_websocket.recv = AsyncMock(side_effect=second_recv_side_effect)
+    second_websocket.close = AsyncMock(side_effect=lambda: release.set())
+    urls = _patch_connect_sequence(
+        monkeypatch,
+        [
+            MockConnection(websocket=first_websocket),
+            MockConnection(websocket=second_websocket),
+        ],
+    )
+
+    client = ServerEventClient("ws://example/ws/room?username=alice", "alice", app)
+    run_task = asyncio.create_task(client.run())
+
+    await _wait_until(lambda: len(urls) == 2 and client.connected.is_set(), timeout=2.0)
+    await client.stop()
+    await run_task
+
+    status_messages = [message for message in app.messages if isinstance(message, ConnectionStatusChanged)]
+    assert [(message.status, message.attempt) for message in status_messages] == [
+        (ConnectionStatus.DISCONNECTED, 0),
+        (ConnectionStatus.RECONNECTING, 1),
+        (ConnectionStatus.CONNECTED, 0),
+    ]
+    assert status_messages[1].next_retry == 1.0
+    assert all(not isinstance(message, StreamError) for message in app.messages)
 
 
 @pytest.mark.asyncio
@@ -236,10 +326,7 @@ async def test_run_ignores_malformed_and_unknown_messages(
     client = ServerEventClient("ws://example/ws/room?username=alice", "alice", app)
     await client.run()
 
-    assert len(app.messages) == 1
-    error = app.messages[0]
-    assert isinstance(error, StreamError)
-    assert "종료" in error.error
+    assert app.messages == []
 
 
 @pytest.mark.asyncio
@@ -259,7 +346,7 @@ async def test_run_emits_stream_error_for_server_error_event(
     client = ServerEventClient("ws://example/ws/room?username=alice", "alice", app)
     await client.run()
 
-    assert len(app.messages) == 2
+    assert len(app.messages) == 1
     first = app.messages[0]
     assert isinstance(first, StreamError)
     assert first.error == "boom"
@@ -303,6 +390,7 @@ async def test_wait_until_connected_tracks_connection_lifecycle(
         raise StopAsyncIteration()
 
     websocket.recv = AsyncMock(side_effect=recv_side_effect)
+    websocket.close = AsyncMock(side_effect=lambda: release.set())
     _patch_connect(monkeypatch, MockConnection(websocket=websocket))
 
     client = ServerEventClient("ws://example/ws/room?username=alice", "alice", app)
@@ -311,7 +399,7 @@ async def test_wait_until_connected_tracks_connection_lifecycle(
     await client.wait_until_connected()
     assert client.connected.is_set() is True
 
-    release.set()
+    await client.stop()
     await run_task
 
     assert client.connected.is_set() is False
@@ -353,23 +441,40 @@ def test_format_connection_closed_no_rcvd() -> None:
 async def test_run_formats_connection_closed_without_internal_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """ConnectionClosed with code 1006 should produce a user-friendly message, not raw code."""
+    """ConnectionClosed는 에러 종료 대신 재연결 상태로 전환되어야 한다."""
     app = RecordingApp()
-    websocket = AsyncMock()
-
-    websocket.recv = AsyncMock(
+    first_websocket = AsyncMock()
+    second_websocket = AsyncMock()
+    first_websocket.recv = AsyncMock(
         side_effect=ConnectionClosed(Close(1006, "connection closed abnormally"), None)
     )
-    _patch_connect(monkeypatch, MockConnection(websocket=websocket))
+    second_websocket.recv = AsyncMock(side_effect=StopAsyncIteration())
+    _patch_connect_sequence(
+        monkeypatch,
+        [
+            MockConnection(websocket=first_websocket),
+            MockConnection(websocket=second_websocket),
+        ],
+    )
+    monkeypatch.setattr("doorae.interfaces.tui_ws_client.random.uniform", lambda a, b: 0.0)
 
     client = ServerEventClient("ws://example/ws/room?username=alice", "alice", app)
     await client.run()
 
-    assert len(app.messages) == 1
-    error = app.messages[0]
-    assert isinstance(error, StreamError)
-    assert "1006" not in error.error
-    assert "비정상" in error.error
+    assert len(app.messages) == 3
+    disconnected = app.messages[0]
+    assert isinstance(disconnected, ConnectionStatusChanged)
+    assert disconnected.status == ConnectionStatus.DISCONNECTED
+
+    reconnecting = app.messages[1]
+    assert isinstance(reconnecting, ConnectionStatusChanged)
+    assert reconnecting.status == ConnectionStatus.RECONNECTING
+    assert reconnecting.attempt == 1
+    assert reconnecting.next_retry == 1.0
+
+    connected = app.messages[2]
+    assert isinstance(connected, ConnectionStatusChanged)
+    assert connected.status == ConnectionStatus.CONNECTED
 
 
 @pytest.mark.asyncio
