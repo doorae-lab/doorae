@@ -353,6 +353,10 @@ class MeetingEngine:
         agendas = output_data.get("agendas")
         if isinstance(agendas, list):
             self._runtime.agendas = cast(list[dict[str, Any]], agendas)
+            await callback.on_agenda_updated(
+                agendas=self._runtime.agendas,
+                current_idx=self._runtime.current_agenda_idx,
+            )
 
         speaker_counts = output_data.get("speaker_counts")
         if isinstance(speaker_counts, dict):

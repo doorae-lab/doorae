@@ -292,6 +292,13 @@ class StreamError(Message):
         self.error = error
 
 
+class UserMessageReceived(Message):
+    def __init__(self, content: str, sender: str) -> None:
+        super().__init__()
+        self.content = content
+        self.sender = sender
+
+
 class ConnectionStatus(str, Enum):
     CONNECTED = "connected"
     DISCONNECTED = "disconnected"
@@ -1008,6 +1015,17 @@ class MeetingTuiApp(App[None]):
         event.text_area.clear()
         self.input_enabled = False
         self._current_human_speaker = ""
+
+    def on_user_message_received(self, event: UserMessageReceived) -> None:
+        if event.sender == self._server_username:
+            return
+        bubble = SpeechBubble(
+            speaker=event.sender,
+            color=self._get_speaker_color(event.sender),
+        )
+        bubble.append_token(event.content)
+        self._mount_bubble(bubble)
+        self.call_after_refresh(bubble.finalize)
 
     def on_meeting_ended(self, event: MeetingEnded) -> None:
         self._last_agendas = event.agendas
