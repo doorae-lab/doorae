@@ -1,7 +1,10 @@
 """RefillSpeakersNode 테스트"""
 
 import pytest
+
+from doorae.core.profile import AgentProfile
 from doorae.graph.nodes.refill import RefillSpeakersNode
+from doorae.graph.participant_registry import ParticipantRegistry
 from doorae.graph.state import MeetingState
 
 
@@ -155,3 +158,43 @@ class TestRefillSpeakersNode:
         # 필터링 후 남은 게 없으므로 Host에 위임
         assert result["pending_speakers"] == ["Host"]
         assert result["consecutive_host_delegations"] == 1
+
+    @pytest.mark.asyncio
+    async def test_uses_registry_for_dynamic_valid_speakers(self):
+        """registry 갱신이 valid_speakers에 동적으로 반영된다."""
+        registry = ParticipantRegistry(
+            {
+                "Host": AgentProfile(
+                    name="Host",
+                    role="host",
+                    responsibilities=["진행"],
+                    expertise=["퍼실리테이션"],
+                ),
+                "Alice": AgentProfile(
+                    name="Alice",
+                    role="participant",
+                    responsibilities=["참여"],
+                    expertise=["일반"],
+                    is_human=True,
+                ),
+            }
+        )
+        node = RefillSpeakersNode(registry=registry)
+
+        state = MeetingState(
+            messages=[],
+            pending_speakers=[],
+            agendas=[
+                {
+                    "title": "안건1",
+                    "status": "in_progress",
+                    "required_speakers": ["Alice", "Bob"],
+                }
+            ],
+            current_agenda_idx=0,
+            speaker_counts={},
+        )
+
+        result = await node.execute(state)
+
+        assert result["pending_speakers"] == ["Alice"]

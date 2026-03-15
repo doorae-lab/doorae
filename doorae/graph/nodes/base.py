@@ -10,6 +10,7 @@ class NodeType(Enum):
     """노드 타입 분류"""
 
     AGENT = auto()  # AI 에이전트 노드
+    DISPATCH = auto()  # 단일 참가자 디스패치 노드
     UTILITY = auto()  # 상태 처리 노드
     HUMAN = auto()  # 사용자 입력 노드
     ROUTING = auto()  # 라우팅 노드

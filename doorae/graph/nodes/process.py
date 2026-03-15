@@ -3,12 +3,14 @@
 import re
 import time
 from typing import Dict, Any
+
 from langchain_core.messages import AIMessage, HumanMessage
 from loguru import logger
 
 from doorae.config import get_settings
 from doorae.graph.nodes.base import BaseNode, NodeType
 from doorae.graph.nodes.registry import register_node
+from doorae.graph.participant_registry import ParticipantRegistry
 from doorae.graph.state import MeetingState
 from doorae.graph.constants import HOST_ROLE_NAME, HOST_END_MEETING_COMMAND
 
@@ -31,7 +33,12 @@ class ProcessResponseNode(BaseNode):
     node_type = NodeType.UTILITY
     requires_llm = True
 
-    def __init__(self, model, valid_speakers: list[str]):
+    def __init__(
+        self,
+        model,
+        valid_speakers: list[str] | None = None,
+        registry: ParticipantRegistry | None = None,
+    ):
         """초기화
 
         Args:
@@ -39,7 +46,14 @@ class ProcessResponseNode(BaseNode):
             valid_speakers: 유효한 참여자 이름 리스트
         """
         self.model = model
-        self.valid_speakers = valid_speakers
+        self._valid_speakers = valid_speakers or []
+        self._registry = registry
+
+    @property
+    def valid_speakers(self) -> list[str]:
+        if self._registry is not None:
+            return self._registry.all_names
+        return list(self._valid_speakers)
 
     def _extract_at_mentions(self, content: str) -> list[str]:
         """`@Name` prefix 기반 멘션 추출."""

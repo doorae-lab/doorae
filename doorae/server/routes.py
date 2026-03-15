@@ -181,6 +181,8 @@ async def start_room_workflow(room_id: str):
         input_provider=input_provider,
         profiles_override=runtime_profiles,
     )
+    setup_state = engine.setup()
+    room.participant_registry = getattr(setup_state, "participant_registry", None)
     await room.start_workflow_streaming(engine=engine)
 
     # 시작 알림 브로드캐스트
