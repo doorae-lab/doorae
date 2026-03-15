@@ -315,3 +315,120 @@ class TestProcessResponseNode:
 
         assert result["meeting_ended"] is True
         model.bind.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_extract_decision_returns_summary(self, monkeypatch):
+        """LLM이 정상 응답하면 decision 문자열을 반환."""
+        response_model = MagicMock()
+        response_model.ainvoke = AsyncMock(
+            return_value=MagicMock(content="2주 단위 스프린트로 진행")
+        )
+
+        model = MagicMock()
+        model.bind.return_value = response_model
+        node = ProcessResponseNode(model=model, valid_speakers=["Host"])
+
+        monkeypatch.setattr(
+            "doorae.graph.nodes.process.get_settings",
+            lambda: MagicMock(mention_extraction_max_tokens=64),
+        )
+
+        result = await node._extract_decision("정리하면 2주 단위 스프린트로 진행합니다", "스프린트 주기")
+        assert result == "2주 단위 스프린트로 진행"
+        response_model.ainvoke.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_extract_decision_returns_empty_on_failure(self, monkeypatch):
+        """LLM 호출 실패 시 빈 문자열을 반환."""
+        response_model = MagicMock()
+        response_model.ainvoke = AsyncMock(side_effect=RuntimeError("API error"))
+
+        model = MagicMock()
+        model.bind.return_value = response_model
+        node = ProcessResponseNode(model=model, valid_speakers=["Host"])
+
+        monkeypatch.setattr(
+            "doorae.graph.nodes.process.get_settings",
+            lambda: MagicMock(mention_extraction_max_tokens=64),
+        )
+
+        result = await node._extract_decision("다음 안건으로 넘어가겠습니다", "로드맵")
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_execute_sets_decision_on_agenda_completion(self, monkeypatch):
+        """안건 완료 시 decision 필드가 설정되는지 확인."""
+        response_model = MagicMock()
+        response_model.ainvoke = AsyncMock(
+            return_value=MagicMock(content="React 기반으로 결정")
+        )
+
+        model = MagicMock()
+        model.bind.return_value = response_model
+        node = ProcessResponseNode(model=model, valid_speakers=["Host", "PM"])
+
+        monkeypatch.setattr(
+            "doorae.graph.nodes.process.get_settings",
+            lambda: MagicMock(mention_extraction_max_tokens=64),
+        )
+
+        state = {
+            "messages": [
+                AIMessage(
+                    content="정리하면 React 기반으로 진행하겠습니다. 다음 안건으로 넘어가겠습니다.",
+                    name="Host",
+                )
+            ],
+            "agendas": [
+                {"title": "프레임워크 선정", "status": "in_progress"},
+                {"title": "일정 논의", "status": "pending"},
+            ],
+            "current_agenda_idx": 0,
+            "pending_speakers": ["Host"],
+            "speaker_counts": {},
+            "turn_count": 0,
+        }
+
+        result = await node.execute(state)
+
+        assert result["agendas"][0]["status"] == "completed"
+        assert result["agendas"][0]["decision"] == "React 기반으로 결정"
+        assert result["current_agenda_idx"] == 1
+        assert result["agendas"][1]["status"] == "in_progress"
+
+    @pytest.mark.asyncio
+    async def test_execute_completes_agenda_even_when_decision_extraction_fails(
+        self, monkeypatch
+    ):
+        """decision 추출 실패해도 안건 완료 처리는 정상 동작."""
+        response_model = MagicMock()
+        response_model.ainvoke = AsyncMock(side_effect=RuntimeError("LLM down"))
+
+        model = MagicMock()
+        model.bind.return_value = response_model
+        node = ProcessResponseNode(model=model, valid_speakers=["Host", "PM"])
+
+        monkeypatch.setattr(
+            "doorae.graph.nodes.process.get_settings",
+            lambda: MagicMock(mention_extraction_max_tokens=64),
+        )
+
+        state = {
+            "messages": [
+                AIMessage(content="이 안건은 여기까지 하겠습니다.", name="Host")
+            ],
+            "agendas": [
+                {"title": "안건1", "status": "in_progress"},
+                {"title": "안건2", "status": "pending"},
+            ],
+            "current_agenda_idx": 0,
+            "pending_speakers": ["Host"],
+            "speaker_counts": {},
+            "turn_count": 0,
+        }
+
+        result = await node.execute(state)
+
+        assert result["agendas"][0]["status"] == "completed"
+        assert result["current_agenda_idx"] == 1
+        assert "decision" not in result["agendas"][0]

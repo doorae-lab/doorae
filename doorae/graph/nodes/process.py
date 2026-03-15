@@ -179,6 +179,28 @@ class ProcessResponseNode(BaseNode):
         ]
         return any(kw in content for kw in completion_keywords)
 
+    async def _extract_decision(self, content: str, agenda_title: str) -> str:
+        """Host의 안건 마무리 발언에서 결론을 한 줄로 추출."""
+        settings = get_settings()
+        prompt = (
+            f"다음은 회의 진행자가 안건을 마무리하며 한 발언입니다.\n\n"
+            f'안건: "{agenda_title}"\n'
+            f'발언: "{content}"\n\n'
+            f"이 발언에서 안건에 대한 결론/결정사항을 한 줄로 요약하세요.\n"
+            f'결론이 없으면 "논의 계속"이라고 출력하세요.\n'
+            f"요약만 출력하세요:"
+        )
+
+        try:
+            response_model = self.model.bind(
+                max_tokens=settings.mention_extraction_max_tokens
+            )
+            response = await response_model.ainvoke(prompt)
+            return response.content.strip()
+        except Exception as e:
+            logger.warning(f"⚠️ 결론 추출 실패: {type(e).__name__}: {e}")
+            return ""
+
     def _detect_meeting_end_keyword(self, content: str) -> bool:
         """Host 발언에서 회의 종료 키워드 감지
 
@@ -253,8 +275,13 @@ class ProcessResponseNode(BaseNode):
 
         if speaker_name == HOST_ROLE_NAME and self._detect_agenda_completion(content):
             if current_idx < len(new_agendas):
+                decision = await self._extract_decision(
+                    content, str(new_agendas[current_idx].get("title", ""))
+                )
                 new_agendas[current_idx]["status"] = "completed"
                 new_agendas[current_idx]["end_time"] = time.time()
+                if decision:
+                    new_agendas[current_idx]["decision"] = decision
                 new_idx = current_idx + 1
                 # 다음 안건 시작 시간 설정
                 if new_idx < len(new_agendas):

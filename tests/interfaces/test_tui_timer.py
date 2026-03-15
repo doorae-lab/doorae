@@ -73,6 +73,8 @@ def test_meeting_ended_stops_interval_timer() -> None:
     app._timer_interval = timer  # type: ignore[assignment]
     app._tick_timer = lambda: None  # type: ignore[method-assign]
     app._render_summary = lambda: None  # type: ignore[method-assign]
+    panel = CapturingAgendaPanel()
+    app.query_one = lambda *_args, **_kwargs: panel  # type: ignore[method-assign]
 
     app.on_meeting_ended(MeetingEnded(agendas=[], speaker_counts={}))
 
