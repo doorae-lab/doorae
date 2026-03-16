@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Mapping, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages.utils import count_tokens_approximately
+from langmem.short_term import RunningSummary, summarize_messages
 from loguru import logger
 
 from doorae.agents.base_agent import BaseAgent
@@ -94,12 +96,34 @@ class AgentNodeExecutor:
         messages = state.get("messages", [])
         agendas = state.get("agendas", [])
         current_idx = state.get("current_agenda_idx", 0)
-        summary = state.get("summary", "")
+        raw_summary = state.get("summary")
+        # 호환성: str 또는 falsy 값은 None으로 변환 (RunningSummary만 허용)
+        running_summary = raw_summary if isinstance(raw_summary, RunningSummary) else None
         pending_proposals: List[dict] = list(state.get("pending_proposals", []))
         participant_statuses: Dict[str, str] = dict(state.get("participant_statuses", {}))
 
-        formatted_messages = []
+        # --- langmem 인라인 요약 ---
+        # langmem은 메시지에 id 필드가 필수이므로, 없는 경우 보정
+        import uuid
+
         for msg in messages:
+            if getattr(msg, "id", None) is None:
+                msg.id = str(uuid.uuid4())
+
+        summary_model = self._get_summary_model()
+        sum_result = summarize_messages(
+            messages,
+            running_summary=running_summary,
+            model=summary_model,
+            token_counter=count_tokens_approximately,
+            max_tokens=4000,
+            max_tokens_before_summary=4000,
+            max_summary_tokens=1000,
+        )
+        summarized_messages = sum_result.messages
+
+        formatted_messages = []
+        for msg in summarized_messages:
             content = getattr(msg, "content", "") or ""
             if not content.strip():
                 continue
@@ -111,6 +135,9 @@ class AgentNodeExecutor:
                 formatted_messages.append(HumanMessage(content=f"[회의 시작 요청]\n{content}"))
             elif msg_type == "AIMessage" and name:
                 formatted_messages.append(HumanMessage(content=f"[{name}의 발언]\n{content}"))
+            elif msg_type == "SystemMessage":
+                # langmem이 요약을 SystemMessage로 삽입할 수 있음
+                formatted_messages.append(msg)
 
         formatted_messages.append(
             HumanMessage(
@@ -127,11 +154,16 @@ class AgentNodeExecutor:
         )
         agenda_context = self._format_agenda_context(agendas, current_idx)
 
-        if summary:
+        # running_summary에서 텍스트 추출
+        summary_text = ""
+        if sum_result.running_summary:
+            summary_text = sum_result.running_summary.summary
+
+        if summary_text:
             enhanced_prompt = f"""{agent_prompt}
 
 ## 📝 회의 진행 요약
-{summary}
+{summary_text}
 
 {agenda_context}"""
         else:
@@ -179,6 +211,10 @@ class AgentNodeExecutor:
             "participant_statuses": participant_statuses,
         }
 
+        # langmem running summary를 state에 저장
+        if sum_result.running_summary is not None:
+            result["summary"] = sum_result.running_summary
+
         if agenda_actions:
             result.update(
                 self._apply_agenda_actions(
@@ -189,6 +225,14 @@ class AgentNodeExecutor:
             )
 
         return result
+
+    def _get_summary_model(self):
+        """요약용 LLM을 lazy 생성하여 반환."""
+        if not hasattr(self, "_summary_model"):
+            from doorae.config import create_task_llm
+
+            self._summary_model = create_task_llm()
+        return self._summary_model
 
     def _build_agent_prompt(
         self,

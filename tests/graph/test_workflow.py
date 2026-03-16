@@ -143,11 +143,11 @@ def test_create_meeting_workflow_integration():
     assert hasattr(workflow, "invoke") or hasattr(workflow, "ainvoke")
 
 
-def test_workflow_parallel_summarize_process():
-    """summarize와 process_response가 병렬로 실행되는 그래프 구조 테스트
+def test_workflow_linear_participant_process():
+    """participant → process_response 직선 구조 테스트
 
-    각 에이전트 노드에서 summarize와 process_response로 fan-out되고,
-    두 노드 모두 route_next로 fan-in된 후 condition_router로 라우팅되어야 한다.
+    요약은 agent 내부에서 langmem 인라인으로 처리되므로,
+    별도 summarize 노드 없이 participant → process_response → condition_router 흐름이어야 한다.
     """
     from doorae.graph.workflow import create_meeting_workflow
 
@@ -157,35 +157,24 @@ def test_workflow_parallel_summarize_process():
     # 그래프에서 노드 이름 수집
     node_names = {node.name for node in graph.nodes.values()}
 
-    # route_next 패스쓰루 노드가 존재해야 함
-    assert "route_next" in node_names, (
-        "route_next 패스쓰루 노드가 그래프에 존재해야 합니다"
+    # summarize 노드가 없어야 함
+    assert "summarize" not in node_names, (
+        "summarize 노드가 그래프에 없어야 합니다 (langmem 인라인 요약)"
     )
 
-    # participant 노드가 summarize와 process_response 둘 다로 연결되어야 함
-    # (직렬이 아닌 병렬 fan-out)
+    # route_next 패스쓰루 노드도 없어야 함 (fan-in 불필요)
+    assert "route_next" not in node_names, (
+        "route_next 패스쓰루 노드가 그래프에 없어야 합니다 (직선 구조)"
+    )
+
+    # participant → process_response 직선 엣지 확인
     edges_by_source = {}
     for edge in graph.edges:
         src = edge.source.name if hasattr(edge.source, 'name') else str(edge.source)
         tgt = edge.target.name if hasattr(edge.target, 'name') else str(edge.target)
         edges_by_source.setdefault(src, set()).add(tgt)
 
-    # summarize → process_response 직렬 엣지가 없어야 함
-    summarize_targets = edges_by_source.get("summarize", set())
-    assert "process_response" not in summarize_targets, (
-        "summarize → process_response 직렬 엣지가 없어야 합니다 (병렬 구조)"
-    )
-
-    # summarize와 process_response 모두 route_next로 fan-in
-    assert "route_next" in summarize_targets, (
-        "summarize → route_next 엣지가 있어야 합니다"
-    )
-    process_targets = edges_by_source.get("process_response", set())
-    assert "route_next" in process_targets, (
-        "process_response → route_next 엣지가 있어야 합니다"
-    )
-
     participant_targets = edges_by_source.get("participant", set())
-    assert participant_targets == {"summarize", "process_response"}, (
-        "participant 노드가 summarize와 process_response로 fan-out해야 합니다"
+    assert participant_targets == {"process_response"}, (
+        f"participant 노드가 process_response로만 연결되어야 합니다, got: {participant_targets}"
     )

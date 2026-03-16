@@ -3,7 +3,7 @@
 아키텍처:
 - pending_speakers 큐 기반 라우팅 (LLM 호출 최소화)
 - 안건(Agenda) 중심의 구조화된 회의 진행
-- summarize ∥ process_response 병렬 실행 (fan-out/fan-in)
+- participant → process_response 직선 구조 (요약은 agent 내부에서 langmem 인라인 호출)
 - Host 명시적 안건 완료 선언
 - AI 자동 안건 관리 (추가/수정/제거)
 """
@@ -23,7 +23,6 @@ from doorae.graph.nodes import (
     NodeRegistry,
     ProcessResponseNode,
     RefillSpeakersNode,
-    SummarizationNode,
     condition_router,
     initialize_mcp_tools,
 )
@@ -86,11 +85,7 @@ def create_meeting_workflow(
     )
     workflow.add_node("refill_speakers", refill_node)
 
-    # 4. summarize 노드 추가
-    summarize_node = SummarizationNode(model=task_model)
-    workflow.add_node("summarize", summarize_node)
-
-    # 5. process_response 노드 추가
+    # 4. process_response 노드 추가
     process_node = ProcessResponseNode(
         model=task_model,
         valid_speakers=list(profiles.keys()),
@@ -98,7 +93,7 @@ def create_meeting_workflow(
     )
     workflow.add_node("process_response", process_node)
 
-    # 6. 단일 participant dispatch 노드 추가
+    # 5. 단일 participant dispatch 노드 추가
     agent_models: dict[str, BaseChatModel] = {}
     for name, profile in profiles.items():
         if profile.is_human:
@@ -123,21 +118,13 @@ def create_meeting_workflow(
         ),
     )
 
-    # 7. route_next 패스쓰루 노드 (fan-in join point)
-    workflow.add_node("route_next", lambda state: {})
-
-    # 8. 진입점: refill_speakers
+    # 6. 진입점: refill_speakers
     workflow.set_entry_point("refill_speakers")
 
-    # 9. participant → [summarize ∥ process_response] (fan-out, 병렬 실행)
-    workflow.add_edge("participant", "summarize")
+    # 7. participant → process_response (직선 구조, 요약은 agent 내부 인라인)
     workflow.add_edge("participant", "process_response")
 
-    # 10. [summarize, process_response] → route_next (fan-in)
-    workflow.add_edge("summarize", "route_next")
-    workflow.add_edge("process_response", "route_next")
-
-    # 11. route_next → condition_router
+    # 8. process_response → condition_router
     available_targets = {
         "participant": "participant",
         "refill_speakers": "refill_speakers",
@@ -145,19 +132,19 @@ def create_meeting_workflow(
     }
 
     workflow.add_conditional_edges(
-        "route_next",
+        "process_response",
         condition_router,
-        available_targets
+        available_targets,
     )
 
-    # 12. refill_speakers → condition_router
+    # 9. refill_speakers → condition_router
     workflow.add_conditional_edges(
         "refill_speakers",
         condition_router,
-        available_targets
+        available_targets,
     )
 
-    # 13. 컴파일
+    # 10. 컴파일
     compiled_workflow = workflow.compile()
     setattr(compiled_workflow, "participant_registry", participant_registry)
     return compiled_workflow
@@ -197,6 +184,6 @@ def build_initial_state(
         "turn_count": 0,
         "max_turns": settings.max_turns,
         "meeting_ended": False,
-        "summary": "",
+        "summary": None,
         "start_time": time.time(),
     }
