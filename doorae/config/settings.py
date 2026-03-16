@@ -39,7 +39,8 @@ class Settings(BaseSettings):
     # LangGraph 설정
     recursion_limit: int = 1000  # LangGraph 재귀 깊이 제한
     max_turns: int = 1000  # 회의 최대 턴 수 (무한루프 방지)
-    
+    host_checkin_interval: int = 10  # Host 체크인 주기 (턴 단위, 0이면 비활성화)
+
     agent_profiles_path: str = "config/agent_profiles.yaml"
     agendas_path: str = "config/agendas.yaml"
 

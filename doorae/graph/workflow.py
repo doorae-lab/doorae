@@ -182,6 +182,7 @@ def build_initial_state(
         "participant_statuses": {},
         "consecutive_host_delegations": 0,
         "turn_count": 0,
+        "current_agenda_start_turn": 0,
         "max_turns": settings.max_turns,
         "meeting_ended": False,
         "summary": None,

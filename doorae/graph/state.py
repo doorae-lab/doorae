@@ -59,6 +59,9 @@ class MeetingState(MessagesState):
     turn_count: int = 0
     max_turns: int = 1000  # 최대 턴 수
 
+    # 현재 안건 시작 턴 (Host 중재 n-gram 범위 계산용)
+    current_agenda_start_turn: int = 0
+
     # 회의 종료 플래그
     meeting_ended: bool = False
 
