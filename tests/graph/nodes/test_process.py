@@ -141,7 +141,7 @@ class TestProcessResponseNode:
 
         monkeypatch.setattr(
             "doorae.graph.nodes.process.get_settings",
-            lambda: MagicMock(mention_extraction_max_tokens=64),
+            lambda: MagicMock(mention_extraction_max_tokens=64, host_checkin_interval=10),
         )
 
         mentions = await node._extract_mentions(
@@ -330,7 +330,7 @@ class TestProcessResponseNode:
 
         monkeypatch.setattr(
             "doorae.graph.nodes.process.get_settings",
-            lambda: MagicMock(mention_extraction_max_tokens=64),
+            lambda: MagicMock(mention_extraction_max_tokens=64, host_checkin_interval=10),
         )
 
         result = await node._extract_decision("정리하면 2주 단위 스프린트로 진행합니다", "스프린트 주기")
@@ -349,7 +349,7 @@ class TestProcessResponseNode:
 
         monkeypatch.setattr(
             "doorae.graph.nodes.process.get_settings",
-            lambda: MagicMock(mention_extraction_max_tokens=64),
+            lambda: MagicMock(mention_extraction_max_tokens=64, host_checkin_interval=10),
         )
 
         result = await node._extract_decision("다음 안건으로 넘어가겠습니다", "로드맵")
@@ -369,7 +369,7 @@ class TestProcessResponseNode:
 
         monkeypatch.setattr(
             "doorae.graph.nodes.process.get_settings",
-            lambda: MagicMock(mention_extraction_max_tokens=64),
+            lambda: MagicMock(mention_extraction_max_tokens=64, host_checkin_interval=10),
         )
 
         state = {
@@ -410,7 +410,7 @@ class TestProcessResponseNode:
 
         monkeypatch.setattr(
             "doorae.graph.nodes.process.get_settings",
-            lambda: MagicMock(mention_extraction_max_tokens=64),
+            lambda: MagicMock(mention_extraction_max_tokens=64, host_checkin_interval=10),
         )
 
         state = {
@@ -432,3 +432,247 @@ class TestProcessResponseNode:
         assert result["agendas"][0]["status"] == "completed"
         assert result["current_agenda_idx"] == 1
         assert "decision" not in result["agendas"][0]
+
+
+class TestHostCheckinInjection:
+    """Host 주기적 체크인 주입 테스트."""
+
+    @pytest.mark.asyncio
+    async def test_host_checkin_injected_at_interval(self, monkeypatch):
+        """10턴마다 Host가 pending 선두에 삽입된다."""
+        monkeypatch.setattr(
+            "doorae.graph.nodes.process.get_settings",
+            lambda: MagicMock(
+                host_checkin_interval=10,
+                mention_extraction_max_tokens=64,
+            ),
+        )
+        node = ProcessResponseNode(
+            model=MagicMock(), valid_speakers=["Host", "PM", "TechLead"]
+        )
+        state = {
+            "messages": [AIMessage(content="의견입니다.", name="PM")],
+            "pending_speakers": ["TechLead"],
+            "speaker_counts": {"PM": 5, "TechLead": 4},
+            "agendas": [{"title": "Test", "status": "in_progress"}],
+            "current_agenda_idx": 0,
+            "turn_count": 9,  # +1 → 10, agenda_start=0 → agenda_turns=10
+            "current_agenda_start_turn": 0,
+        }
+
+        result = await node.execute(state)
+
+        assert result["pending_speakers"][0] == "Host"
+        assert "TechLead" in result["pending_speakers"]
+
+    @pytest.mark.asyncio
+    async def test_host_checkin_skipped_when_host_already_speaking(self, monkeypatch):
+        """Host가 방금 발언한 경우 체크인 중복 삽입하지 않는다."""
+        monkeypatch.setattr(
+            "doorae.graph.nodes.process.get_settings",
+            lambda: MagicMock(
+                host_checkin_interval=10,
+                mention_extraction_max_tokens=64,
+            ),
+        )
+        node = ProcessResponseNode(
+            model=MagicMock(), valid_speakers=["Host", "PM"]
+        )
+        state = {
+            "messages": [AIMessage(content="진행합시다.", name="Host")],
+            "pending_speakers": ["PM"],
+            "speaker_counts": {"Host": 3},
+            "agendas": [{"title": "Test", "status": "in_progress"}],
+            "current_agenda_idx": 0,
+            "turn_count": 9,  # +1 → 10
+            "current_agenda_start_turn": 0,
+        }
+
+        result = await node.execute(state)
+
+        # Host가 speaker이므로 체크인 삽입하지 않음
+        assert result["pending_speakers"] == ["PM"]
+
+    @pytest.mark.asyncio
+    async def test_host_checkin_skipped_when_host_already_in_pending(self, monkeypatch):
+        """이미 pending에 Host가 있으면 중복 삽입하지 않는다."""
+        monkeypatch.setattr(
+            "doorae.graph.nodes.process.get_settings",
+            lambda: MagicMock(
+                host_checkin_interval=10,
+                mention_extraction_max_tokens=64,
+            ),
+        )
+        node = ProcessResponseNode(
+            model=MagicMock(), valid_speakers=["Host", "PM", "TechLead"]
+        )
+        state = {
+            "messages": [AIMessage(content="@Host 확인 부탁", name="PM")],
+            "pending_speakers": ["Host", "TechLead"],
+            "speaker_counts": {"PM": 5},
+            "agendas": [{"title": "Test", "status": "in_progress"}],
+            "current_agenda_idx": 0,
+            "turn_count": 9,  # +1 → 10
+            "current_agenda_start_turn": 0,
+        }
+
+        result = await node.execute(state)
+
+        # Host가 이미 pending에 있으므로 중복 삽입 안 함
+        assert result["pending_speakers"].count("Host") == 1
+
+    @pytest.mark.asyncio
+    async def test_host_checkin_not_at_non_interval_turn(self, monkeypatch):
+        """체크인 주기가 아닌 턴에서는 Host를 삽입하지 않는다."""
+        monkeypatch.setattr(
+            "doorae.graph.nodes.process.get_settings",
+            lambda: MagicMock(
+                host_checkin_interval=10,
+                mention_extraction_max_tokens=64,
+            ),
+        )
+        node = ProcessResponseNode(
+            model=MagicMock(), valid_speakers=["Host", "PM"]
+        )
+        state = {
+            "messages": [AIMessage(content="의견입니다.", name="PM")],
+            "pending_speakers": [],
+            "speaker_counts": {"PM": 3},
+            "agendas": [{"title": "Test", "status": "in_progress"}],
+            "current_agenda_idx": 0,
+            "turn_count": 6,  # +1 → 7, not a multiple of 10
+            "current_agenda_start_turn": 0,
+        }
+
+        result = await node.execute(state)
+
+        assert "Host" not in result["pending_speakers"]
+
+    @pytest.mark.asyncio
+    async def test_host_checkin_uses_agenda_relative_turns(self, monkeypatch):
+        """체크인은 안건 시작 턴 기준 상대 턴으로 계산된다."""
+        monkeypatch.setattr(
+            "doorae.graph.nodes.process.get_settings",
+            lambda: MagicMock(
+                host_checkin_interval=10,
+                mention_extraction_max_tokens=64,
+            ),
+        )
+        node = ProcessResponseNode(
+            model=MagicMock(), valid_speakers=["Host", "PM"]
+        )
+        state = {
+            "messages": [AIMessage(content="의견입니다.", name="PM")],
+            "pending_speakers": [],
+            "speaker_counts": {"PM": 3},
+            "agendas": [
+                {"title": "안건1", "status": "completed"},
+                {"title": "안건2", "status": "in_progress"},
+            ],
+            "current_agenda_idx": 1,
+            "turn_count": 24,  # +1 → 25, start=15, agenda_turns=10
+            "current_agenda_start_turn": 15,
+        }
+
+        result = await node.execute(state)
+
+        assert result["pending_speakers"][0] == "Host"
+
+    @pytest.mark.asyncio
+    async def test_host_checkin_disabled_when_interval_zero(self, monkeypatch):
+        """host_checkin_interval=0이면 체크인이 비활성화된다."""
+        monkeypatch.setattr(
+            "doorae.graph.nodes.process.get_settings",
+            lambda: MagicMock(
+                host_checkin_interval=0,
+                mention_extraction_max_tokens=64,
+            ),
+        )
+        node = ProcessResponseNode(
+            model=MagicMock(), valid_speakers=["Host", "PM"]
+        )
+        state = {
+            "messages": [AIMessage(content="의견입니다.", name="PM")],
+            "pending_speakers": [],
+            "speaker_counts": {"PM": 3},
+            "agendas": [{"title": "Test", "status": "in_progress"}],
+            "current_agenda_idx": 0,
+            "turn_count": 9,
+            "current_agenda_start_turn": 0,
+        }
+
+        result = await node.execute(state)
+
+        assert "Host" not in result["pending_speakers"]
+
+
+class TestAgendaStartTurnTracking:
+    """current_agenda_start_turn 추적 테스트."""
+
+    @pytest.mark.asyncio
+    async def test_agenda_start_turn_updated_on_transition(self, monkeypatch):
+        """안건 전환 시 current_agenda_start_turn이 갱신된다."""
+        response_model = MagicMock()
+        response_model.ainvoke = AsyncMock(
+            return_value=MagicMock(content="다음 안건으로")
+        )
+        model = MagicMock()
+        model.bind.return_value = response_model
+
+        monkeypatch.setattr(
+            "doorae.graph.nodes.process.get_settings",
+            lambda: MagicMock(
+                host_checkin_interval=10,
+                mention_extraction_max_tokens=64,
+            ),
+        )
+
+        node = ProcessResponseNode(
+            model=model, valid_speakers=["Host", "PM"]
+        )
+        state = {
+            "messages": [
+                AIMessage(content="정리하면 마무리하겠습니다. 다음 안건으로.", name="Host")
+            ],
+            "agendas": [
+                {"title": "안건1", "status": "in_progress"},
+                {"title": "안건2", "status": "pending"},
+            ],
+            "current_agenda_idx": 0,
+            "pending_speakers": ["Host"],
+            "speaker_counts": {"Host": 5},
+            "turn_count": 14,  # +1 → 15
+            "current_agenda_start_turn": 0,
+        }
+
+        result = await node.execute(state)
+
+        assert result["current_agenda_idx"] == 1
+        assert result["current_agenda_start_turn"] == 15
+
+    @pytest.mark.asyncio
+    async def test_agenda_start_turn_preserved_on_same_agenda(self, monkeypatch):
+        """같은 안건 내에서는 current_agenda_start_turn이 유지된다."""
+        monkeypatch.setattr(
+            "doorae.graph.nodes.process.get_settings",
+            lambda: MagicMock(
+                host_checkin_interval=10,
+                mention_extraction_max_tokens=64,
+            ),
+        )
+        node = ProcessResponseNode(
+            model=MagicMock(), valid_speakers=["Host", "PM"]
+        )
+        state = {
+            "messages": [AIMessage(content="의견입니다.", name="PM")],
+            "agendas": [{"title": "안건1", "status": "in_progress"}],
+            "current_agenda_idx": 0,
+            "pending_speakers": ["PM"],
+            "speaker_counts": {"PM": 3},
+            "turn_count": 7,
+            "current_agenda_start_turn": 5,
+        }
+
+        result = await node.execute(state)
+
+        assert result["current_agenda_start_turn"] == 5

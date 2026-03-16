@@ -302,6 +302,26 @@ class ProcessResponseNode(BaseNode):
         # 턴 카운트 증가
         turn_count = state.get("turn_count", 0) + 1
 
+        # 7. 주기적 Host 체크인
+        settings = get_settings()
+        interval = settings.host_checkin_interval
+        agenda_start = state.get("current_agenda_start_turn", 0)
+        agenda_turns = turn_count - agenda_start
+
+        if (
+            interval > 0
+            and agenda_turns > 0
+            and agenda_turns % interval == 0
+            and speaker_name != HOST_ROLE_NAME
+            and HOST_ROLE_NAME not in new_pending
+        ):
+            new_pending.insert(0, HOST_ROLE_NAME)
+
+        # 8. 안건 전환 시 current_agenda_start_turn 갱신
+        new_agenda_start_turn = state.get("current_agenda_start_turn", 0)
+        if new_idx != current_idx:
+            new_agenda_start_turn = turn_count
+
         return {
             "pending_speakers": new_pending,
             "speaker_counts": new_counts,
@@ -310,4 +330,5 @@ class ProcessResponseNode(BaseNode):
             "consecutive_host_delegations": 0,  # 정상 진행 시 리셋
             "turn_count": turn_count,
             "meeting_ended": meeting_ended,
+            "current_agenda_start_turn": new_agenda_start_turn,
         }

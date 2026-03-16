@@ -169,6 +169,42 @@ class AgentNodeExecutor:
         else:
             enhanced_prompt = f"{agent_prompt}\n\n{agenda_context}"
 
+        if self.profile.name == HOST_ROLE_NAME:
+            from doorae.graph.mediation import (
+                build_mediation_context,
+                extract_repeated_ngrams,
+            )
+
+            agenda_start = state.get("current_agenda_start_turn", 0)
+            turn_count = state.get("turn_count", 0)
+            agenda_turn_count = turn_count - agenda_start
+
+            # 현재 안건 시작 이후 메시지만 추출
+            agenda_messages = messages[-(agenda_turn_count):] if agenda_turn_count > 0 else []
+
+            all_names = all_agent_names or []
+            # 안건 구간 발언 통계
+            agenda_speaker_counts: dict[str, int] = {}
+            for msg in agenda_messages:
+                name = getattr(msg, "name", None)
+                if name:
+                    agenda_speaker_counts[name] = agenda_speaker_counts.get(name, 0) + 1
+
+            repeated = extract_repeated_ngrams(agenda_messages)
+
+            from doorae.config import get_settings as _get_settings
+
+            interval = _get_settings().host_checkin_interval
+
+            mediation_ctx = build_mediation_context(
+                agenda_turn_count=agenda_turn_count,
+                agenda_speaker_counts=agenda_speaker_counts,
+                agenda_max_turns=interval,
+                repeated_ngrams=repeated,
+                all_speaker_names=all_names,
+            )
+            enhanced_prompt += f"\n\n{mediation_ctx}"
+
         if self.profile.name == HOST_ROLE_NAME and pending_proposals:
             enhanced_prompt += "\n\n" + self._format_proposals_context(pending_proposals)
 
@@ -281,6 +317,22 @@ class AgentNodeExecutor:
             metadata_lines.append("💡 이 정보를 MCP 도구(예: GitHub) 호출 시 적극 활용하세요.")
             metadata_section = "\n".join(metadata_lines)
 
+        host_mediation_section = ""
+        if self.profile.name == HOST_ROLE_NAME:
+            host_mediation_section = """
+
+## 🎯 회의 중재 지침
+
+당신은 회의의 진행자로서 다음 상황에 적극 개입해야 합니다:
+
+1. **반복 논점 차단**: '반복 논점 감지' 섹션에 표시된 구문이 있으면, 해당 논점에 대해 합의 여부를 확인하고 결론을 유도하세요.
+2. **미발언자 참여 유도**: 발언이 적은 참여자에게 @멘션으로 의견을 요청하세요.
+3. **피드백 루프 차단**: 동일한 2명이 계속 대화를 주고받고 있다면, 다른 참여자의 의견을 구하거나 논점을 정리하세요.
+4. **논의 전진**: 충분히 논의된 사항은 결론을 내리고 다음 주제로 넘어가세요.
+
+아래 '토론 현황 분석'을 참고하여 판단하세요.
+"""
+
         host_end_protocol_section = ""
         if self.profile.name == HOST_ROLE_NAME:
             host_end_protocol_section = f"""
@@ -329,7 +381,7 @@ class AgentNodeExecutor:
 
 ## 전문 분야
 {chr(10).join(f'- {expertise}' for expertise in self.profile.expertise)}
-{participants_section}{metadata_section}{host_end_protocol_section}{role_defaults_section}
+{participants_section}{metadata_section}{host_mediation_section}{host_end_protocol_section}{role_defaults_section}
 간결하고 전문적으로 한국어로 응답하세요."""
 
     def _format_agenda_context(self, agendas: list[dict], current_idx: int) -> str:
