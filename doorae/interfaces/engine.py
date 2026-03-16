@@ -41,6 +41,7 @@ class MeetingEngineRuntimeState:
     pending_speakers: list[str] = field(default_factory=list)
     speaker_counts: dict[str, int] = field(default_factory=dict)
     participant_statuses: dict[str, str] = field(default_factory=dict)
+    _turn_completed: bool = False
 
 
 class MeetingEngineCallback(Protocol):
@@ -279,11 +280,13 @@ class MeetingEngine:
                 return
             self._runtime.current_delegated_speaker = speaker
         else:
-            if speaker == self._runtime.current_speaker:
+            # 같은 speaker라도 이전 턴이 완료된 후 새 턴이면 speaker_changed 재발행
+            if speaker == self._runtime.current_speaker and not self._runtime._turn_completed:
                 return
             self._runtime.current_speaker = speaker
             self._runtime.current_delegated_speaker = None
 
+        self._runtime._turn_completed = False
         await callback.on_speaker_changed(speaker, delegated)
 
     async def _handle_chat_model_stream(
@@ -322,6 +325,13 @@ class MeetingEngine:
         if "participant" not in tags:
             return
 
+        # tool-calling 루프 중간 응답이면 turn_completed를 발행하지 않음.
+        # LLM이 tool_calls를 반환하면 아직 최종 응답이 아니므로 건너뜀.
+        output = event.get("data", {}).get("output")
+        tool_calls = getattr(output, "tool_calls", None)
+        if tool_calls:
+            return
+
         delegated = is_delegated(tags)
         speaker = extract_speaker(event)
         if speaker is None:
@@ -337,6 +347,7 @@ class MeetingEngine:
             self._runtime.current_delegated_speaker = None
         else:
             self._runtime.current_speaker = speaker
+            self._runtime._turn_completed = True
 
         await callback.on_turn_completed(speaker, delegated)
 
