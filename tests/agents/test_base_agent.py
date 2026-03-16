@@ -1,7 +1,7 @@
 from datetime import datetime
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from doorae.agents.base_agent import BaseAgent
 from doorae.core.profile import AgentProfile
 
@@ -94,3 +94,54 @@ def test_base_agent_system_prompt_includes_today_context(agent_profile):
     )
 
     assert _expected_today_context() in agent._system_prompt
+
+
+@pytest.mark.asyncio
+async def test_invoke_with_tools_unknown_tool_returns_error_message(agent_profile):
+    bound_llm = AsyncMock()
+    bound_llm.ainvoke = AsyncMock(
+        side_effect=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "missing_tool",
+                        "args": {"query": "open issues"},
+                        "id": "call-1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="Recovered response"),
+        ]
+    )
+
+    mock_llm = MagicMock()
+    mock_llm.bind_tools.return_value = bound_llm
+
+    agent = BaseAgent(
+        name="TestAgent",
+        profile=agent_profile,
+        llm=mock_llm,
+    )
+
+    class DummyTool:
+        name = "existing_tool"
+
+        async def ainvoke(self, _args):
+            return "unused"
+
+    response = await agent.invoke_with_tools(
+        [HumanMessage(content="Check the current issues")],
+        extra_tools=[DummyTool()],
+    )
+
+    assert response.content == "Recovered response"
+    assert bound_llm.ainvoke.await_count == 2
+
+    second_call_messages = bound_llm.ainvoke.await_args_list[1].args[0]
+    tool_messages = [msg for msg in second_call_messages if isinstance(msg, ToolMessage)]
+    assert len(tool_messages) == 1
+    assert tool_messages[0].tool_call_id == "call-1"
+    assert "missing_tool" in tool_messages[0].content
+    assert "existing_tool" in tool_messages[0].content

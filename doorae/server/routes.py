@@ -2,10 +2,12 @@
 
 import json
 import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Query
 from doorae.config import get_settings
 from doorae.core.profile import AgentProfile
 from doorae.graph.input_provider import QueueInputProvider
+from doorae.graph.workflow import initialize_mcp_tools
 from doorae.interfaces.engine import MeetingEngine
 from doorae.server.models import RoomCreate, RoomInfo
 from doorae.server.room_manager import get_room_manager
@@ -15,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter()
+_mcp_tools_cache: dict[str, list[object]] | None = None
 
 
 def _build_runtime_human_profiles(usernames: list[str]) -> dict[str, AgentProfile]:
@@ -29,6 +32,31 @@ def _build_runtime_human_profiles(usernames: list[str]) -> dict[str, AgentProfil
         )
         for username in usernames
     }
+
+
+async def _get_mcp_tools() -> dict[str, list[object]]:
+    """서버 모드용 MCP 도구를 lazy 초기화하여 재사용한다."""
+    global _mcp_tools_cache
+
+    if _mcp_tools_cache is not None:
+        return _mcp_tools_cache
+
+    try:
+        tools = await initialize_mcp_tools()
+    except Exception as exc:
+        logger.warning(f"MCP 초기화 실패: {exc}")
+        _mcp_tools_cache = {}
+        return _mcp_tools_cache
+
+    if tools:
+        total = sum(len(server_tools) for server_tools in tools.values())
+        logger.info(f"MCP 도구 로드 완료: {total}개 도구 ({len(tools)}개 서버)")
+        _mcp_tools_cache = tools
+        return _mcp_tools_cache
+
+    logger.warning("MCP 도구를 사용할 수 없습니다")
+    _mcp_tools_cache = {}
+    return _mcp_tools_cache
 
 
 # ============================================================================
@@ -179,6 +207,7 @@ async def start_room_workflow(room_id: str):
         settings=settings,
         profiles_path=settings.agent_profiles_path,
         input_provider=input_provider,
+        mcp_tools=await _get_mcp_tools(),
         profiles_override=runtime_profiles,
     )
     setup_state = engine.setup()

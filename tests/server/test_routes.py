@@ -1,5 +1,6 @@
 """Routes 테스트."""
 
+import doorae.server.routes as routes
 import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -22,6 +23,11 @@ def clear_rooms():
     room_manager.rooms.clear()
     yield
     room_manager.rooms.clear()
+
+
+@pytest.fixture(autouse=True)
+def clear_mcp_cache(monkeypatch):
+    monkeypatch.setattr("doorae.server.routes._mcp_tools_cache", None, raising=False)
 
 
 def test_create_room(client):
@@ -220,6 +226,7 @@ def test_start_workflow_uses_unified_workflow(client, monkeypatch):
 
     calls = {}
     mock_registry = object()
+    mock_mcp_tools = {"github": [object()]}
 
     class MockSettings:
         agent_profiles_path = "config/agent_profiles.yaml"
@@ -243,6 +250,8 @@ def test_start_workflow_uses_unified_workflow(client, monkeypatch):
 
     monkeypatch.setattr("doorae.server.routes.get_settings", lambda: MockSettings())
     monkeypatch.setattr("doorae.server.routes.MeetingEngine", MockEngine)
+    initialize_mcp_tools = AsyncMock(return_value=mock_mcp_tools)
+    monkeypatch.setattr("doorae.server.routes.initialize_mcp_tools", initialize_mcp_tools)
 
     with client.websocket_connect(f"/ws/{room_id}?username=Alice") as ws:
         ws.receive_json()  # 입장 이벤트
@@ -257,11 +266,27 @@ def test_start_workflow_uses_unified_workflow(client, monkeypatch):
         assert engine_kwargs["profiles_path"] == "config/agent_profiles.yaml"
         assert engine_kwargs["initial_message"] == "회의를 시작합니다"
         assert "input_provider" in engine_kwargs
+        assert engine_kwargs["mcp_tools"] == mock_mcp_tools
         assert "profiles_override" in engine_kwargs
         assert "Alice" in engine_kwargs["profiles_override"]
         assert engine_kwargs["profiles_override"]["Alice"].is_human is True
         assert calls["setup_called"] == 1
         assert room.participant_registry is mock_registry
+        initialize_mcp_tools.assert_awaited_once()
 
         room.start_workflow_streaming.assert_awaited_once()
         assert isinstance(room.start_workflow_streaming.await_args.kwargs["engine"], MockEngine)
+
+
+@pytest.mark.asyncio
+async def test_get_mcp_tools_caches_initialized_tools(monkeypatch):
+    mock_mcp_tools = {"github": [object()]}
+    initialize_mcp_tools = AsyncMock(return_value=mock_mcp_tools)
+    monkeypatch.setattr("doorae.server.routes.initialize_mcp_tools", initialize_mcp_tools)
+
+    first = await routes._get_mcp_tools()
+    second = await routes._get_mcp_tools()
+
+    assert first is mock_mcp_tools
+    assert second is mock_mcp_tools
+    initialize_mcp_tools.assert_awaited_once()

@@ -174,6 +174,14 @@ Always base your contributions on real data when tools are available.
                         ))
                 else:
                     logger.warning(f"[{self.name}]   ⚠️ 알 수 없는 도구: {tool_name}")
+                    available_tools = ", ".join(sorted(tool.name for tool in active_tools))
+                    tool_messages.append(ToolMessage(
+                        content=(
+                            f"Error: Tool '{tool_name}' not found. "
+                            f"Available tools: {available_tools}"
+                        ),
+                        tool_call_id=tc["id"],
+                    ))
 
         # 최대 반복 도달
         logger.warning(f"[{self.name}] ⚠️ 최대 반복 횟수 도달 ({max_iterations})")
