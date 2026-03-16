@@ -62,8 +62,8 @@ class MeetingState(MessagesState):
     # 회의 종료 플래그
     meeting_ended: bool = False
 
-    # 대화 요약
-    summary: str = ""
+    # 대화 요약 (langmem RunningSummary | None)
+    summary: Any = None
 
     # 메타데이터
     start_time: float = 0.0
