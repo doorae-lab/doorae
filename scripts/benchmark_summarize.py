@@ -176,6 +176,9 @@ def start_server(port: int, max_turns: int) -> subprocess.Popen:
     env["AGENDAS_PATH"] = "config/benchmark_agendas.yaml"
     env["MAX_TURNS"] = str(max_turns)
     env["TUI_ENABLED"] = "false"
+    env["LANGCHAIN_TRACING_V2"] = "true"
+    env["LANGCHAIN_API_KEY"] = os.environ.get("LANGCHAIN_API_KEY", "")
+    env["LANGCHAIN_PROJECT"] = os.environ.get("LANGCHAIN_PROJECT", "doorae-benchmark")
 
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn",
