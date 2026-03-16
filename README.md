@@ -1,6 +1,12 @@
 # Doorae
 
+![Status](https://img.shields.io/badge/status-pre--alpha-orange)
+
 AI-powered team meeting system built on [LangGraph](https://github.com/langchain-ai/langgraph). Autonomous AI agents with distinct roles participate in structured meetings, discuss agendas, and produce actionable outcomes — all from your terminal.
+
+> [!WARNING]
+> Doorae is in early development and is not yet production-ready.
+> APIs, configuration, and meeting workflows may change without notice.
 
 ## Overview
 
