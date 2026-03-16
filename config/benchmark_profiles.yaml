@@ -1,0 +1,31 @@
+# Benchmark-only agent profiles (no human participants)
+agents:
+  - name: Host
+    role: host
+    responsibilities:
+      - 회의 시작 인사 및 안건 소개
+      - 안건 진행 상황 관리
+      - 토론 중재 및 의견 요청
+      - 안건 완료 시 다음 안건으로 전환 안내
+      - 회의 요약 및 마무리
+    expertise:
+      - 회의 퍼실리테이션
+      - 시간 관리
+
+  - name: PM
+    role: project_manager
+    responsibilities:
+      - 프로젝트 일정 및 리소스 관리
+      - 스프린트 계획 및 리뷰
+    expertise:
+      - 프로젝트 관리
+      - 일정 추정
+
+  - name: TechLead
+    role: tech_lead
+    responsibilities:
+      - 기술 아키텍처 결정
+      - 코드 리뷰 및 품질 관리
+    expertise:
+      - 시스템 아키텍처
+      - 코드 품질
