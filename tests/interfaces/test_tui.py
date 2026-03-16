@@ -81,6 +81,36 @@ def _submitted_event(
     return SubmittableTextArea.Submitted(text_area=text_area, value=value)
 
 
+def test_speech_bubble_highlight_mentions_marks_mentions() -> None:
+    bubble = SpeechBubble(speaker="PM", color="#ffffff")
+
+    assert (
+        bubble._highlight_mentions("안건은 @PM 과 @TechLead 가 검토합니다")
+        == "안건은 [bold #5eead4]@PM[/] 과 [bold #5eead4]@TechLead[/] 가 검토합니다"
+    )
+
+
+def test_speech_bubble_highlight_mentions_keeps_plain_text() -> None:
+    bubble = SpeechBubble(speaker="PM", color="#ffffff")
+
+    assert bubble._highlight_mentions("멘션 없는 일반 텍스트") == "멘션 없는 일반 텍스트"
+
+
+def test_speech_bubble_highlight_mentions_skips_email_addresses() -> None:
+    bubble = SpeechBubble(speaker="PM", color="#ffffff")
+
+    assert bubble._highlight_mentions("문의는 user@example.com 으로 주세요") == "문의는 user@example.com 으로 주세요"
+
+
+def test_speech_bubble_highlight_mentions_md_wraps_mentions_in_bold() -> None:
+    bubble = SpeechBubble(speaker="PM", color="#ffffff")
+
+    assert (
+        bubble._highlight_mentions_md("@PM @TechLead 검토")
+        == "**@PM** **@TechLead** 검토"
+    )
+
+
 @pytest.mark.asyncio
 async def test_human_input_panel_hidden_by_default() -> None:
     app = DummyMeetingTuiApp(

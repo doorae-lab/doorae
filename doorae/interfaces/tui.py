@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 import colorsys
 import random
+import re
 import time
 from enum import Enum
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Callable, cast
 from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
@@ -52,6 +53,9 @@ def _random_speaker_color() -> str:
     l = random.uniform(0.45, 0.65)
     r, g, b = colorsys.hls_to_rgb(h, l, s)
     return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
+
+
+_MENTION_PATTERN = re.compile(r"(^|[^\w@.])(@[\w가-힣]+)")
 
 
 class SpinnerWidget(Widget):
@@ -152,6 +156,23 @@ class SpeechBubble(Widget):
         self._tool_indicator: SpinnerWidget | None = None
         self._header_spinner: SpinnerWidget | None = None
 
+    def _replace_mentions(self, text: str, formatter: Callable[[str], str]) -> str:
+        def repl(match: re.Match[str]) -> str:
+            prefix = match.group(1)
+            mention = match.group(2)
+            return f"{prefix}{formatter(mention)}"
+
+        return _MENTION_PATTERN.sub(repl, text)
+
+    def _highlight_mentions(self, text: str) -> str:
+        return self._replace_mentions(text, lambda mention: f"[bold #5eead4]{mention}[/]")
+
+    def _highlight_mentions_md(self, text: str) -> str:
+        def format_mention(mention: str) -> str:
+            return f"**{mention}**"
+
+        return self._replace_mentions(text, format_mention)
+
     def on_mount(self) -> None:
         if self.is_delegated:
             return
@@ -172,10 +193,11 @@ class SpeechBubble(Widget):
     def append_token(self, token: str) -> None:
         self._buffer += token
         if self._body is not None:
+            highlighted = self._highlight_mentions(escape(self._buffer))
             if self.is_delegated:
-                self._body.update(f"[dim]{escape(self._buffer)}[/dim]")
+                self._body.update(f"[dim]{highlighted}[/dim]")
             else:
-                self._body.update(self._buffer)
+                self._body.update(highlighted)
 
     def show_tool_started(self, tool_name: str) -> None:
         """tool 호출 시작 — spinner 인디케이터 표시."""
@@ -199,7 +221,7 @@ class SpeechBubble(Widget):
         if self._tool_indicator is not None:
             self._tool_indicator.remove()
             self._tool_indicator = None
-        self.mount(Markdown(self._buffer))
+        self.mount(Markdown(self._highlight_mentions_md(self._buffer)))
 
 
 class SubmittableTextArea(TextArea):
