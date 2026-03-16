@@ -195,6 +195,16 @@
             line-height: 1.4;
         }
 
+        .message .content .mention {
+            display: inline-block;
+            margin: 0 1px;
+            padding: 1px 6px;
+            border-radius: 6px;
+            background: #eef2ff;
+            color: #4f46e5;
+            font-weight: 600;
+        }
+
         .message .time {
             font-size: 0.75em;
             opacity: 0.7;
@@ -493,7 +503,10 @@
 
             const contentEl = currentMessageEl.querySelector('.content');
             if (contentEl) {
-                contentEl.textContent += data.content;
+                const previous = contentEl.dataset.rawContent || '';
+                const next = previous + data.content;
+                contentEl.dataset.rawContent = next;
+                contentEl.innerHTML = highlightMentions(next);
             }
             scrollMessagesToBottom();
         }
@@ -608,7 +621,8 @@
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'content';
-            contentDiv.textContent = content;
+            contentDiv.dataset.rawContent = content;
+            contentDiv.innerHTML = highlightMentions(content);
             messageDiv.appendChild(contentDiv);
 
             const timeDiv = document.createElement('div');
@@ -672,6 +686,15 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function highlightMentions(text) {
+            const escaped = escapeHtml(text);
+            const mentionPattern = /(^|[^0-9A-Za-z_가-힣@.])(@[0-9A-Za-z_가-힣]+)/g;
+            return escaped.replace(
+                mentionPattern,
+                (match, prefix, mention) => `${prefix}<span class="mention">${mention}</span>`
+            );
         }
 
         // Enter 키로 채팅 참여
