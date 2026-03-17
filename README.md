@@ -94,6 +94,7 @@ LLM_TASK_MODEL=google/gemini-2.5-flash
 
 > [!TIP]
 > OpenRouter is recommended for cost efficiency. See `.env.example` for all configuration options including Azure OpenAI, local Ollama, and LangSmith tracing.
+> If you use `https://api.openai.com/v1`, switch to OpenAI model IDs such as `gpt-5-mini` and `gpt-5-nano`.
 
 ### 5. Run
 

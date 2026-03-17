@@ -47,6 +47,13 @@ def test_packaged_templates_are_available() -> None:
     assert '"mcpServers"' in read_packaged_template("config/mcp_servers.json")
 
 
+def test_default_profiles_template_uses_global_llm_settings_by_default() -> None:
+    profiles = yaml.safe_load(read_packaged_template("config/agent_profiles.yaml"))
+    pm_agent = next(agent for agent in profiles["agents"] if agent["name"] == "PM")
+
+    assert "llm" not in pm_agent
+
+
 def test_create_project_scaffold_creates_expected_files() -> None:
     workspace = create_workspace_dir("scaffold")
     try:
@@ -87,6 +94,9 @@ def test_create_project_scaffold_creates_expected_files() -> None:
         assert result.paths.profiles_file.read_text(
             encoding="utf-8"
         ) == read_packaged_template("config/agent_profiles.yaml")
+        scaffold_profiles = yaml.safe_load(result.paths.profiles_file.read_text(encoding="utf-8"))
+        scaffold_pm = next(agent for agent in scaffold_profiles["agents"] if agent["name"] == "PM")
+        assert "llm" not in scaffold_pm
         assert result.paths.agendas_file.read_text(encoding="utf-8") == read_packaged_template(
             "config/agendas.yaml"
         )
