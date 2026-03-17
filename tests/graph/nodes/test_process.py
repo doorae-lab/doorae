@@ -317,6 +317,30 @@ class TestProcessResponseNode:
         model.bind.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_execute_resets_speaker_counts_on_agenda_transition(self):
+        node = ProcessResponseNode(model=MagicMock(), valid_speakers=["Host", "PM", "TechLead"])
+        node._extract_decision = AsyncMock(return_value="안건 정리")
+        state = {
+            "messages": [AIMessage(content="다음 안건으로 넘어가겠습니다.", name="Host")],
+            "agendas": [
+                {"title": "안건1", "status": "in_progress", "required_speakers": ["Host", "PM", "TechLead"]},
+                {"title": "안건2", "status": "pending", "required_speakers": ["Host", "PM"]},
+            ],
+            "current_agenda_idx": 0,
+            "pending_speakers": ["Host"],
+            "speaker_counts": {"Host": 3, "PM": 2, "TechLead": 1},
+            "turn_count": 4,
+            "current_agenda_start_turn": 0,
+        }
+
+        result = await node.execute(state)
+
+        assert result["current_agenda_idx"] == 1
+        assert result["speaker_counts"] == {"Host": 1}
+        assert result["agendas"][0]["status"] == "completed"
+        assert result["agendas"][1]["status"] == "in_progress"
+
+    @pytest.mark.asyncio
     async def test_extract_decision_returns_summary(self, monkeypatch):
         """LLM이 정상 응답하면 decision 문자열을 반환."""
         response_model = MagicMock()

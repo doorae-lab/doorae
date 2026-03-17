@@ -12,6 +12,7 @@ from loguru import logger
 from doorae.agents.base_agent import BaseAgent
 from doorae.core.date_context import format_today_context
 from doorae.core.profile import AgentProfile
+from doorae.core.text_utils import strip_thinking_tags
 from doorae.graph.agenda_tools import (
     create_approve_tool,
     create_propose_tool,
@@ -234,7 +235,8 @@ class AgentNodeExecutor:
         )
         response.name = self.profile.name
 
-        content = getattr(response, "content", "") or ""
+        content = strip_thinking_tags(getattr(response, "content", "") or "")
+        response.content = content
         if not content.strip():
             response = AIMessage(
                 content=f"({self.profile.name}: 현재 추가 의견이 없습니다.)",

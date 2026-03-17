@@ -198,3 +198,28 @@ class TestRefillSpeakersNode:
         result = await node.execute(state)
 
         assert result["pending_speakers"] == ["Alice"]
+
+    @pytest.mark.asyncio
+    async def test_refill_reschedules_required_speakers_after_agenda_transition(self, node):
+        state = MeetingState(
+            messages=[],
+            pending_speakers=[],
+            agendas=[
+                {
+                    "title": "안건1",
+                    "status": "completed",
+                    "required_speakers": ["Host", "PM", "TechLead"],
+                },
+                {
+                    "title": "안건2",
+                    "status": "in_progress",
+                    "required_speakers": ["Host", "PM"],
+                },
+            ],
+            current_agenda_idx=1,
+            speaker_counts={"Host": 1},
+        )
+
+        result = await node.execute(state)
+
+        assert result["pending_speakers"] == ["PM"]

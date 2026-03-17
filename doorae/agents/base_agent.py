@@ -10,6 +10,7 @@ from loguru import logger
 from doorae.config import create_main_llm
 from doorae.core.date_context import format_today_context
 from doorae.core.profile import AgentProfile
+from doorae.core.text_utils import strip_thinking_tags
 
 
 class BaseAgent:
@@ -47,6 +48,13 @@ Respond according to your role and the given task.
             prompt += f"\n\n{self.profile.metadata['additional_instructions']}"
         
         return prompt
+
+    @staticmethod
+    def _sanitize_response_content(response: AIMessage) -> AIMessage:
+        content = getattr(response, "content", "")
+        if isinstance(content, str):
+            response.content = strip_thinking_tags(content)
+        return response
 
     def _build_user_prompt(self, context: Dict[str, Any]) -> str:
         """사용자 프롬프트 생성"""
@@ -115,6 +123,8 @@ Always base your contributions on real data when tools are available.
         if not active_tools:
             # 도구 없으면 단순 호출
             response = await self._llm.ainvoke(messages, config=config)
+            if isinstance(response, AIMessage):
+                response = self._sanitize_response_content(response)
             return response
 
         # Tool-calling 루프
@@ -144,6 +154,7 @@ Always base your contributions on real data when tools are available.
             tool_messages.append(response)
 
             if not response.tool_calls:
+                response = self._sanitize_response_content(response)
                 logger.info(f"[{self.name}] ✅ 최종 응답 생성 완료 (총 {iteration}번 반복)")
                 return response
 
@@ -204,7 +215,8 @@ Always base your contributions on real data when tools are available.
                 ("human", self._build_user_prompt(context))
             ])
             chain = prompt | self._llm | StrOutputParser()
-            return await chain.ainvoke({})
+            response = await chain.ainvoke({})
+            return strip_thinking_tags(response)
 
         # invoke_with_tools 사용
         user_prompt = self._build_user_prompt(context)

@@ -283,6 +283,7 @@ class ProcessResponseNode(BaseNode):
                 if decision:
                     new_agendas[current_idx]["decision"] = decision
                 new_idx = current_idx + 1
+                new_counts = {speaker_name: 1}
                 # 다음 안건 시작 시간 설정
                 if new_idx < len(new_agendas):
                     new_agendas[new_idx]["status"] = "in_progress"
