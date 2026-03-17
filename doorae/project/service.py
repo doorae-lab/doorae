@@ -13,6 +13,7 @@ from doorae.project.models import (
     ProjectConfig,
     ProjectCreateResult,
     ProjectPaths,
+    ProjectRunContext,
     WorkspaceConfig,
     WorkspaceInitResult,
     WorkspacePaths,
@@ -49,6 +50,18 @@ class InvalidProjectNameError(WorkspaceError):
 
 class ProjectExistsError(WorkspaceError):
     """Raised when a scaffold with the target slug already exists."""
+
+
+class CurrentProjectNotSetError(WorkspaceError):
+    """Raised when a workspace has no current project configured."""
+
+
+class ProjectNotFoundError(WorkspaceError):
+    """Raised when the requested project slug or path cannot be resolved."""
+
+
+class ProjectConfigError(WorkspaceError):
+    """Raised when project metadata or referenced config paths are invalid."""
 
 
 def resolve_workspace_paths(base_dir: Path) -> WorkspacePaths:
@@ -156,6 +169,47 @@ def create_project(base_dir: Path, name: str) -> ProjectCreateResult:
     return ProjectCreateResult(paths=project_paths, config=project_config)
 
 
+def resolve_project_run(
+    base_dir: Path,
+    *,
+    project: str | None = None,
+) -> ProjectRunContext:
+    """Resolve the project metadata and config files for `doorae run`."""
+    workspace_paths = resolve_workspace_paths(base_dir)
+    workspace_config = _load_workspace_config(workspace_paths)
+
+    selector = (project or workspace_config.current_project or "").strip()
+    if not selector:
+        raise CurrentProjectNotSetError(
+            f"No current project is set in {workspace_paths.workspace_file}. "
+            "Use 'doorae run --project <slug|path>' or update current_project."
+        )
+
+    project_dir, project_file = _resolve_project_reference(
+        workspace_paths,
+        workspace_config,
+        selector,
+    )
+    project_config = _load_project_config(project_file)
+
+    return ProjectRunContext(
+        workspace=workspace_config,
+        project=project_config,
+        project_dir=project_dir,
+        project_file=project_file,
+        profiles_path=_resolve_project_config_path(
+            project_dir,
+            project_config.agent_profiles_path,
+            field_name="agent_profiles_path",
+        ),
+        agendas_path=_resolve_project_config_path(
+            project_dir,
+            project_config.agendas_path,
+            field_name="agendas_path",
+        ),
+    )
+
+
 def _read_template_text(relative_path: Path) -> str:
     """Read a packaged scaffold template as UTF-8 text."""
     try:
@@ -196,6 +250,82 @@ def _load_workspace_config(paths: WorkspacePaths) -> WorkspaceConfig:
         raise WorkspaceError(
             f"Workspace metadata at {paths.workspace_file} is invalid."
         ) from exc
+
+
+def _resolve_project_reference(
+    workspace_paths: WorkspacePaths,
+    workspace_config: WorkspaceConfig,
+    selector: str,
+) -> tuple[Path, Path]:
+    """Resolve a slug or path selector to a concrete project directory and file."""
+    if _looks_like_path(selector):
+        candidate = Path(selector).expanduser()
+        if not candidate.is_absolute():
+            candidate = workspace_paths.root_dir / candidate
+        candidate = candidate.resolve()
+        project_file = candidate if candidate.name == "project.yaml" else candidate / "project.yaml"
+        if not project_file.exists():
+            raise ProjectNotFoundError(
+                f"Project path '{selector}' does not contain a project.yaml file: {project_file}"
+            )
+        return project_file.parent, project_file
+
+    project_paths = _resolve_project_paths(workspace_paths, workspace_config, selector)
+    if not project_paths.project_file.exists():
+        raise ProjectNotFoundError(
+            f"Project '{selector}' was not found at {project_paths.project_dir}."
+        )
+    return project_paths.project_dir, project_paths.project_file
+
+
+def _load_project_config(project_file: Path) -> ProjectConfig:
+    """Load and validate project metadata from disk."""
+    try:
+        raw_config = yaml.safe_load(project_file.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ProjectConfigError(
+            f"Project metadata at {project_file} is not valid YAML."
+        ) from exc
+
+    try:
+        return ProjectConfig.from_dict(raw_config)
+    except (TypeError, ValueError) as exc:
+        raise ProjectConfigError(
+            f"Project metadata at {project_file} is invalid."
+        ) from exc
+
+
+def _resolve_project_config_path(
+    project_dir: Path,
+    raw_path: str,
+    *,
+    field_name: str,
+) -> Path:
+    """Resolve a project-local config file reference and ensure it exists."""
+    config_path = Path(raw_path).expanduser()
+    if not config_path.is_absolute():
+        config_path = project_dir / config_path
+    config_path = config_path.resolve()
+
+    if not config_path.exists():
+        raise ProjectConfigError(
+            f"Project config '{field_name}' was not found: {config_path}"
+        )
+    if not config_path.is_file():
+        raise ProjectConfigError(
+            f"Project config '{field_name}' must point to a file: {config_path}"
+        )
+    return config_path
+
+
+def _looks_like_path(selector: str) -> bool:
+    """Return whether a project selector should be interpreted as a filesystem path."""
+    candidate = Path(selector)
+    if candidate.is_absolute():
+        return True
+    if len(candidate.parts) > 1:
+        return True
+    return selector.startswith((".", "~"))
 
 
 def _resolve_project_paths(

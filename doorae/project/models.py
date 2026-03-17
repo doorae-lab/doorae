@@ -89,6 +89,41 @@ class ProjectConfig:
             "mcp_servers_path": self.mcp_servers_path,
         }
 
+    @classmethod
+    def from_dict(cls, raw: object) -> "ProjectConfig":
+        """Parse project metadata loaded from YAML."""
+        if not isinstance(raw, dict):
+            raise TypeError("Project metadata must be a mapping.")
+
+        name = raw.get("name")
+        slug = raw.get("slug")
+        version = raw.get("version", cls.version)
+        agent_profiles_path = raw.get("agent_profiles_path", cls.agent_profiles_path)
+        agendas_path = raw.get("agendas_path", cls.agendas_path)
+        mcp_servers_path = raw.get("mcp_servers_path", cls.mcp_servers_path)
+
+        required_values = {
+            "name": name,
+            "slug": slug,
+            "agent_profiles_path": agent_profiles_path,
+            "agendas_path": agendas_path,
+            "mcp_servers_path": mcp_servers_path,
+        }
+        normalized_values: dict[str, str] = {}
+        for field_name, value in required_values.items():
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"Project metadata field '{field_name}' must be a non-empty string.")
+            normalized_values[field_name] = value.strip()
+
+        return cls(
+            name=normalized_values["name"],
+            slug=normalized_values["slug"],
+            version=int(version),
+            agent_profiles_path=normalized_values["agent_profiles_path"],
+            agendas_path=normalized_values["agendas_path"],
+            mcp_servers_path=normalized_values["mcp_servers_path"],
+        )
+
 
 @dataclass(frozen=True)
 class WorkspaceInitResult:
@@ -105,3 +140,15 @@ class ProjectCreateResult:
 
     paths: ProjectPaths
     config: ProjectConfig
+
+
+@dataclass(frozen=True)
+class ProjectRunContext:
+    """Resolved project metadata and config paths for `doorae run`."""
+
+    workspace: WorkspaceConfig
+    project: ProjectConfig
+    project_dir: Path
+    project_file: Path
+    profiles_path: Path
+    agendas_path: Path

@@ -29,7 +29,13 @@ from doorae.core.server_address import (
 from doorae.interfaces.event_utils import random_speaker_color
 from doorae.interfaces.logging import setup_logging
 from doorae.interfaces.time_utils import format_elapsed
-from doorae.project import WorkspaceError, create_project, init_workspace
+from doorae.project import (
+    ProjectRunContext,
+    WorkspaceError,
+    create_project,
+    init_workspace,
+    resolve_project_run,
+)
 from doorae.server.models import RoomInfo
 
 if TYPE_CHECKING:
@@ -304,6 +310,50 @@ def _configure_runtime(
     return settings
 
 
+def _build_project_runtime_settings(
+    settings: Settings,
+    project_run: ProjectRunContext,
+) -> Settings:
+    """Override runtime config paths from a resolved workspace project."""
+    return settings.model_copy(
+        update={
+            "agent_profiles_path": str(project_run.profiles_path),
+            "agendas_path": str(project_run.agendas_path),
+        }
+    )
+
+
+def _run_project_command(
+    *,
+    project: str | None,
+    message: str,
+    classic: bool,
+    runtime_options: CliRuntimeOptions,
+    hide_delegated: bool,
+) -> None:
+    use_tui = should_use_tui(classic)
+    settings = _configure_runtime(runtime_options=runtime_options, use_tui=use_tui)
+
+    try:
+        project_run = resolve_project_run(Path.cwd(), project=project)
+        project_settings = _build_project_runtime_settings(settings, project_run)
+        asyncio.run(
+            run_meeting(
+                initial_message=message,
+                profiles_path=project_run.profiles_path,
+                settings=project_settings,
+                use_tui=use_tui,
+                hide_delegated=hide_delegated,
+            )
+        )
+    except WorkspaceError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except RuntimeError as exc:
+        console.print(f"[bold red]?ㅻ쪟:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+
 def _run_server_command(
     *,
     initial_message: str,
@@ -436,6 +486,71 @@ def main(
         classic=classic,
         runtime_options=runtime_options,
         version=version,
+        hide_delegated=hide_delegated,
+    )
+
+@app.command("run")
+def run_command(
+    project: Optional[str] = typer.Option(
+        None,
+        "--project",
+        help="Workspace project slug or project path to run",
+    ),
+    message: str = typer.Option(
+        DEFAULT_MESSAGE,
+        "--message",
+        "-m",
+        help="Meeting start message",
+    ),
+    classic: bool = typer.Option(
+        False,
+        "--classic",
+        help="Use classic CLI output instead of TUI",
+    ),
+    config: Optional[Path] = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to a custom .env file",
+        exists=True,
+        dir_okay=False,
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose logging",
+    ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        "-q",
+        help="Reduce logging output",
+    ),
+    trace: Optional[bool] = typer.Option(
+        None,
+        "--trace",
+        "-t",
+        help="Enable LangSmith tracing",
+    ),
+    hide_delegated: bool = typer.Option(
+        False,
+        "--hide-delegated",
+        help="Hide delegated sub-agent output in classic CLI mode",
+    ),
+) -> None:
+    """Run a meeting using the current or selected workspace project."""
+    runtime_options = CliRuntimeOptions(
+        config=config,
+        verbose=verbose,
+        quiet=quiet,
+        trace=trace,
+    )
+    _run_project_command(
+        project=project,
+        message=message,
+        classic=classic,
+        runtime_options=runtime_options,
         hide_delegated=hide_delegated,
     )
 
