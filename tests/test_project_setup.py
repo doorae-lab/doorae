@@ -48,10 +48,13 @@ def test_packaged_templates_are_available() -> None:
 
 
 def test_default_profiles_template_uses_global_llm_settings_by_default() -> None:
-    profiles = yaml.safe_load(read_packaged_template("config/agent_profiles.yaml"))
+    template_text = read_packaged_template("config/agent_profiles.yaml")
+    profiles = yaml.safe_load(template_text)
     pm_agent = next(agent for agent in profiles["agents"] if agent["name"] == "PM")
 
     assert "llm" not in pm_agent
+    assert "# llm:" in template_text
+    assert '#   model: "qwen/qwen3.5-35b-a3b"' in template_text
 
 
 def test_create_project_scaffold_creates_expected_files() -> None:

@@ -80,6 +80,8 @@ uv run doorae project create demo
 
 This creates `.doorae/projects/demo/` with `project.yaml`, `config/agent_profiles.yaml`, `config/agendas.yaml`, and `config/mcp_servers.json`.
 
+The generated `config/agent_profiles.yaml` keeps an example per-agent `llm` override commented out. Uncomment it only when a specific project participant should use a different model/provider than the global `.env`.
+
 ### 4. Configure
 
 Edit `.env` with your API key and preferred models:
@@ -172,6 +174,7 @@ agents:
 
 > [!NOTE]
 > Per-agent `llm` fields support `${ENV_VAR}` syntax for environment variable substitution. Unset fields fall back to the global `.env` configuration.
+> The scaffolded PM profile keeps the override example commented out by default so first-run setup stays aligned with the global `.env` provider and model settings.
 
 ### Agendas (`config/agendas.yaml`)
 
