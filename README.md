@@ -80,15 +80,15 @@ uv run doorae project create demo
 
 This creates `.doorae/projects/demo/` with `project.yaml`, `config/agent_profiles.yaml`, `config/agendas.yaml`, and `config/mcp_servers.json`.
 
+The generated `config/agent_profiles.yaml` keeps an example per-agent `llm` override commented out. Uncomment it only when a specific project participant should use a different model/provider than the global `.env`.
+
 ### 4. Configure
 
-Edit `.env` with your API key, preferred model, and the project config paths you want to use:
+Edit `.env` with your API key and preferred models:
 
 ```env
 OPENAI_API_KEY=your-api-key-here
 OPENAI_BASE_URL=https://openrouter.ai/api/v1  # or https://api.openai.com/v1
-AGENT_PROFILES_PATH=.doorae/projects/demo/config/agent_profiles.yaml
-AGENDAS_PATH=.doorae/projects/demo/config/agendas.yaml
 
 LLM_MAIN_MODEL=deepseek/deepseek-v3.2
 LLM_TASK_MODEL=google/gemini-2.5-flash
@@ -96,17 +96,21 @@ LLM_TASK_MODEL=google/gemini-2.5-flash
 
 > [!TIP]
 > OpenRouter is recommended for cost efficiency. See `.env.example` for all configuration options including Azure OpenAI, local Ollama, and LangSmith tracing.
+> If you use `https://api.openai.com/v1`, switch to OpenAI model IDs such as `gpt-5-mini` and `gpt-5-nano`.
 
 ### 5. Run
 
 ```bash
-uv run doorae
+uv run doorae run --project demo
 ```
 
 ## Usage
 
 ```bash
-# Default meeting
+# Project-aware meeting
+uv run doorae run --project demo
+
+# Default meeting (legacy env/config path flow)
 uv run doorae
 
 # Initialize a workspace and scaffold a project
@@ -119,8 +123,14 @@ uv run doorae -m "Emergency bug response meeting"
 # Classic CLI (no TUI)
 uv run doorae --classic
 
+# Project-aware classic CLI
+uv run doorae run --project demo --classic
+
 # Custom profiles & config
 uv run doorae --profiles config/custom_profiles.yaml --config .env.prod
+
+# Project-aware run with a custom .env
+uv run doorae run --project demo --config .env.prod
 
 # With LangSmith tracing
 uv run doorae --trace
@@ -164,6 +174,7 @@ agents:
 
 > [!NOTE]
 > Per-agent `llm` fields support `${ENV_VAR}` syntax for environment variable substitution. Unset fields fall back to the global `.env` configuration.
+> The scaffolded PM profile keeps the override example commented out by default so first-run setup stays aligned with the global `.env` provider and model settings.
 
 ### Agendas (`config/agendas.yaml`)
 

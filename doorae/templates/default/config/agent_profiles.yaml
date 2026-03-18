@@ -58,13 +58,14 @@ agents:
       # default_branch: "main"
       additional_instructions: |
         (IMPORTANT) 도구를 적극적으로 사용하세요.
-    llm:
-      # 에이전트별 모델/provider 오버라이드 (미설정 항목은 .env 전역값 fallback)
-      model: "qwen/qwen3.5-35b-a3b"
-      api_key: "${OPENAI_API_KEY}"
-      base_url: "${OPENAI_BASE_URL}"
-      temperature: 0.2
-      max_tokens: 3000
+    # llm:
+    #   # Optional per-agent model/provider override.
+    #   # Uncomment when this project wants PM to use a dedicated model.
+    #   model: "qwen/qwen3.5-35b-a3b"
+    #   api_key: "${OPENAI_API_KEY}"
+    #   base_url: "${OPENAI_BASE_URL}"
+    #   temperature: 0.2
+    #   max_tokens: 3000
 
   - name: TechLead
     role: tech_lead

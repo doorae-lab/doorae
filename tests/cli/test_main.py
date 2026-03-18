@@ -24,7 +24,7 @@ from doorae.interfaces.cli import (
     run_meeting,
     run_server_meeting,
 )
-from doorae.project import WorkspaceError, init_workspace
+from doorae.project import WorkspaceError, create_project, init_workspace
 
 
 runner = CliRunner()
@@ -68,6 +68,7 @@ def test_cli_help() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "Doorae" in result.stdout
+    assert "run" in result.stdout
     assert "create" in result.stdout
     assert "join" in result.stdout
     assert "rooms" in result.stdout
@@ -300,6 +301,16 @@ def test_project_create_command_is_visible_in_help() -> None:
     assert "NAME" in result.stdout
 
 
+def test_run_command_is_visible_in_help() -> None:
+    result = runner.invoke(app, ["run", "--help"])
+    assert result.exit_code == 0
+    assert "--project" in result.stdout
+    assert "--message" in result.stdout
+    assert "--classic" in result.stdout
+    assert "--trace" in result.stdout
+    assert "--hide-delegated" in result.stdout
+
+
 def test_serve_command_is_visible_in_help() -> None:
     result = runner.invoke(app, ["serve", "--help"])
     assert result.exit_code == 0
@@ -476,6 +487,99 @@ def test_module_project_create_command_creates_scaffold() -> None:
             / "config"
             / "mcp_servers.json"
         ).exists()
+    finally:
+        remove_workspace_dir(workspace)
+
+
+def test_run_command_uses_current_project_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = create_workspace_dir("run-current-project")
+    captured: dict[str, object] = {}
+
+    async def stub_run_meeting(
+        initial_message: str,
+        profiles_path: Path | None = None,
+        settings: Settings | None = None,
+        use_tui: bool = False,
+        hide_delegated: bool = False,
+    ) -> None:
+        captured["initial_message"] = initial_message
+        captured["profiles_path"] = profiles_path
+        captured["settings"] = settings
+        captured["use_tui"] = use_tui
+        captured["hide_delegated"] = hide_delegated
+
+    monkeypatch.setattr("doorae.interfaces.cli.run_meeting", stub_run_meeting)
+    monkeypatch.setattr(
+        "doorae.interfaces.cli._configure_runtime",
+        lambda runtime_options, use_tui: Settings(),
+    )
+
+    try:
+        init_workspace(workspace)
+        create_project(workspace, "Weekly Dev")
+        (workspace / ".doorae" / "workspace.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "version": 1,
+                    "current_project": "weekly-dev",
+                    "projects_dir": ".doorae/projects",
+                },
+                allow_unicode=True,
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        original_cwd = Path.cwd()
+        os.chdir(workspace)
+        try:
+            result = runner.invoke(
+                app,
+                ["run", "--message", "Project sync", "--classic", "--hide-delegated"],
+            )
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.exit_code == 0
+        assert captured["initial_message"] == "Project sync"
+        assert captured["profiles_path"] == (
+            workspace / ".doorae" / "projects" / "weekly-dev" / "config" / "agent_profiles.yaml"
+        )
+        settings = captured["settings"]
+        assert isinstance(settings, Settings)
+        assert settings.agent_profiles_path == str(captured["profiles_path"])
+        assert settings.agendas_path == str(
+            workspace / ".doorae" / "projects" / "weekly-dev" / "config" / "agendas.yaml"
+        )
+        assert captured["use_tui"] is False
+        assert captured["hide_delegated"] is True
+    finally:
+        remove_workspace_dir(workspace)
+
+
+def test_run_command_fails_when_current_project_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = create_workspace_dir("run-no-current-project")
+    monkeypatch.setattr(
+        "doorae.interfaces.cli._configure_runtime",
+        lambda runtime_options, use_tui: Settings(),
+    )
+
+    try:
+        init_workspace(workspace)
+
+        original_cwd = Path.cwd()
+        os.chdir(workspace)
+        try:
+            result = runner.invoke(app, ["run"])
+        finally:
+            os.chdir(original_cwd)
+
+        assert result.exit_code == 1
+        assert "current_project" in result.stderr
     finally:
         remove_workspace_dir(workspace)
 
