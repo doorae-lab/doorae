@@ -198,6 +198,42 @@ class TestInlineSummarization:
             call_kwargs = mock_summarize.call_args
             assert call_kwargs[1]["running_summary"] is prev_summary
 
+    @pytest.mark.asyncio
+    async def test_execute_uses_placeholder_when_thinking_tags_strip_to_empty(self):
+        profile = _make_profile()
+        mock_model = MagicMock()
+        mock_agent = AsyncMock()
+        mock_agent.invoke_with_tools = AsyncMock(
+            return_value=AIMessage(content="<think>internal reasoning</think>", name="TestAgent")
+        )
+
+        mock_sum_result = SummarizationResult(
+            messages=[HumanMessage(content="msg")],
+            running_summary=None,
+        )
+
+        with patch(
+            "doorae.graph.nodes.agent.summarize_messages",
+            return_value=mock_sum_result,
+        ):
+            executor = AgentNodeExecutor(
+                profile=profile, model=mock_model
+            )
+            executor.agent = mock_agent
+            executor._summary_model = MagicMock()
+
+            state = MeetingState(
+                messages=[HumanMessage(content="test")],
+                agendas=[],
+                summary=None,
+                pending_proposals=[],
+                participant_statuses={},
+            )
+
+            result = await executor.execute(state)
+
+            assert result["messages"][0].content == "(TestAgent: 현재 추가 의견이 없습니다.)"
+
     def test_get_summary_model_lazy_creation(self):
         """_get_summary_model이 lazy하게 생성되는지 확인"""
         profile = _make_profile()

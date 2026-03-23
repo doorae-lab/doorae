@@ -145,3 +145,51 @@ async def test_invoke_with_tools_unknown_tool_returns_error_message(agent_profil
     assert tool_messages[0].tool_call_id == "call-1"
     assert "missing_tool" in tool_messages[0].content
     assert "existing_tool" in tool_messages[0].content
+
+
+@pytest.mark.asyncio
+async def test_invoke_with_tools_strips_thinking_tags_without_tools(agent_profile):
+    mock_llm = AsyncMock()
+    mock_llm.ainvoke = AsyncMock(
+        return_value=AIMessage(content="<think>reasoning</think>actual response")
+    )
+
+    agent = BaseAgent(
+        name="TestAgent",
+        profile=agent_profile,
+        llm=mock_llm,
+    )
+
+    response = await agent.invoke_with_tools([HumanMessage(content="Respond")])
+
+    assert response.content == "actual response"
+
+
+@pytest.mark.asyncio
+async def test_invoke_with_tools_strips_thinking_tags_after_tool_loop(agent_profile):
+    bound_llm = AsyncMock()
+    bound_llm.ainvoke = AsyncMock(
+        return_value=AIMessage(content="<think>reasoning</think>")
+    )
+
+    mock_llm = MagicMock()
+    mock_llm.bind_tools.return_value = bound_llm
+
+    agent = BaseAgent(
+        name="TestAgent",
+        profile=agent_profile,
+        llm=mock_llm,
+    )
+
+    class DummyTool:
+        name = "existing_tool"
+
+        async def ainvoke(self, _args):
+            return "unused"
+
+    response = await agent.invoke_with_tools(
+        [HumanMessage(content="Respond")],
+        extra_tools=[DummyTool()],
+    )
+
+    assert response.content == ""
