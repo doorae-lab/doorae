@@ -1,0 +1,140 @@
+site_name: Doorae
+site_description: 에이전트 간 자율 협업이 가능한 오픈소스 AI 팀 워크스페이스
+site_url: https://doorae-lab.github.io/doorae/
+repo_url: https://github.com/doorae-lab/doorae
+repo_name: doorae-lab/doorae
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: ko
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: 다크 모드로 전환
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: 라이트 모드로 전환
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - content.code.copy
+    - content.tabs.link
+    - search.suggest
+    - search.highlight
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search:
+      lang:
+        - ko
+        - en
+  - tags
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - 홈: index.md
+
+  - 시작하기:
+      - getting-started/index.md
+      - 설치: getting-started/installation.md
+      - 빠른 시작: getting-started/quickstart.md
+      - 첫 번째 회의: getting-started/first-meeting.md
+
+  - 튜토리얼:
+      - tutorials/index.md
+      - 에이전트 프로필 커스터마이징: tutorials/custom-agent-profiles.md
+      - 안건 설정하기: tutorials/configure-agendas.md
+      - MCP 도구 연동하기: tutorials/mcp-tool-integration.md
+      - 서버 모드로 다인 회의: tutorials/server-mode-multiplayer.md
+      - 프로젝트 워크스페이스 관리: tutorials/project-workspace.md
+      - 사람이 회의에 참여하기: tutorials/human-participation.md
+      - LLM 제공자 설정: tutorials/llm-provider-setup.md
+
+  - 사용 가이드:
+      - guides/index.md
+      - CLI 명령어 가이드: guides/cli-commands.md
+      - TUI 인터페이스 사용법: guides/tui-interface.md
+      - 에이전트별 LLM 설정: guides/per-agent-llm.md
+      - 계층적 에이전트 위임: guides/hierarchical-delegation.md
+      - 서버 모드 운영: guides/server-operation.md
+      - LangSmith 트레이싱: guides/langsmith-tracing.md
+      - 비용 최적화: guides/cost-optimization.md
+      - 트러블슈팅: guides/troubleshooting.md
+
+  - 레퍼런스:
+      - reference/index.md
+      - CLI 레퍼런스: reference/cli.md
+      - 환경 변수: reference/environment-variables.md
+      - agent_profiles.yaml: reference/agent-profiles-yaml.md
+      - agendas.yaml: reference/agendas-yaml.md
+      - mcp_servers.json: reference/mcp-servers-json.md
+      - project.yaml: reference/project-yaml.md
+      - workspace.yaml: reference/workspace-yaml.md
+      - 서버 API: reference/server-api.md
+      - MeetingState 스키마: reference/meeting-state.md
+      - 이벤트 프로토콜: reference/event-protocol.md
+
+  - 아키텍처:
+      - architecture/index.md
+      - 시스템 개요: architecture/system-overview.md
+      - LangGraph 워크플로우: architecture/langgraph-workflow.md
+      - 노드 시스템: architecture/node-system.md
+      - Dual LLM 전략: architecture/dual-llm.md
+      - MCP 통합: architecture/mcp-integration.md
+      - 에이전트 프로필 시스템: architecture/agent-profile-system.md
+      - 발언자 큐와 라우팅: architecture/speaker-routing.md
+      - Host 중재 메커니즘: architecture/host-mediation.md
+      - 대화 요약 시스템: architecture/conversation-summary.md
+      - 서버/WebSocket 아키텍처: architecture/server-websocket.md
+      - MeetingEngine 패턴: architecture/meeting-engine.md
+      - 프로젝트 스캐폴딩: architecture/project-scaffolding.md
+
+  - 로드맵:
+      - roadmap/index.md
+      - 채널 기반 채팅: roadmap/channel-chat.md
+      - Web UI: roadmap/web-ui.md
+      - 멀티 런타임: roadmap/multi-runtime.md
+      - 에이전트 영속 메모리: roadmap/persistent-memory.md
+      - Always-on 에이전트: roadmap/always-on-agents.md
+      - Task Board: roadmap/task-board.md
+      - 다중 머신 지원: roadmap/multi-machine.md
+      - Agent Daemon Bridge: roadmap/agent-daemon-bridge.md
+
+  - 기여하기:
+      - contributing/index.md
+      - 개발 환경 설정: contributing/development-setup.md
+      - 테스트 가이드: contributing/testing.md
+      - 코드 구조: contributing/code-structure.md
