@@ -1,0 +1,4656 @@
+<!DOCTYPE html><html lang="ko" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="에이전트 간 자율 협업이 가능한 오픈소스 AI 팀 워크스페이스">
+      
+      
+      
+        <link rel="canonical" href="https://doorae-lab.github.io/doorae/roadmap/architecture-transition/">
+      
+      
+        <link rel="prev" href="../agent-daemon-bridge/">
+      
+      
+        <link rel="next" href="../../contributing/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>아키텍처 전환 전략 - Doorae</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          콘텐츠로 이동
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="상단/헤더">
+    <a href="../.." title="Doorae" class="md-header__button md-logo" aria-label="Doorae" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Doorae
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              아키텍처 전환 전략
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal" aria-label="다크 모드로 전환" type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="다크 모드로 전환" for="__palette_1" hidden="">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="teal" aria-label="라이트 모드로 전환" type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="라이트 모드로 전환" for="__palette_0" hidden="">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="검색" placeholder="검색" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="검색">
+        
+        <button type="reset" class="md-search__icon md-icon" title="지우기" aria-label="지우기" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            검색 초기화
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/doorae-lab/doorae" title="저장소로 이동" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    doorae-lab/doorae
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="탭" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  홈
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  시작하기
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../tutorials/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  튜토리얼
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guides/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  사용 가이드
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  레퍼런스
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  아키텍처
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  로드맵
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../contributing/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  기여하기
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="네비게이션" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Doorae" class="md-nav__button md-logo" aria-label="Doorae" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+
+    </a>
+    Doorae
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/doorae-lab/doorae" title="저장소로 이동" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    doorae-lab/doorae
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    홈
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../getting-started/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    시작하기
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    시작하기
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    설치
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    빠른 시작
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/first-meeting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    첫 번째 회의
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../tutorials/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    튜토리얼
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    튜토리얼
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/custom-agent-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    에이전트 프로필 커스터마이징
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/configure-agendas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    안건 설정하기
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/mcp-tool-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP 도구 연동하기
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/server-mode-multiplayer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    서버 모드로 다인 회의
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/project-workspace/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    프로젝트 워크스페이스 관리
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/human-participation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    사람이 회의에 참여하기
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/llm-provider-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM 제공자 설정
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../guides/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    사용 가이드
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    사용 가이드
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/cli-commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI 명령어 가이드
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/tui-interface/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TUI 인터페이스 사용법
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/per-agent-llm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    에이전트별 LLM 설정
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/hierarchical-delegation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    계층적 에이전트 위임
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/server-operation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    서버 모드 운영
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/langsmith-tracing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LangSmith 트레이싱
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/cost-optimization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    비용 최적화
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    트러블슈팅
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    레퍼런스
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    레퍼런스
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI 레퍼런스
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/environment-variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    환경 변수
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/agent-profiles-yaml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    agent_profiles.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/agendas-yaml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    agendas.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/mcp-servers-json/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    mcp_servers.json
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/project-yaml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    project.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/workspace-yaml/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    workspace.yaml
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/server-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    서버 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/meeting-state/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeetingState 스키마
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/event-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    이벤트 프로토콜
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../architecture/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    아키텍처
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6" id="__nav_6_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    아키텍처
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/system-overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    시스템 개요
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/langgraph-workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LangGraph 워크플로우
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/node-system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    노드 시스템
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/dual-llm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dual LLM 전략
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/mcp-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP 통합
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/agent-profile-system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    에이전트 프로필 시스템
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/speaker-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    발언자 큐와 라우팅
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/host-mediation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Host 중재 메커니즘
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/conversation-summary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    대화 요약 시스템
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/server-websocket/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    서버/WebSocket 아키텍처
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/meeting-engine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MeetingEngine 패턴
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/project-scaffolding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    프로젝트 스캐폴딩
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked="">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    로드맵
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    로드맵
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channel-chat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    채널 기반 채팅
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-ui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web UI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multi-runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    멀티 런타임
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../persistent-memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    에이전트 영속 메모리
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../always-on-agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Always-on 에이전트
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../task-board/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Task Board
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multi-machine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    다중 머신 지원
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-daemon-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Daemon Bridge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    아키텍처 전환 전략
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    아키텍처 전환 전략
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="목차">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      목차
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#1-as-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 현재 아키텍처 (As-Is)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. 현재 아키텍처 (As-Is)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5계층 구조
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        회의 결합 지점 (빨간색 — 높은 결합도)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        재사용 가능한 자산 (초록색 — 낮은 결합도)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-to-be" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 목표 아키텍처 (To-Be)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. 목표 아키텍처 (To-Be)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        현재 vs 목표 비교
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 전환의 핵심 과제
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. 전환의 핵심 과제">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        근본적인 문제: 실행 경계의 부재
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        무엇을 건드리면 안 되는가
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 3가지 아키텍처 패턴
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. 3가지 아키텍처 패턴">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-sessioneventemitter-channelcontext" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        패턴 A: SessionEventEmitter + ChannelContext
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="패턴 A: SessionEventEmitter + ChannelContext">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        전략 개요
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        파일 구조
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        언제 선택하는가
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kill-switch-a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kill Switch (패턴 A 포기 시점)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-agentexecutionport-checkpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        패턴 B: AgentExecutionPort + Checkpoint
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="패턴 B: AgentExecutionPort + Checkpoint">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        전략 개요
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        핵심 Protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        파일 구조
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        언제 선택하는가
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kill-switch-b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kill Switch (패턴 B 위험 신호)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-workspace-agentcapsule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        패턴 C: Workspace 제품 계층 + AgentCapsule
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="패턴 C: Workspace 제품 계층 + AgentCapsule">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        전략 개요
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        파일 구조
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        언제 선택하는가
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kill-switch-c" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kill Switch (패턴 C 위험 신호)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 핵심 발견: 3패턴은 서로 다른 계층
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 패턴 비교표
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-a-b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 권장 전략: A → B 순차 적용
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. 권장 전략: A → B 순차 적용">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        단계별 상세 계획
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="단계별 상세 계획">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#week-1-2-a-day-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Week 1-2: 패턴 A Day 1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#week-3-6-b-phase-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Week 3-6: 패턴 B Phase 1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#month-2-3-b-phase-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Month 2-3: 패턴 B Phase 2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#month-4-5-c" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Month 4-5: 패턴 C 요소 (선택적)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#month-6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Month 6+: 런타임 확장
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-agent-daemon-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3: Agent Daemon Bridge + 다중 머신
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-agent-daemon-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Agent Daemon Bridge 전략
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Agent Daemon Bridge 전략">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#3_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3라운드 토론의 쟁점
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#port" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        핵심 통찰: Port 시그니처는 이미 네트워크 투명
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. 패널 투표 결과
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. 불변 원칙 (재확인)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../contributing/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    기여하기
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_8" id="__nav_8_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    기여하기
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/development-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    개발 환경 설정
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    테스트 가이드
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/code-structure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    코드 구조
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="목차">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      목차
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#1-as-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 현재 아키텍처 (As-Is)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. 현재 아키텍처 (As-Is)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5계층 구조
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        회의 결합 지점 (빨간색 — 높은 결합도)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        재사용 가능한 자산 (초록색 — 낮은 결합도)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-to-be" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 목표 아키텍처 (To-Be)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. 목표 아키텍처 (To-Be)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        현재 vs 목표 비교
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 전환의 핵심 과제
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. 전환의 핵심 과제">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        근본적인 문제: 실행 경계의 부재
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        무엇을 건드리면 안 되는가
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 3가지 아키텍처 패턴
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. 3가지 아키텍처 패턴">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-sessioneventemitter-channelcontext" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        패턴 A: SessionEventEmitter + ChannelContext
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="패턴 A: SessionEventEmitter + ChannelContext">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        전략 개요
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        파일 구조
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        언제 선택하는가
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kill-switch-a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kill Switch (패턴 A 포기 시점)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-agentexecutionport-checkpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        패턴 B: AgentExecutionPort + Checkpoint
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="패턴 B: AgentExecutionPort + Checkpoint">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        전략 개요
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        핵심 Protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        파일 구조
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        언제 선택하는가
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kill-switch-b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kill Switch (패턴 B 위험 신호)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-workspace-agentcapsule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        패턴 C: Workspace 제품 계층 + AgentCapsule
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="패턴 C: Workspace 제품 계층 + AgentCapsule">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        전략 개요
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        파일 구조
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        언제 선택하는가
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kill-switch-c" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kill Switch (패턴 C 위험 신호)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 핵심 발견: 3패턴은 서로 다른 계층
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 패턴 비교표
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-a-b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 권장 전략: A → B 순차 적용
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. 권장 전략: A → B 순차 적용">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        단계별 상세 계획
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="단계별 상세 계획">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#week-1-2-a-day-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Week 1-2: 패턴 A Day 1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#week-3-6-b-phase-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Week 3-6: 패턴 B Phase 1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#month-2-3-b-phase-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Month 2-3: 패턴 B Phase 2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#month-4-5-c" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Month 4-5: 패턴 C 요소 (선택적)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#month-6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Month 6+: 런타임 확장
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-agent-daemon-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3: Agent Daemon Bridge + 다중 머신
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-agent-daemon-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Agent Daemon Bridge 전략
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Agent Daemon Bridge 전략">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#3_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3라운드 토론의 쟁점
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#port" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        핵심 통찰: Port 시그니처는 이미 네트워크 투명
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. 패널 투표 결과
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. 불변 원칙 (재확인)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="_1">아키텍처 전환 전략<a class="headerlink" href="#_1" title="Permanent link">¶</a></h1>
+<div class="admonition info">
+<p class="admonition-title">설계 제안서</p>
+<p>이 문서는 7인 전문가 패널(시스템 아키텍트, 채팅 서버 개발자, 에이전트 전문가, 최신 정보 제공자, 비평가, 프로덕트 전략가, DX 전문가)의 3라운드 토론을 통해 도출된 아키텍처 전환 전략입니다. 현재의 회의 중심 아키텍처에서 <a href="../">로드맵</a>이 목표로 하는 AI 팀 워크스페이스로 전환하기 위한 구체적인 경로를 제시합니다.</p>
+</div>
+<hr>
+<h2 id="1-as-is">1. 현재 아키텍처 (As-Is)<a class="headerlink" href="#1-as-is" title="Permanent link">¶</a></h2>
+<h3 id="5">5계층 구조<a class="headerlink" href="#5" title="Permanent link">¶</a></h3>
+<p>Doorae의 현재 아키텍처는 명확한 5계층으로 구성되어 있습니다.</p>
+<pre class="mermaid"><code>graph TB
+    subgraph Interface["Interface Layer — 입력 제공자"]
+        CLI["CliInputProvider&lt;br/&gt;(터미널 직접 입력)"]
+        TUI["TuiInputProvider&lt;br/&gt;(Textual TUI)"]
+        WS["QueueInputProvider&lt;br/&gt;(WebSocket Server)"]
+    end
+
+    subgraph Engine["Engine Layer"]
+        ME["MeetingEngine&lt;br/&gt;+ MeetingEngineCallback Protocol&lt;br/&gt;(9개 회의 전용 메서드)"]
+    end
+
+    subgraph Graph["Graph Layer"]
+        SG["LangGraph StateGraph(MeetingState)"]
+        N1["RefillSpeakers"]
+        N2["DispatchNode"]
+        N3["ProcessResponse"]
+        N4["condition_router"]
+        SG --&gt; N1 --&gt; N2 --&gt; N3 --&gt; N4
+        N4 --&gt;|"다음 발언자"| N2
+        N4 --&gt;|"회의 종료"| END["END"]
+    end
+
+    subgraph Agent["Agent Layer"]
+        ANE["AgentNodeExecutor&lt;br/&gt;(113줄 한국어 회의 프롬프트&lt;br/&gt;MeetingState 직접 접근)"]
+        BA["BaseAgent&lt;br/&gt;(LLM + MCP Tools&lt;br/&gt;tool-calling loop max 50)"]
+        ANE --&gt; BA
+    end
+
+    subgraph Core["Core Layer"]
+        AP["AgentProfile&lt;br/&gt;(agent_profiles.yaml)"]
+        ST["Settings&lt;br/&gt;(pydantic-settings)"]
+        MCP["MCP Tools"]
+    end
+
+    Interface --&gt; Engine
+    Engine --&gt; Graph
+    Graph --&gt; Agent
+    Agent --&gt; Core
+
+    style ME fill:#ffcccc,stroke:#cc0000,color:#000
+    style SG fill:#ffcccc,stroke:#cc0000,color:#000
+    style ANE fill:#ffcccc,stroke:#cc0000,color:#000
+    style BA fill:#ccffcc,stroke:#006600,color:#000
+    style WS fill:#ccffcc,stroke:#006600,color:#000
+    style AP fill:#ccffcc,stroke:#006600,color:#000
+    style MCP fill:#ccffcc,stroke:#006600,color:#000</code></pre>
+<h3 id="_2">회의 결합 지점 (빨간색 — 높은 결합도)<a class="headerlink" href="#_2" title="Permanent link">¶</a></h3>
+<p>현재 아키텍처에는 회의 로직에 깊게 결합된 5가지 핵심 지점이 있습니다.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>위치</th>
+<th>결합 내용</th>
+<th>영향 범위</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>graph/state.py</code> — <code>MeetingState</code></td>
+<td><code>MessagesState</code>를 상속하며 13개 이상의 회의 전용 필드 (<code>agendas</code>, <code>pending_speakers</code>, <code>speaker_counts</code> 등)</td>
+<td>전체 Graph, Agent 계층</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>interfaces/engine.py</code> — <code>MeetingEngineCallback</code></td>
+<td><code>on_speaker_changed</code>, <code>on_agenda_updated</code>, <code>on_meeting_ended</code> 등 9개의 회의 전용 콜백 메서드</td>
+<td>MeetingEngine 전체</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>graph/nodes/dispatch.py</code> — <code>AgentNodeExecutor</code></td>
+<td>113줄의 한국어 회의 전용 시스템 프롬프트 생성, <code>MeetingState</code> 직접 참조</td>
+<td>DispatchNode</td>
+</tr>
+<tr>
+<td>4</td>
+<td>여러 노드 파일</td>
+<td><code>HOST_ROLE_NAME</code> 상수가 3개 파일 11곳 이상에 하드코딩</td>
+<td>RefillSpeakers, Dispatch, Router</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>server/room.py</code> — <code>Room</code></td>
+<td><code>_current_active_human</code> 뮤텍스 (회의 발언 순서 전용)</td>
+<td>WebSocket Room 관리</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_3">재사용 가능한 자산 (초록색 — 낮은 결합도)<a class="headerlink" href="#_3" title="Permanent link">¶</a></h3>
+<p>동시에, 향후 전환에서 최대한 활용해야 할 잘 설계된 컴포넌트들도 존재합니다.</p>
+<table>
+<thead>
+<tr>
+<th>자산</th>
+<th>파일</th>
+<th>재사용성</th>
+<th>이유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BaseAgent</code></td>
+<td><code>agents/base_agent.py</code></td>
+<td>★★★★★</td>
+<td>회의 의존성 제로. LLM + MCP 추상화가 깔끔함</td>
+</tr>
+<tr>
+<td><code>InputProvider</code> Protocol</td>
+<td><code>interfaces/</code></td>
+<td>★★★★★</td>
+<td>가장 깔끔한 확장 시임(seam). 새 채널 추가 용이</td>
+</tr>
+<tr>
+<td><code>ConnectionManager</code></td>
+<td><code>server/connection_manager.py</code></td>
+<td>★★★★</td>
+<td>이미 <code>channel</code> 파라미터로 멀티플렉싱 준비됨</td>
+</tr>
+<tr>
+<td><code>NodeRegistry</code></td>
+<td><code>graph/node_registry.py</code></td>
+<td>★★★★</td>
+<td><code>@register_node()</code> 플러그인 데코레이터 (비회의용 미사용)</td>
+</tr>
+<tr>
+<td><code>ParticipantRegistry</code></td>
+<td><code>server/participant_registry.py</code></td>
+<td>★★★★</td>
+<td>라이브 추가/제거 지원</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="2-to-be">2. 목표 아키텍처 (To-Be)<a class="headerlink" href="#2-to-be" title="Permanent link">¶</a></h2>
+<p><a href="../">로드맵</a>이 목표로 하는 AI 팀 워크스페이스의 전체 구조입니다.</p>
+<pre class="mermaid"><code>graph TB
+    subgraph Interfaces["인터페이스 계층"]
+        WEBUI["Web UI&lt;br/&gt;(React)"]
+        CLITUI["CLI / TUI"]
+        APIG["REST API&lt;br/&gt;(외부 연동)"]
+    end
+
+    subgraph Server["Doorae 서버"]
+        direction TB
+        CHAN["채널 채팅&lt;br/&gt;(Channel Chat)"]
+        MEET["회의 엔진&lt;br/&gt;(Meeting Engine)"]
+        TBOARD["Task Board"]
+        MEM["영속 메모리 DB&lt;br/&gt;(Server-side)"]
+        ER["이벤트 라우터&lt;br/&gt;(Event Router)"]
+
+        CHAN --&gt; ER
+        MEET --&gt; ER
+        TBOARD --&gt; ER
+    end
+
+    subgraph Bridge["Agent Daemon Bridge"]
+        APORT["AgentExecutionPort&lt;br/&gt;(Protocol)"]
+        RTROUTER["Runtime Router"]
+        APORT --&gt; RTROUTER
+    end
+
+    subgraph Runtimes["에이전트 런타임"]
+        LGA["LangGraph Adapter&lt;br/&gt;(현재 런타임)"]
+        OHA["OpenHands Adapter&lt;br/&gt;(Phase 2)"]
+        SDKA["Claude Agent SDK Adapter&lt;br/&gt;(Phase 2)"]
+    end
+
+    subgraph AgentState["에이전트 생명주기"]
+        ACTIVE["Active&lt;br/&gt;(응답 중)"]
+        IDLE["Idle&lt;br/&gt;(대기 중)"]
+        SLEEP["Sleeping&lt;br/&gt;(절전)"]
+        STOP["Stopped&lt;br/&gt;(중지)"]
+        ACTIVE --&gt; IDLE --&gt; SLEEP --&gt; STOP
+        SLEEP --&gt;|"wake"| ACTIVE
+        IDLE --&gt;|"task"| ACTIVE
+    end
+
+    subgraph Memory["2계층 영속 메모리"]
+        SRVDB["서버 DB&lt;br/&gt;(대화 이력, 태스크)"]
+        WSFILES["에이전트 워크스페이스&lt;br/&gt;(파일 시스템)"]
+    end
+
+    Interfaces --&gt; Server
+    Server &lt;--&gt;|"WebSocket&lt;br/&gt;스트리밍"| Bridge
+    RTROUTER --&gt; LGA
+    RTROUTER --&gt; OHA
+    RTROUTER --&gt; SDKA
+    LGA --&gt; AgentState
+    OHA --&gt; AgentState
+    SDKA --&gt; AgentState
+    Server --&gt; Memory
+    Runtimes --&gt; WSFILES</code></pre>
+<h3 id="vs">현재 vs 목표 비교<a class="headerlink" href="#vs" title="Permanent link">¶</a></h3>
+<table>
+<thead>
+<tr>
+<th>영역</th>
+<th>현재 (v0.1)</th>
+<th>목표</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>상호작용 모델</strong></td>
+<td>회의(Meeting) 단일 모드</td>
+<td>채널 채팅 + 회의 + Task Board</td>
+</tr>
+<tr>
+<td><strong>인터페이스</strong></td>
+<td>CLI / TUI 터미널</td>
+<td>Web UI (React) + CLI + API</td>
+</tr>
+<tr>
+<td><strong>에이전트 생명주기</strong></td>
+<td>회의 시작~종료</td>
+<td>Always-on (Active → Idle → Sleeping → Stopped)</td>
+</tr>
+<tr>
+<td><strong>에이전트 런타임</strong></td>
+<td>LangGraph 단일</td>
+<td>멀티 런타임 (OpenHands, Claude SDK 등)</td>
+</tr>
+<tr>
+<td><strong>메모리</strong></td>
+<td>세션 내 컨텍스트</td>
+<td>2계층 영속 메모리 (서버 DB + 워크스페이스 파일)</td>
+</tr>
+<tr>
+<td><strong>실행 환경</strong></td>
+<td>단일 머신</td>
+<td>다중 머신 분산 실행</td>
+</tr>
+<tr>
+<td><strong>통신 방식</strong></td>
+<td>발언 순서 기반</td>
+<td>비동기 채널 + DM + 위임</td>
+</tr>
+<tr>
+<td><strong>작업 관리</strong></td>
+<td>없음</td>
+<td>Kanban Task Board + 자동 분해/할당</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="3">3. 전환의 핵심 과제<a class="headerlink" href="#3" title="Permanent link">¶</a></h2>
+<h3 id="_4">근본적인 문제: 실행 경계의 부재<a class="headerlink" href="#_4" title="Permanent link">¶</a></h3>
+<p><code>MeetingState</code>, <code>MeetingEngine</code>, <code>AgentNodeExecutor</code>는 회의 로직과 깊게 결합되어 있습니다. 패널 토론에서 도출된 핵심 통찰은 다음과 같습니다.</p>
+<div class="admonition warning">
+<p class="admonition-title">핵심 과제</p>
+<p>진짜 문제는 <strong>실행 경계(Execution Boundary)가 없다</strong>는 것이다. <code>AgentNodeExecutor.execute(MeetingState)</code> 시그니처로는 OpenHands나 Claude SDK를 끼워 넣을 위치가 없다.</p>
+</div>
+<p>현재 <code>AgentNodeExecutor</code>는 <code>MeetingState</code>를 직접 읽어서 회의 전용 프롬프트를 생성합니다. 이 구조에서는:</p>
+<ul>
+<li><strong>다른 런타임 교체 불가</strong>: OpenHands, Claude SDK 등을 주입할 인터페이스가 없음</li>
+<li><strong>채널 채팅 추가 불가</strong>: <code>MeetingState</code> 없이는 <code>AgentNodeExecutor</code>가 동작하지 않음</li>
+<li><strong>세션 간 메모리 불가</strong>: <code>MeetingState</code>는 단일 LangGraph 실행에 묶여 있음</li>
+</ul>
+<h3 id="_5">무엇을 건드리면 안 되는가<a class="headerlink" href="#_5" title="Permanent link">¶</a></h3>
+<p>아래 세 가지는 <strong>절대 불변 원칙</strong>입니다. 어떤 패턴을 선택하더라도 이를 위반해서는 안 됩니다.</p>
+<div class="admonition danger">
+<p class="admonition-title">불변 원칙</p>
+<ol>
+<li><strong><code>MeetingState</code> 수정 금지</strong> — LangGraph 타입 시스템은 컴파일 타임 바인딩입니다. 기존 필드 변경은 금지. 새 필드 추가는 허용.</li>
+<li><strong><code>MeetingEngineCallback</code> Protocol 보존</strong> — 현재 코드베이스에서 가장 잘 설계된 추상화 경계입니다.</li>
+<li><strong>기존 엔드포인트 피처 플래그</strong> — <code>/ws/{room_id}</code> 엔드포인트는 반드시 유지. 내부 라우팅 변경만 허용. 하위 호환성 파괴는 기존 사용자 이탈로 이어집니다.</li>
+</ol>
+</div>
+<hr>
+<h2 id="4-3">4. 3가지 아키텍처 패턴<a class="headerlink" href="#4-3" title="Permanent link">¶</a></h2>
+<p>패널은 3라운드 토론을 통해 세 가지 독립적인 아키텍처 패턴을 도출했습니다. 각 패턴은 서로 다른 계층을 다루며, 상호 보완적입니다.</p>
+<hr>
+<h3 id="a-sessioneventemitter-channelcontext">패턴 A: SessionEventEmitter + ChannelContext<a class="headerlink" href="#a-sessioneventemitter-channelcontext" title="Permanent link">¶</a></h3>
+<h4 id="_6">전략 개요<a class="headerlink" href="#_6" title="Permanent link">¶</a></h4>
+<p><code>MeetingEngineCallback</code>을 <code>SessionEventEmitter</code>로 진화시키고, 채널 인식을 위한 <code>ChannelContext</code>를 추가합니다. <strong>기존 코드를 건드리지 않고</strong>, 채널 채팅을 기존 <code>BaseAgent</code>를 직접 사용하는 병렬 경로로 추가합니다.</p>
+<pre class="mermaid"><code>graph TB
+    subgraph NEW["신규 추가 (NEW)"]
+        CC["ChannelContext&lt;br/&gt;(채널 타입, 라우터)"]
+        SEE["SessionEventEmitter&lt;br/&gt;(MeetingEngineCallback 슈퍼타입)"]
+        CSC["ChatSessionCallback&lt;br/&gt;(채널 채팅 전용)"]
+        CM["ChannelManager&lt;br/&gt;(server/channel_manager.py)"]
+    end
+
+    subgraph MODIFIED["수정 (MODIFIED)"]
+        ROOM["Room&lt;br/&gt;(ChannelContext 필드 추가)"]
+    end
+
+    subgraph UNCHANGED["변경 없음 (UNCHANGED)"]
+        GRAPH["graph/*&lt;br/&gt;(StateGraph, Nodes 전체)"]
+        AGENTS["agents/*&lt;br/&gt;(BaseAgent, AgentNodeExecutor)"]
+        ENGINE["interfaces/engine.py&lt;br/&gt;(MeetingEngine)"]
+        MEC["MeetingEngineCallback&lt;br/&gt;(기존 Protocol)"]
+    end
+
+    SEE --&gt;|"extends"| MEC
+    CSC --&gt;|"implements"| SEE
+    CM --&gt; CC
+    ROOM --&gt;|"has"| CC
+    CC --&gt;|"routes"| GRAPH
+    CC --&gt;|"routes"| CM
+
+    style NEW fill:#e8f5e9,stroke:#2e7d32,color:#000
+    style MODIFIED fill:#fff3e0,stroke:#e65100,color:#000
+    style UNCHANGED fill:#e3f2fd,stroke:#1565c0,color:#000</code></pre>
+<h4 id="_7">파일 구조<a class="headerlink" href="#_7" title="Permanent link">¶</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>doorae/
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── interfaces/
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│   ├── channel.py          # NEW: ChannelContext, ChannelType, ChannelRouter
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│   ├── callbacks/
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│   │   ├── base.py         # NEW: SessionEventEmitter (MeetingEngineCallback 슈퍼타입)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│   │   └── chat.py         # NEW: ChatSessionCallback
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│   └── engine.py           # UNCHANGED
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>├── server/
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   ├── channel_manager.py  # NEW
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   └── room.py             # MODIFIED: ChannelContext 필드 추가
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>└── graph/                  # UNCHANGED 전체
+</code></pre></div>
+<h4 id="_8">언제 선택하는가<a class="headerlink" href="#_8" title="Permanent link">¶</a></h4>
+<div class="admonition tip">
+<p class="admonition-title">패턴 A 선택 기준</p>
+<ul>
+<li>팀 규모 1-3명</li>
+<li>사용자 확보가 최우선 과제</li>
+<li>Phase 3 런타임 변경이 12개월 이상 후</li>
+<li>기여자 접근성이 중요한 오픈소스 프로젝트</li>
+</ul>
+</div>
+<ul>
+<li><strong>MVP 소요</strong>: 4-6주</li>
+<li><strong>코드 보존율</strong>: 95% 이상</li>
+</ul>
+<h4 id="kill-switch-a">Kill Switch (패턴 A 포기 시점)<a class="headerlink" href="#kill-switch-a" title="Permanent link">¶</a></h4>
+<div class="admonition warning">
+<p class="admonition-title">Kill Switch 조건</p>
+<p>다음 중 하나라도 해당되면 패턴 B로 전환을 시작하세요.
+- 콜백 메서드가 20개 초과
+- 3개 이상의 런타임 지원 요청
+- <code>AgentNodeExecutor</code> 내 런타임 분기가 3곳 이상</p>
+</div>
+<hr>
+<h3 id="b-agentexecutionport-checkpoint">패턴 B: AgentExecutionPort + Checkpoint<a class="headerlink" href="#b-agentexecutionport-checkpoint" title="Permanent link">¶</a></h3>
+<h4 id="_9">전략 개요<a class="headerlink" href="#_9" title="Permanent link">¶</a></h4>
+<p><code>AgentExecutionPort.execute_streaming(TaskSpec) → AsyncIterator[StreamEvent]</code> 인터페이스를 삽입하여 <strong>실행 경계</strong>를 만듭니다. LangGraph는 이 포트 뒤에 있는 하나의 어댑터가 됩니다.</p>
+<h4 id="protocol">핵심 Protocol<a class="headerlink" href="#protocol" title="Permanent link">¶</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">AgentExecutionPort</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">execute_streaming</span><span class="p">(</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>        <span class="n">task</span><span class="p">:</span> <span class="n">TaskSpec</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncIterator</span><span class="p">[</span><span class="n">StreamEvent</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_capability</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AgentCapability</span><span class="p">:</span>  <span class="c1"># A2A Agent Card</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>        <span class="o">...</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_lifecycle_state</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AgentLifecycleState</span><span class="p">:</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>        <span class="o">...</span>
+</code></pre></div>
+<pre class="mermaid"><code>graph TB
+    subgraph NEW["신규 추가 (NEW)"]
+        AEP["AgentExecutionPort&lt;br/&gt;(Protocol)&lt;br/&gt;ports/agent_execution.py"]
+        TS["TaskSpec&lt;br/&gt;(JSON 직렬화 가능)"]
+        SE["StreamEvent&lt;br/&gt;(WebSocket 전송 가능)"]
+        LGA["LangGraphAdapter&lt;br/&gt;(기존 AgentNodeExecutor 래핑)&lt;br/&gt;ports/langgraph_adapter.py"]
+        OHA["OpenHandsAdapter&lt;br/&gt;(Phase 2 스텁)&lt;br/&gt;ports/openhands_adapter.py"]
+        CSDK["ClaudeSDKAdapter&lt;br/&gt;(Phase 2 스텁)&lt;br/&gt;ports/claude_sdk_adapter.py"]
+        CKPT["CheckpointManager&lt;br/&gt;(SqliteSaver 래퍼)&lt;br/&gt;graph/checkpointing.py"]
+        EB["InProcessEventBus&lt;br/&gt;interfaces/event_bus.py"]
+    end
+
+    subgraph MODIFIED["수정 (MODIFIED)"]
+        DN["DispatchNode&lt;br/&gt;(Port를 통해 실행)&lt;br/&gt;graph/nodes/dispatch.py"]
+    end
+
+    subgraph UNCHANGED["변경 없음 (UNCHANGED)"]
+        BA["agents/base_agent.py"]
+        GS["graph/state.py"]
+        IE["interfaces/engine.py"]
+        ANE["AgentNodeExecutor&lt;br/&gt;(LangGraphAdapter 내부에서 사용)"]
+    end
+
+    DN --&gt;|"execute_streaming(TaskSpec)"| AEP
+    AEP --&gt;|"현재"| LGA
+    AEP --&gt;|"Phase 2"| OHA
+    AEP --&gt;|"Phase 2"| CSDK
+    LGA --&gt;|"내부 사용"| ANE
+    CKPT --&gt;|"세션 간 상태"| LGA
+    EB --&gt;|"이벤트 전파"| AEP
+
+    TS -.-&gt;|"JSON"| AEP
+    SE -.-&gt;|"WebSocket"| AEP
+
+    style NEW fill:#e8f5e9,stroke:#2e7d32,color:#000
+    style MODIFIED fill:#fff3e0,stroke:#e65100,color:#000
+    style UNCHANGED fill:#e3f2fd,stroke:#1565c0,color:#000
+    style AEP fill:#fff9c4,stroke:#f9a825,color:#000,stroke-width:3px</code></pre>
+<h4 id="_10">파일 구조<a class="headerlink" href="#_10" title="Permanent link">¶</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>doorae/
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>├── ports/
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>│   ├── agent_execution.py    # NEW: AgentExecutionPort, TaskSpec, StreamEvent
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>│   ├── langgraph_adapter.py  # NEW: 기존 AgentNodeExecutor 래핑
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>│   ├── openhands_adapter.py  # NEW: Phase 2 스텁
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>│   └── claude_sdk_adapter.py # NEW: Phase 2 스텁
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>├── graph/
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>│   ├── checkpointing.py      # NEW: SqliteSaver 래퍼
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>│   └── nodes/
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>│       └── dispatch.py       # MODIFIED: Port를 통해 실행
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>└── interfaces/
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    └── event_bus.py          # NEW: InProcessEventBus
+</code></pre></div>
+<h4 id="_11">언제 선택하는가<a class="headerlink" href="#_11" title="Permanent link">¶</a></h4>
+<div class="admonition tip">
+<p class="admonition-title">패턴 B 선택 기준</p>
+<ul>
+<li>팀 규모 3-7명</li>
+<li>LangGraph 전문가 보유</li>
+<li>6-12개월 이내 멀티 런타임 지원 확정</li>
+<li>A2A/MCP 표준 정렬이 중요한 경우</li>
+</ul>
+</div>
+<ul>
+<li><strong>MVP 소요</strong>: 6-8주</li>
+<li><strong>코드 보존율</strong>: 85% 이상</li>
+<li><strong>A2A/MCP 정렬</strong>: 8/10</li>
+</ul>
+<h4 id="kill-switch-b">Kill Switch (패턴 B 위험 신호)<a class="headerlink" href="#kill-switch-b" title="Permanent link">¶</a></h4>
+<div class="admonition warning">
+<p class="admonition-title">Kill Switch 조건</p>
+<ul>
+<li><code>dispatch.py</code> 수정 후 3건 이상의 회의 회귀 버그</li>
+<li><code>TaskSpec</code> 스키마 파괴적 변경 5회 이상</li>
+<li>팀이 Port를 우회하여 <code>AgentNodeExecutor</code> 직접 호출</li>
+</ul>
+</div>
+<hr>
+<h3 id="c-workspace-agentcapsule">패턴 C: Workspace 제품 계층 + AgentCapsule<a class="headerlink" href="#c-workspace-agentcapsule" title="Permanent link">¶</a></h3>
+<h4 id="_12">전략 개요<a class="headerlink" href="#_12" title="Permanent link">¶</a></h4>
+<p>제품 개념 계층(Workspace → Project → Session)을 코드 구조에 직접 매핑합니다. <code>AgentCapsule</code>은 세션 간 에이전트 메모리를 보존합니다. <code>ResultWriter</code>로 2주 만에 첫 번째 사용자 가치를 제공합니다.</p>
+<div class="admonition tip">
+<p class="admonition-title">패턴 C의 핵심 원칙</p>
+<p>코드 구조 = 제품 구조. 새 팀원이 코드를 보면 제품이 이해됩니다.</p>
+</div>
+<pre class="mermaid"><code>graph TB
+    subgraph NEW["신규 추가 (NEW)"]
+        WC["WorkspaceContext&lt;br/&gt;workspace/context.py"]
+        PS["ProjectSession&lt;br/&gt;workspace/project_session.py"]
+        MS["MeetingSession&lt;br/&gt;(MeetingEngine 래퍼)&lt;br/&gt;workspace/meeting_session.py"]
+        AC["AgentCapsule&lt;br/&gt;(프로필 + 메모리 + 실행자)&lt;br/&gt;agent_capsule/capsule.py"]
+        CM2["CapsuleMemory&lt;br/&gt;(in-memory → Phase 2 SQLite)&lt;br/&gt;agent_capsule/memory.py"]
+        RW["ResultWriter&lt;br/&gt;(회의 결과 MD 자동 생성)&lt;br/&gt;project/result_writer.py"]
+    end
+
+    subgraph UNCHANGED["변경 없음 (UNCHANGED)"]
+        GRAPH["graph/*"]
+        AGENTS["agents/*"]
+        ENGINE["interfaces/engine.py"]
+    end
+
+    WC --&gt;|"contains"| PS
+    PS --&gt;|"has sessions"| MS
+    PS --&gt;|"has agents"| AC
+    AC --&gt;|"has memory"| CM2
+    MS --&gt;|"wraps"| ENGINE
+    MS --&gt;|"on_meeting_ended"| RW
+    AC --&gt;|"uses"| AGENTS
+
+    style NEW fill:#e8f5e9,stroke:#2e7d32,color:#000
+    style UNCHANGED fill:#e3f2fd,stroke:#1565c0,color:#000
+    style RW fill:#fff9c4,stroke:#f9a825,color:#000,stroke-width:3px</code></pre>
+<h4 id="_13">파일 구조<a class="headerlink" href="#_13" title="Permanent link">¶</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>doorae/
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>├── workspace/
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>│   ├── context.py           # NEW: WorkspaceContext
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>│   ├── project_session.py   # NEW: ProjectSession
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>│   └── meeting_session.py   # NEW: MeetingSession (MeetingEngine 래퍼)
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>├── agent_capsule/
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>│   ├── capsule.py           # NEW: AgentCapsule (프로필 + 메모리 + 실행자)
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>│   └── memory.py            # NEW: CapsuleMemory (in-memory → Phase 2 SQLite)
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>└── project/
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    └── result_writer.py     # NEW: 회의 결과 MD 자동 생성
+</code></pre></div>
+<h4 id="_14">언제 선택하는가<a class="headerlink" href="#_14" title="Permanent link">¶</a></h4>
+<div class="admonition tip">
+<p class="admonition-title">패턴 C 선택 기준</p>
+<ul>
+<li>팀 규모 5명 이상</li>
+<li>"AI 워크스페이스"가 핵심 비전</li>
+<li>세션 간 에이전트 메모리가 Day 1 요구사항</li>
+<li>DX와 기여자 온보딩이 최우선</li>
+</ul>
+</div>
+<ul>
+<li><strong>첫 번째 가치 제공</strong>: 2주 (ResultWriter)</li>
+<li><strong>코드 보존율</strong>: 85% 이상</li>
+</ul>
+<h4 id="kill-switch-c">Kill Switch (패턴 C 위험 신호)<a class="headerlink" href="#kill-switch-c" title="Permanent link">¶</a></h4>
+<div class="admonition warning">
+<p class="admonition-title">Kill Switch 조건</p>
+<ul>
+<li>"Session이란 무엇인가" 정의 충돌이 지속될 경우</li>
+<li><code>WorkspaceManager</code>가 <code>MeetingEngine</code>을 복제하기 시작할 경우</li>
+<li>6개월 내 새로운 Session 타입이 0개인 경우</li>
+</ul>
+</div>
+<hr>
+<h2 id="5-3">5. 핵심 발견: 3패턴은 서로 다른 계층<a class="headerlink" href="#5-3" title="Permanent link">¶</a></h2>
+<div class="admonition info">
+<p class="admonition-title">Round 3의 핵심 통찰</p>
+<p>세 패턴은 <strong>경쟁 관계가 아닙니다.</strong> 서로 다른 계층을 다루는 <strong>상호 보완적</strong> 패턴입니다. 모두 함께 적용할 수 있습니다.</p>
+</div>
+<pre class="mermaid"><code>graph TB
+    subgraph L4["계층 4: 인터페이스 계층"]
+        CLI2["CLI / TUI / Web UI"]
+    end
+
+    subgraph L3["계층 3: 이벤트/콜백 계층 — 패턴 A"]
+        SEE2["SessionEventEmitter&lt;br/&gt;(패턴 A 영역)"]
+        CC2["ChannelContext&lt;br/&gt;(패턴 A 영역)"]
+    end
+
+    subgraph L2["계층 2: 제품 개념 계층 — 패턴 C"]
+        WC2["Workspace / Project / Session&lt;br/&gt;(패턴 C 영역)"]
+    end
+
+    subgraph L1["계층 1: 실행 경계 계층 — 패턴 B"]
+        AEP2["AgentExecutionPort&lt;br/&gt;(패턴 B 영역)"]
+    end
+
+    subgraph L0["계층 0: 불변 코어 — 절대 건드리지 않음"]
+        MS2["MeetingState&lt;br/&gt;(LangGraph StateGraph)"]
+        CORE["BaseAgent + MCP Tools"]
+    end
+
+    L4 --&gt; L3
+    L3 --&gt; L2
+    L2 --&gt; L1
+    L1 --&gt; L0
+
+    style L3 fill:#e8f5e9,stroke:#2e7d32,color:#000
+    style L2 fill:#e3f2fd,stroke:#1565c0,color:#000
+    style L1 fill:#fff3e0,stroke:#e65100,color:#000
+    style L0 fill:#ffebee,stroke:#c62828,color:#000</code></pre>
+<table>
+<thead>
+<tr>
+<th>계층</th>
+<th>패턴</th>
+<th>담당 영역</th>
+<th>핵심 컴포넌트</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>이벤트/콜백</td>
+<td><strong>패턴 A</strong></td>
+<td>회의 이벤트 → 세션 이벤트 일반화</td>
+<td><code>SessionEventEmitter</code>, <code>ChannelContext</code></td>
+</tr>
+<tr>
+<td>제품 개념</td>
+<td><strong>패턴 C</strong></td>
+<td>Workspace/Project/Session 매핑</td>
+<td><code>WorkspaceContext</code>, <code>AgentCapsule</code></td>
+</tr>
+<tr>
+<td>실행 경계</td>
+<td><strong>패턴 B</strong></td>
+<td>런타임 교체 가능한 경계</td>
+<td><code>AgentExecutionPort</code>, <code>TaskSpec</code></td>
+</tr>
+<tr>
+<td>불변 코어</td>
+<td><strong>(없음)</strong></td>
+<td>절대 수정 금지</td>
+<td><code>MeetingState</code>, LangGraph, <code>BaseAgent</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="6">6. 패턴 비교표<a class="headerlink" href="#6" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th>평가 기준</th>
+<th>패턴 A</th>
+<th>패턴 B</th>
+<th>패턴 C</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Phase 1 MVP 속도</strong></td>
+<td>★★★★★ 4-6주</td>
+<td>★★★★ 6-8주</td>
+<td>★★★★ 2주(첫 가치)</td>
+</tr>
+<tr>
+<td><strong>코드 보존율</strong></td>
+<td>★★★★★ 95%+</td>
+<td>★★★★ 85%+</td>
+<td>★★★★ 85%+</td>
+</tr>
+<tr>
+<td><strong>런타임 교체 가능성</strong></td>
+<td>★★</td>
+<td>★★★★★</td>
+<td>★★★</td>
+</tr>
+<tr>
+<td><strong>A2A/MCP 정렬</strong></td>
+<td>★★ (4/10)</td>
+<td>★★★★ (8/10)</td>
+<td>★★ (4/10)</td>
+</tr>
+<tr>
+<td><strong>Phase 3 준비도</strong></td>
+<td>★★</td>
+<td>★★★★★</td>
+<td>★★★</td>
+</tr>
+<tr>
+<td><strong>v0.1 목표 정렬</strong></td>
+<td>★★★</td>
+<td>★★★</td>
+<td>★★★★★</td>
+</tr>
+<tr>
+<td><strong>DX/기여자 접근성</strong></td>
+<td>★★★★★</td>
+<td>★★★</td>
+<td>★★★★★</td>
+</tr>
+<tr>
+<td><strong>회의 회귀 위험</strong></td>
+<td>★★★★★ 없음</td>
+<td>★★★ dispatch 변경</td>
+<td>★★★★ 래퍼만</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="7-a-b">7. 권장 전략: A → B 순차 적용<a class="headerlink" href="#7-a-b" title="Permanent link">¶</a></h2>
+<p>패널의 최종 권고안은 <strong>패턴 A로 시작하여 패턴 B로 진화</strong>하는 순차 적용 전략입니다. 패턴 C의 요소는 독립 모듈로 선택적 추가됩니다.</p>
+<pre class="mermaid"><code>gantt
+    title Doorae 아키텍처 전환 타임라인
+    dateFormat YYYY-MM-DD
+    tickInterval 1month
+    axisFormat %m월
+
+    section 패턴 A (즉시 가치)
+    ChannelContext + SessionEventEmitter 추가    :a1, 2026-04-01, 2026-04-14
+    채널 채팅 배포 (사용자 즉시 사용 가능)       :a2, 2026-04-14, 2026-04-21
+
+    section 패턴 B Phase 1 (실행 경계)
+    AgentExecutionPort Protocol 정의            :b1, 2026-04-21, 2026-05-05
+    LangGraphAdapter 구현                       :b2, 2026-05-05, 2026-05-19
+    DispatchNode → Port 전환                    :b3, 2026-05-19, 2026-06-02
+
+    section 패턴 B Phase 2 (영속 메모리)
+    CheckpointManager (SqliteSaver)             :b4, 2026-06-02, 2026-07-01
+    세션 간 에이전트 메모리                       :b5, 2026-07-01, 2026-08-01
+
+    section 패턴 C 요소 (선택적)
+    ResultWriter (회의 결과 자동 생성)            :c1, 2026-08-01, 2026-08-21
+    AgentCapsule 독립 모듈                       :c2, 2026-08-21, 2026-09-15
+
+    section 런타임 확장
+    OpenHands / Claude SDK Adapter              :r1, 2026-09-15, 2026-11-01
+    Agent Daemon Bridge (포트 어댑터로)           :r2, 2026-11-01, 2027-01-01</code></pre>
+<h3 id="_15">단계별 상세 계획<a class="headerlink" href="#_15" title="Permanent link">¶</a></h3>
+<h4 id="week-1-2-a-day-1">Week 1-2: 패턴 A Day 1<a class="headerlink" href="#week-1-2-a-day-1" title="Permanent link">¶</a></h4>
+<p><strong>목표</strong>: 채널 채팅 즉시 배포. 사용자 가치 Day 1.</p>
+<ul>
+<li><code>interfaces/channel.py</code> 생성: <code>ChannelContext</code>, <code>ChannelType</code>, <code>ChannelRouter</code></li>
+<li><code>interfaces/callbacks/base.py</code>: <code>SessionEventEmitter</code> (<code>MeetingEngineCallback</code>의 슈퍼타입 alias)</li>
+<li><code>server/room.py</code>: <code>ChannelContext</code> 필드 추가</li>
+<li><code>server/channel_manager.py</code> 생성</li>
+<li><strong>기존 코드 변경 없음</strong>, 기존 테스트 100% 통과</li>
+</ul>
+<h4 id="week-3-6-b-phase-1">Week 3-6: 패턴 B Phase 1<a class="headerlink" href="#week-3-6-b-phase-1" title="Permanent link">¶</a></h4>
+<p><strong>목표</strong>: 실행 경계 삽입. 런타임 교체 가능한 구조 완성.</p>
+<ul>
+<li><code>ports/agent_execution.py</code>: <code>AgentExecutionPort</code> Protocol, <code>TaskSpec</code>, <code>StreamEvent</code> 정의</li>
+<li><code>ports/langgraph_adapter.py</code>: 기존 <code>AgentNodeExecutor</code> 래핑</li>
+<li><code>ports/openhands_adapter.py</code>, <code>ports/claude_sdk_adapter.py</code>: Phase 2 스텁</li>
+<li><code>graph/nodes/dispatch.py</code>: <code>AgentNodeExecutor</code> 직접 호출 → Port 사용으로 변경</li>
+<li><strong>위험 완화</strong>: DispatchNode 변경 전 회의 회귀 테스트 스위트 작성</li>
+</ul>
+<h4 id="month-2-3-b-phase-2">Month 2-3: 패턴 B Phase 2<a class="headerlink" href="#month-2-3-b-phase-2" title="Permanent link">¶</a></h4>
+<p><strong>목표</strong>: 세션 간 에이전트 메모리.</p>
+<ul>
+<li><code>graph/checkpointing.py</code>: LangGraph <code>SqliteSaver</code> 래퍼</li>
+<li><code>interfaces/event_bus.py</code>: <code>InProcessEventBus</code></li>
+<li>세션 재시작 후 에이전트 컨텍스트 복원 검증</li>
+</ul>
+<h4 id="month-4-5-c">Month 4-5: 패턴 C 요소 (선택적)<a class="headerlink" href="#month-4-5-c" title="Permanent link">¶</a></h4>
+<p><strong>목표</strong>: 즉각적인 사용자 가치 + DX 개선.</p>
+<ul>
+<li><code>project/result_writer.py</code>: 회의 종료 시 마크다운 결과 자동 생성</li>
+<li><code>agent_capsule/capsule.py</code>: 프로필 + 메모리 + 실행자를 하나의 캡슐로</li>
+<li>이 단계는 팀/비전에 따라 건너뛸 수 있음</li>
+</ul>
+<h4 id="month-6">Month 6+: 런타임 확장<a class="headerlink" href="#month-6" title="Permanent link">¶</a></h4>
+<p><strong>목표</strong>: 멀티 런타임 지원.</p>
+<ul>
+<li><code>ports/openhands_adapter.py</code> 실제 구현</li>
+<li><code>ports/claude_sdk_adapter.py</code> 실제 구현</li>
+<li>Agent Daemon Bridge: <code>DaemonBridgeAdapter implements AgentExecutionPort</code></li>
+</ul>
+<h4 id="phase-3-agent-daemon-bridge">Phase 3: Agent Daemon Bridge + 다중 머신<a class="headerlink" href="#phase-3-agent-daemon-bridge" title="Permanent link">¶</a></h4>
+<p><strong>목표</strong>: 분산 에이전트 실행 환경.</p>
+<ul>
+<li>Daemon Bridge가 <code>AgentExecutionPort</code> 어댑터로 자연스럽게 삽입됨</li>
+<li>네트워크 투명성: <code>TaskSpec</code> JSON 직렬화, <code>StreamEvent</code> WebSocket 스트리밍</li>
+</ul>
+<hr>
+<h2 id="8-agent-daemon-bridge">8. Agent Daemon Bridge 전략<a class="headerlink" href="#8-agent-daemon-bridge" title="Permanent link">¶</a></h2>
+<h3 id="3_1">3라운드 토론의 쟁점<a class="headerlink" href="#3_1" title="Permanent link">¶</a></h3>
+<p>Agent Daemon Bridge는 패널 전체 3라운드에서 가장 뜨거운 논쟁 주제였습니다.</p>
+<table>
+<thead>
+<tr>
+<th>입장</th>
+<th>주체</th>
+<th>논거</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Phase 1 포함</td>
+<td>[Agent] + [Trend]</td>
+<td>조기 멀티 런타임 지원, A2A 표준 정렬</td>
+</tr>
+<tr>
+<td>Phase 2-3 지연</td>
+<td>[PM] + [Critic]</td>
+<td>사용자에게 보이는 가치 없음, 6개월 생존이 우선</td>
+</tr>
+<tr>
+<td><strong>타협안</strong></td>
+<td>전원 합의</td>
+<td><strong>AgentExecutionPort (Week 3-6)가 삽입 지점 생성. Bridge는 Phase 2-3에 Port 어댑터로</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="port">핵심 통찰: Port 시그니처는 이미 네트워크 투명<a class="headerlink" href="#port" title="Permanent link">¶</a></h3>
+<p><code>AgentExecutionPort</code>의 시그니처 <code>execute_streaming(TaskSpec) → AsyncIterator[StreamEvent]</code>는 이미 네트워크 투명합니다.</p>
+<ul>
+<li><code>TaskSpec</code> → JSON 직렬화</li>
+<li><code>StreamEvent</code> → WebSocket으로 스트리밍</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">DaemonBridgeAdapter</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="sd">"""AgentExecutionPort를 구현하는 Daemon Bridge 어댑터"""</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">execute_streaming</span><span class="p">(</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">task</span><span class="p">:</span> <span class="n">TaskSpec</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncIterator</span><span class="p">[</span><span class="n">StreamEvent</span><span class="p">]:</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">ws</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">task</span><span class="o">.</span><span class="n">to_json</span><span class="p">())</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>        <span class="k">async</span> <span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ws</span><span class="p">:</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>            <span class="k">yield</span> <span class="n">StreamEvent</span><span class="o">.</span><span class="n">from_json</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+</code></pre></div>
+<pre class="mermaid"><code>graph LR
+    subgraph Server["Doorae 서버"]
+        DN2["DispatchNode"]
+        AEP3["AgentExecutionPort"]
+        DN2 --&gt;|"execute_streaming(TaskSpec)"| AEP3
+    end
+
+    subgraph Phase1["Phase 1 (현재)"]
+        LGA2["LangGraphAdapter&lt;br/&gt;(인프로세스)"]
+        AEP3 --&gt; LGA2
+    end
+
+    subgraph Phase23["Phase 2-3 (Daemon Bridge)"]
+        DBA["DaemonBridgeAdapter&lt;br/&gt;(WebSocket 클라이언트)"]
+        WS2["WebSocket&lt;br/&gt;TaskSpec JSON ↔ StreamEvent"]
+        DAEMON["Agent Daemon&lt;br/&gt;(별도 프로세스/머신)"]
+        LGR["LangGraph Runtime"]
+        OHR["OpenHands Runtime"]
+        CSDR["Claude SDK Runtime"]
+
+        DBA --&gt;|"ws.send(task.to_json())"| WS2
+        WS2 --&gt; DAEMON
+        DAEMON --&gt; LGR
+        DAEMON --&gt; OHR
+        DAEMON --&gt; CSDR
+    end
+
+    AEP3 -.-&gt;|"Phase 2-3 교체"| DBA
+
+    style Phase1 fill:#e3f2fd,stroke:#1565c0,color:#000
+    style Phase23 fill:#e8f5e9,stroke:#2e7d32,color:#000
+    style AEP3 fill:#fff9c4,stroke:#f9a825,color:#000,stroke-width:3px</code></pre>
+<p>이 구조 덕분에 Phase 1에서는 인프로세스 <code>LangGraphAdapter</code>를 사용하고, Phase 2-3에서는 코드 변경 없이 <code>DaemonBridgeAdapter</code>로 교체만 하면 됩니다. <code>DispatchNode</code>는 이 차이를 알 필요가 없습니다.</p>
+<hr>
+<h2 id="9">9. 패널 투표 결과<a class="headerlink" href="#9" title="Permanent link">¶</a></h2>
+<p>3라운드 토론 후 각 패널 전문가의 최종 선택과 근거:</p>
+<table>
+<thead>
+<tr>
+<th>전문가</th>
+<th>1차 선택</th>
+<th>핵심 근거</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>[Arch] 시스템 아키텍트</strong></td>
+<td>패턴 B</td>
+<td>실행 경계 부재가 지금 가장 큰 기술 부채</td>
+</tr>
+<tr>
+<td><strong>[Chat] 채팅 서버 개발자</strong></td>
+<td>패턴 A</td>
+<td>채널 채팅이 즉시 가능한 유일한 패턴</td>
+</tr>
+<tr>
+<td><strong>[Agent] 에이전트 전문가</strong></td>
+<td>패턴 B</td>
+<td>AgentExecutionPort가 런타임 교체의 핵심</td>
+</tr>
+<tr>
+<td><strong>[Trend] 최신 정보 제공자</strong></td>
+<td>패턴 B</td>
+<td>Agent-as-MCP-Server 트렌드와 최고 정렬</td>
+</tr>
+<tr>
+<td><strong>[Critic] 비평가</strong></td>
+<td>A → B</td>
+<td>패턴 A로 시작, B로 진화. 단독 B는 위험</td>
+</tr>
+<tr>
+<td><strong>[PM] 프로덕트 전략가</strong></td>
+<td>패턴 A</td>
+<td>6개월 생존이 우선. <code>dispatch.py</code> 위험 회피</td>
+</tr>
+<tr>
+<td><strong>[DX] DX 전문가</strong></td>
+<td>패턴 A</td>
+<td>기여자 접근성이 압도적</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition success">
+<p class="admonition-title">최종 합의</p>
+<p>초기 투표: <strong>A 지지 4표 vs B 지지 3표</strong> → 타협안 제시 후 <strong>A → B 순차 적용 전략으로 전원 만장일치</strong></p>
+<ul>
+<li><strong>[Chat]</strong>, <strong>[PM]</strong>, <strong>[DX]</strong>: "B의 실행 경계 삽입이 Week 3-6에 자연스럽게 이어지므로 A부터 시작해도 B를 포기하는 것이 아니다"</li>
+<li><strong>[Arch]</strong>, <strong>[Agent]</strong>, <strong>[Trend]</strong>: "A가 <code>BaseAgent</code>를 직접 사용하는 채널 채팅 경로를 열면, Port 삽입은 그다음 논리적 단계"</li>
+<li><strong>[Critic]</strong>: "이것이 내가 처음부터 원했던 것이다"</li>
+</ul>
+</div>
+<hr>
+<h2 id="10">10. 불변 원칙 (재확인)<a class="headerlink" href="#10" title="Permanent link">¶</a></h2>
+<p>세 가지 불변 원칙은 어떤 패턴을 선택하더라도, 어떤 팀이 작업하더라도 반드시 지켜야 합니다.</p>
+<pre class="mermaid"><code>graph LR
+    subgraph DO_NOT["절대 금지"]
+        MSMOD["MeetingState&lt;br/&gt;기존 필드 수정"]
+        MECMOD["MeetingEngineCallback&lt;br/&gt;Protocol 제거/변경"]
+        WSBREAK["기존 WebSocket 엔드포인트&lt;br/&gt;/ws/{room_id} 제거"]
+    end
+
+    subgraph ALLOWED["허용"]
+        MSADD["MeetingState&lt;br/&gt;새 필드 추가 (OK)"]
+        SEEALIAS["SessionEventEmitter&lt;br/&gt;슈퍼타입 추가 (OK)"]
+        FFLAG["피처 플래그로&lt;br/&gt;내부 라우팅 변경 (OK)"]
+    end
+
+    style DO_NOT fill:#ffebee,stroke:#c62828,color:#000
+    style ALLOWED fill:#e8f5e9,stroke:#2e7d32,color:#000</code></pre>
+<div class="admonition danger">
+<p class="admonition-title">왜 이 원칙이 중요한가</p>
+<ol>
+<li>
+<p><strong><code>MeetingState</code> 불변</strong>: LangGraph <code>StateGraph(MeetingState)</code>는 컴파일 타임에 타입이 바인딩됩니다. 기존 필드를 수정하면 Graph 전체가 깨집니다. 새 필드 추가는 안전합니다.</p>
+</li>
+<li>
+<p><strong><code>MeetingEngineCallback</code> 보존</strong>: 이것은 현재 코드베이스에서 가장 잘 설계된 추상화 경계입니다. 9개의 명확한 메서드는 "회의에서 무슨 일이 일어나는가"의 완전한 계약입니다. 이를 깨뜨리면 모든 콜백 구현체가 한 번에 깨집니다.</p>
+</li>
+<li>
+<p><strong>엔드포인트 피처 플래그</strong>: 기존 사용자는 <code>/ws/{room_id}</code>로 접속합니다. 이 엔드포인트가 사라지면 기존 사용자는 즉시 이탈합니다. 내부 라우팅은 바꿔도 되지만, 외부 계약은 유지합니다.</p>
+</li>
+</ol>
+</div>
+<hr>
+<div class="admonition info">
+<p class="admonition-title">다음 단계</p>
+<p>이 전환 전략을 실제 구현으로 옮기려면:</p>
+<ol>
+<li><strong>Week 1-2 시작</strong>: <code>interfaces/channel.py</code>와 <code>SessionEventEmitter</code> alias 추가 — 기존 테스트 100% 통과 확인</li>
+<li><strong>회귀 테스트 먼저</strong>: <code>DispatchNode</code> 수정 전 반드시 회의 시나리오 E2E 테스트 스위트 작성</li>
+<li><strong>Port 스키마 안정화</strong>: <code>TaskSpec</code> 필드를 팀 전체가 리뷰한 후 동결 — 이후 파괴적 변경 금지</li>
+</ol>
+<p>각 로드맵 기능과의 관계는 <a href="../channel-chat/">채널 기반 채팅</a>, <a href="../multi-runtime/">멀티 런타임</a>, <a href="../persistent-memory/">에이전트 영속 메모리</a>, <a href="../agent-daemon-bridge/">Agent Daemon Bridge</a> 문서를 참조하세요.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden="">
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  맨위로
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.indexes", "navigation.top", "content.code.copy", "content.tabs.link", "search.suggest", "search.highlight", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\ud074\ub9bd\ubcf4\ub4dc\uc5d0 \ubcf5\uc0ac\ub428", "clipboard.copy": "\ud074\ub9bd\ubcf4\ub4dc\ub85c \ubcf5\uc0ac", "search.result.more.one": "\uc774 \ubb38\uc11c\uc5d0\uc11c 1\uac1c\uc758 \uac80\uc0c9 \uacb0\uacfc \ub354 \ubcf4\uae30", "search.result.more.other": "\uc774 \ubb38\uc11c\uc5d0\uc11c #\uac1c\uc758 \uac80\uc0c9 \uacb0\uacfc \ub354 \ubcf4\uae30", "search.result.none": "\uac80\uc0c9\uc5b4\uc640 \uc77c\uce58\ud558\ub294 \ubb38\uc11c\uac00 \uc5c6\uc2b5\ub2c8\ub2e4", "search.result.one": "1\uac1c\uc758 \uc77c\uce58\ud558\ub294 \ubb38\uc11c", "search.result.other": "#\uac1c\uc758 \uc77c\uce58\ud558\ub294 \ubb38\uc11c", "search.result.placeholder": "\uac80\uc0c9\uc5b4\ub97c \uc785\ub825\ud558\uc138\uc694", "search.result.term.missing": "\ud3ec\ud568\ub418\uc9c0 \uc54a\uc740 \uac80\uc0c9\uc5b4", "select.version": "\ubc84\uc804 \uc120\ud0dd"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>
