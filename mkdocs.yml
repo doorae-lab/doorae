@@ -43,6 +43,7 @@ plugins:
         - ko
         - en
   - tags
+  - glightbox
 
 markdown_extensions:
   - admonition
@@ -132,6 +133,7 @@ nav:
       - Task Board: roadmap/task-board.md
       - 다중 머신 지원: roadmap/multi-machine.md
       - Agent Daemon Bridge: roadmap/agent-daemon-bridge.md
+      - 아키텍처 전환 전략: roadmap/architecture-transition.md
 
   - 기여하기:
       - contributing/index.md

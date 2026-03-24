@@ -11,24 +11,25 @@ Doorae는 현재 **AI 에이전트가 참여하는 구조화된 회의 시스템
 ```mermaid
 gantt
     title Doorae 로드맵
-    dateFormat YYYY-Q
-    axisFormat %Y-Q%q
+    dateFormat YYYY-MM-DD
+    tickInterval 3month
+    axisFormat %Y-%m
 
     section Phase 1 — MVP
-    채널 기반 채팅           :p1a, 2026-Q2, 2026-Q3
-    기본 Web UI              :p1b, 2026-Q2, 2026-Q4
-    Agent Daemon Bridge      :p1c, 2026-Q2, 2026-Q3
+    채널 기반 채팅           :p1a, 2026-04-01, 2026-09-30
+    기본 Web UI              :p1b, 2026-04-01, 2026-12-31
+    Agent Daemon Bridge      :p1c, 2026-04-01, 2026-09-30
 
     section Phase 2 — 차별화
-    Agent-to-Agent 통신       :p2a, 2026-Q3, 2027-Q1
-    계층적 Task 위임          :p2b, 2026-Q4, 2027-Q1
-    Task Board               :p2c, 2026-Q4, 2027-Q2
-    에이전트 영속 메모리       :p2d, 2026-Q3, 2027-Q1
+    Agent-to-Agent 통신       :p2a, 2026-07-01, 2027-03-31
+    에이전트 영속 메모리       :p2d, 2026-07-01, 2027-03-31
+    계층적 Task 위임          :p2b, 2026-10-01, 2027-03-31
+    Task Board               :p2c, 2026-10-01, 2027-06-30
 
     section Phase 3 — 플랫폼
-    멀티 런타임               :p3a, 2027-Q1, 2027-Q3
-    Always-on 에이전트        :p3b, 2027-Q1, 2027-Q3
-    다중 머신 지원            :p3c, 2027-Q2, 2027-Q4
+    멀티 런타임               :p3a, 2027-01-01, 2027-09-30
+    Always-on 에이전트        :p3b, 2027-01-01, 2027-09-30
+    다중 머신 지원            :p3c, 2027-04-01, 2027-12-31
 ```
 
 ### Phase 1: MVP
@@ -63,6 +64,40 @@ gantt
 | [다중 머신 지원](multi-machine.md) | 분산 환경에서의 에이전트 실행 |
 
 ## 현재 상태 vs 목표 상태
+
+### 목표 아키텍처 개요
+
+```mermaid
+graph TB
+    subgraph Interfaces["인터페이스"]
+        WEB["Web UI"]
+        CLI["CLI / TUI"]
+    end
+
+    subgraph Server["Doorae 서버"]
+        CHANNEL["채널 채팅"]
+        MEETING["회의 엔진"]
+        TB["Task Board"]
+        MEMORY["영속 메모리"]
+    end
+
+    subgraph Daemon["Agent Daemon Bridge"]
+        ROUTER["Runtime Router"]
+    end
+
+    subgraph Runtimes["에이전트 런타임"]
+        LG["LangGraph"]
+        OH["OpenHands"]
+        SDK["Claude Agent SDK"]
+    end
+
+    WEB --> Server
+    CLI --> Server
+    Server <-->|WebSocket| Daemon
+    ROUTER --> LG
+    ROUTER --> OH
+    ROUTER --> SDK
+```
 
 | 영역 | 현재 (v0.1) | 목표 |
 |------|-------------|------|
