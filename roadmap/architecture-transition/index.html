@@ -2937,7 +2937,90 @@
   <a href="#10" class="md-nav__link">
     <span class="md-ellipsis">
       
-        10. 불변 원칙 (재확인)
+        10. 보수적 전환 원칙 (재정의)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-adr-delivery-first-ordered-channel-kernel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. ADR — Delivery-First Ordered Channel Kernel 채택
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. ADR — Delivery-First Ordered Channel Kernel 채택">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        상태
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        배경
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        결정
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        결과
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        기각한 대안
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. 문서 히스토리
       
     </span>
   </a>
@@ -3656,7 +3739,90 @@
   <a href="#10" class="md-nav__link">
     <span class="md-ellipsis">
       
-        10. 불변 원칙 (재확인)
+        10. 보수적 전환 원칙 (재정의)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-adr-delivery-first-ordered-channel-kernel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. ADR — Delivery-First Ordered Channel Kernel 채택
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. ADR — Delivery-First Ordered Channel Kernel 채택">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        상태
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        배경
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        결정
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        결과
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        기각한 대안
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. 문서 히스토리
       
     </span>
   </a>
@@ -4545,8 +4711,8 @@
 </ul>
 </div>
 <hr>
-<h2 id="10">10. 불변 원칙 (재확인)<a class="headerlink" href="#10" title="Permanent link">¶</a></h2>
-<p>세 가지 불변 원칙은 어떤 패턴을 선택하더라도, 어떤 팀이 작업하더라도 반드시 지켜야 합니다.</p>
+<h2 id="10">10. 보수적 전환 원칙 (재정의)<a class="headerlink" href="#10" title="Permanent link">¶</a></h2>
+<p>아래 세 가지는 더 이상 절대 금지 규칙이 아니라, <strong>회귀 위험이 높아 보수적으로 다뤄야 하는 영역</strong>입니다. 기본 원칙은 외부 계약은 최대한 안정적으로 유지하고, 내부 진실 원천은 점진적으로 <code>channel/session</code> 중심으로 옮기는 것입니다.</p>
 <pre class="mermaid"><code>graph LR
     subgraph DO_NOT["절대 금지"]
         MSMOD["MeetingState&lt;br/&gt;기존 필드 수정"]
@@ -4577,16 +4743,90 @@
 </ol>
 </div>
 <hr>
+<h2 id="11-adr-delivery-first-ordered-channel-kernel">11. ADR — Delivery-First Ordered Channel Kernel 채택<a class="headerlink" href="#11-adr-delivery-first-ordered-channel-kernel" title="Permanent link">¶</a></h2>
+<h3 id="_16">상태<a class="headerlink" href="#_16" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Accepted</strong> — 2026-03-25</li>
+</ul>
+<h3 id="_17">배경<a class="headerlink" href="#_17" title="Permanent link">¶</a></h3>
+<ul>
+<li>현재 코드베이스의 실제 live authority는 <code>MeetingEngine</code>보다 <code>Room</code>에 더 가깝습니다. <code>Room</code>이 연결, 재접속, queue, broadcast, active human gating을 사실상 소유하고 있기 때문입니다.</li>
+<li>반면 durable product model은 아직 약합니다. 채널 채팅, offline catch-up, replay, mention wake, always-on handoff를 설명할 수 있는 <strong>서버 소유의 delivery/resume contract</strong>가 없습니다.</li>
+<li>따라서 문제의 핵심은 "회의를 어떻게 일반화할 것인가"보다 "<strong>어떤 서버 코어가 채널 메시지의 수락, 순서, fanout, replay를 소유할 것인가</strong>"로 봐야 합니다.</li>
+</ul>
+<h3 id="_18">결정<a class="headerlink" href="#_18" title="Permanent link">¶</a></h3>
+<p>최종 아키텍처 패턴으로 <strong>Delivery-First Ordered Channel Kernel</strong>을 채택합니다.</p>
+<ul>
+<li><strong>durable truth</strong>: <code>Channel</code>, <code>Message</code>, <code>Membership</code></li>
+<li><strong>live truth</strong>: <code>Connection</code>/<code>Subscription</code>/<code>DeliveryCursor</code> 또는 이에 준하는 <code>ChannelSession</code>/<code>ChannelLane</code></li>
+<li><strong>derived state</strong>: <code>Presence</code></li>
+<li><strong>overlay</strong>: <code>Meeting</code>, <code>MeetingState</code>, <code>MeetingEngine</code>, <code>MeetingEngineCallback</code></li>
+<li><strong>runtime seam</strong>: channel append path 뒤에 놓이는 thin <code>AgentExecutionPort</code></li>
+<li><strong>later additions</strong>: capability/state registry, inbox/work projections, task board projections</li>
+</ul>
+<p>이 패턴에서 가장 중요한 점은 <code>channel-first</code>만으로 충분하지 않다는 것입니다. <strong>메시지 수락, 순서 부여, delivery cursor, resume semantics</strong>가 서버 코어의 일부여야 합니다. mailbox/lane discipline은 이 ordered kernel의 live-layer 규율이며, 별도 플랫폼 패턴이 아닙니다.</p>
+<h3 id="_19">결과<a class="headerlink" href="#_19" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>Room</code>은 최종적으로 product domain이 아니라 <strong>compatibility ingress facade</strong>로 내려갑니다.</li>
+<li><code>MeetingState</code>는 서버 truth가 아니라 <strong>meeting overlay compatibility state</strong>로 제한됩니다.</li>
+<li><code>MeetingEngineCallback</code>은 미래의 일반 세션 API가 아니라 <strong>meeting adapter contract</strong>로 유지됩니다.</li>
+<li><code>DispatchNode</code>와 runtime invocation은 <code>MeetingState</code> 직접 의존에서 벗어나, channel append path 뒤의 thin execution seam으로 이동해야 합니다.</li>
+<li><code>capability registry</code>, <code>inbox/work graph</code>, <code>task projection</code>은 유효한 후속 구조이지만, durable channel path가 안정화되기 전의 core truth가 되어서는 안 됩니다.</li>
+</ul>
+<h3 id="_20">기각한 대안<a class="headerlink" href="#_20" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Plain Channel Kernel</strong>: 방향은 맞지만 ordering, replay, reconnect authority가 너무 느슨합니다.</li>
+<li><strong>Event Platform / Event Bus first</strong>: 너무 이른 추상화이며, 제품보다 인프라가 먼저 중심이 됩니다.</li>
+<li><strong>Workspace / Work Graph first</strong>: 장기 비전에는 유용하지만, 채널 채팅이라는 1차 제품 목표를 흐립니다.</li>
+<li><strong>Compatibility Monolith / Room-first</strong>: 변경량은 적지만 회의 중심성과 hidden authority를 그대로 보존합니다.</li>
+</ul>
+<hr>
 <div class="admonition info">
 <p class="admonition-title">다음 단계</p>
 <p>이 전환 전략을 실제 구현으로 옮기려면:</p>
 <ol>
-<li><strong>Week 1-2 시작</strong>: <code>interfaces/channel.py</code>와 <code>SessionEventEmitter</code> alias 추가 — 기존 테스트 100% 통과 확인</li>
-<li><strong>회귀 테스트 먼저</strong>: <code>DispatchNode</code> 수정 전 반드시 회의 시나리오 E2E 테스트 스위트 작성</li>
-<li><strong>Port 스키마 안정화</strong>: <code>TaskSpec</code> 필드를 팀 전체가 리뷰한 후 동결 — 이후 파괴적 변경 금지</li>
+<li><strong>호환 ingress 유지</strong>: <code>/ws/{room_id}</code>는 유지하되, 내부 라우팅을 <code>channel/session</code> 기준으로 재배치</li>
+<li><strong>durable 채널 경로 확립</strong>: <code>Channel</code>/<code>Message</code>/<code>Membership</code>와 delivery/resume cursor를 서버 truth로 수립</li>
+<li><strong>live authority 이동</strong>: <code>Room</code>의 queue/broadcast/reconnect 책임을 <code>ChannelSession</code>/<code>Subscription</code>/<code>ChannelLane</code> 쪽으로 이동</li>
+<li><strong>meeting overlay 격리</strong>: <code>MeetingState</code>와 <code>MeetingEngine</code>를 overlay adapter로 제한하고, 새 surface의 truth로 쓰지 않기</li>
+<li><strong>thin runtime seam 삽입</strong>: ordered channel path 뒤에 <code>AgentExecutionPort</code>를 두고 LangGraph를 첫 구현체로 래핑</li>
+<li><strong>후속 projection 추가</strong>: task/inbox/work projection과 capability/state registry는 durable channel path 안정화 이후에 추가</li>
 </ol>
 <p>각 로드맵 기능과의 관계는 <a href="../channel-chat/">채널 기반 채팅</a>, <a href="../multi-runtime/">멀티 런타임</a>, <a href="../persistent-memory/">에이전트 영속 메모리</a>, <a href="../agent-daemon-bridge/">Agent Daemon Bridge</a> 문서를 참조하세요.</p>
 </div>
+<hr>
+<h2 id="12">12. 문서 히스토리<a class="headerlink" href="#12" title="Permanent link">¶</a></h2>
+<table>
+<thead>
+<tr>
+<th>날짜</th>
+<th>변경 내용</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-03-25</td>
+<td><code>불변 원칙</code>을 <code>보수적 전환 원칙</code>으로 재정의</td>
+<td>절대 규칙에서 회귀 위험이 큰 영역으로 해석 변경</td>
+</tr>
+<tr>
+<td>2026-03-25</td>
+<td>ADR 챕터 추가</td>
+<td>최종 권고안을 <code>Delivery-First Ordered Channel Kernel</code>로 명시</td>
+</tr>
+<tr>
+<td>2026-03-25</td>
+<td><code>다음 단계</code> 섹션 갱신</td>
+<td>channel delivery/resume, ordered live authority, meeting overlay 격리 순서로 조정</td>
+</tr>
+<tr>
+<td>2026-03-25</td>
+<td>하단 history 섹션 추가</td>
+<td>이후 문서 갱신 이력을 누적 기록</td>
+</tr>
+</tbody>
+</table>
 
 
 
