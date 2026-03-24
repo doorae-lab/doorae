@@ -2627,6 +2627,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="현재 상태 vs 목표 상태">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        목표 아키텍처 개요
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -2751,6 +2768,36 @@
 </tbody>
 </table>
 <h2 id="vs">현재 상태 vs 목표 상태<a class="headerlink" href="#vs" title="Permanent link">&para;</a></h2>
+<h3 id="_3">목표 아키텍처 개요<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>graph TB
+    subgraph Interfaces["인터페이스"]
+        WEB["Web UI"]
+        CLI["CLI / TUI"]
+    end
+
+    subgraph Server["Doorae 서버"]
+        CHANNEL["채널 채팅"]
+        MEETING["회의 엔진"]
+        TB["Task Board"]
+        MEMORY["영속 메모리"]
+    end
+
+    subgraph Daemon["Agent Daemon Bridge"]
+        ROUTER["Runtime Router"]
+    end
+
+    subgraph Runtimes["에이전트 런타임"]
+        LG["LangGraph"]
+        OH["OpenHands"]
+        SDK["Claude Agent SDK"]
+    end
+
+    WEB --&gt; Server
+    CLI --&gt; Server
+    Server &lt;--&gt;|WebSocket| Daemon
+    ROUTER --&gt; LG
+    ROUTER --&gt; OH
+    ROUTER --&gt; SDK</code></pre>
 <table>
 <thead>
 <tr>
