@@ -2673,24 +2673,25 @@
 <h2 id="_2">단계별 계획<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>gantt
     title Doorae 로드맵
-    dateFormat YYYY-Q
-    axisFormat %Y-Q%q
+    dateFormat YYYY-MM-DD
+    tickInterval 3month
+    axisFormat %Y-%m
 
     section Phase 1 — MVP
-    채널 기반 채팅           :p1a, 2026-Q2, 2026-Q3
-    기본 Web UI              :p1b, 2026-Q2, 2026-Q4
-    Agent Daemon Bridge      :p1c, 2026-Q2, 2026-Q3
+    채널 기반 채팅           :p1a, 2026-04-01, 2026-09-30
+    기본 Web UI              :p1b, 2026-04-01, 2026-12-31
+    Agent Daemon Bridge      :p1c, 2026-04-01, 2026-09-30
 
     section Phase 2 — 차별화
-    Agent-to-Agent 통신       :p2a, 2026-Q3, 2027-Q1
-    계층적 Task 위임          :p2b, 2026-Q4, 2027-Q1
-    Task Board               :p2c, 2026-Q4, 2027-Q2
-    에이전트 영속 메모리       :p2d, 2026-Q3, 2027-Q1
+    Agent-to-Agent 통신       :p2a, 2026-07-01, 2027-03-31
+    에이전트 영속 메모리       :p2d, 2026-07-01, 2027-03-31
+    계층적 Task 위임          :p2b, 2026-10-01, 2027-03-31
+    Task Board               :p2c, 2026-10-01, 2027-06-30
 
     section Phase 3 — 플랫폼
-    멀티 런타임               :p3a, 2027-Q1, 2027-Q3
-    Always-on 에이전트        :p3b, 2027-Q1, 2027-Q3
-    다중 머신 지원            :p3c, 2027-Q2, 2027-Q4</code></pre>
+    멀티 런타임               :p3a, 2027-01-01, 2027-09-30
+    Always-on 에이전트        :p3b, 2027-01-01, 2027-09-30
+    다중 머신 지원            :p3c, 2027-04-01, 2027-12-31</code></pre>
 <h3 id="phase-1-mvp">Phase 1: MVP<a class="headerlink" href="#phase-1-mvp" title="Permanent link">&para;</a></h3>
 <p><strong>핵심 가치</strong>: 회의를 넘어, 팀이 실시간으로 소통하는 채널을 제공합니다.</p>
 <table>
